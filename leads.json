@@ -1,0 +1,43 @@
+[
+  {
+    "createdAt": "2025-11-29T13:59:07.504Z",
+    "contact": {
+      "name": "Ezra Mukahanana",
+      "email": "ezra@mukahanana.org",
+      "address": "44 Towpath Crescent",
+      "phone": "07740870531"
+    },
+    "inputs": {
+      "name": "Ezra Mukahanana",
+      "email": "ezra@mukahanana.org",
+      "address": "44 Towpath Crescent",
+      "phone": "07740870531",
+      "annualKWh": 7000,
+      "postcodeRegion": "default",
+      "roofSize": "large",
+      "shading": "a_lot",
+      "panelOption": "premium",
+      "batteryKWh": 0,
+      "extras": {
+        "birdProtection": false,
+        "evCharger": true
+      }
+    },
+    "quote": {
+      "systemSizeKwp": 5.4,
+      "panelCount": 12,
+      "panelWatt": 450,
+      "priceLow": 9819,
+      "priceHigh": 12497,
+      "breakdown": {
+        "panels": 5141,
+        "inverter": 1542,
+        "battery": 0,
+        "scaffolding": 1000,
+        "extras": 900,
+        "labourAndMargin": 2575
+      },
+      "estAnnualGenerationKWh": 4590
+    }
+  }
+]
