@@ -55,7 +55,7 @@ const BREVO_LIST_ID = process.env.BREVO_LIST_ID
   ? Number(process.env.BREVO_LIST_ID)
   : undefined;
 
-async function syncLeadToBrevo(contact, quote) {
+async function syncLeadToBrevo(contact, quote, input) {
   try {
     if (!process.env.BREVO_API_KEY) {
       console.log("No BREVO_API_KEY set, skipping Brevo sync.");
@@ -121,6 +121,9 @@ async function syncLeadToBrevo(contact, quote) {
       annual_kwh: quote.estAnnualGenerationKWh,
       price_low: quote.priceLow,
       price_high: quote.priceHigh,
+      battery_kwh: input?.batteryKWh || 0,
+      bird_protection: input?.extras?.birdProtection ? "Yes" : "No",
+      ev_charger: input?.extras?.evCharger ? "Yes" : "No",
     };
 
     await brevoEmailApi.sendTransacEmail(sendSmtpEmail);
@@ -161,6 +164,10 @@ const CONFIG = {
 function calculateQuote(input) {
   const cfg = CONFIG;
 
+  // Work out panel option first (we need this for both auto and manual modes)
+  const panelOpt = cfg.panelOptions[input.panelOption] || cfg.panelOptions.value;
+  const panelKwp = panelOpt.watt / 1000;
+
   // 1. Estimate annual kWh if missing
   let annualKWh = input.annualKWh;
   if (!annualKWh && input.monthlyBill) {
@@ -171,26 +178,37 @@ function calculateQuote(input) {
     annualKWh = 3000; // default guess
   }
 
-  // 2. Target kWp from usage
-  let requiredKwp = annualKWh / (cfg.irradianceFactor * 1000);
+  let panelCount;
 
-  // 3. Apply roof size cap
-  const roofCap = cfg.roofKwpCaps[input.roofSize] || cfg.roofKwpCaps.medium;
-  requiredKwp = Math.min(Math.max(requiredKwp, 2), roofCap);
+  // 2. If user provided a manual panel count, use that
+  if (input.panelCount && Number(input.panelCount) > 0) {
+    panelCount = Number(input.panelCount);
+    console.log("Using manual panel count:", panelCount);
+  } else {
+    // 3. Otherwise, use automatic sizing from usage and roof limits
 
-  // 4. Adjust for heavy shading
-  if (input.shading === "a_lot") {
-    requiredKwp *= 0.85;
+    // Target kWp from usage
+    let requiredKwp = annualKWh / (cfg.irradianceFactor * 1000);
+
+    // Apply roof size cap
+    const roofCap = cfg.roofKwpCaps[input.roofSize] || cfg.roofKwpCaps.medium;
+    requiredKwp = Math.min(Math.max(requiredKwp, 2), roofCap);
+
+    // Adjust for heavy shading
+    if (input.shading === "a_lot") {
+      requiredKwp *= 0.85;
+    }
+
+    // Convert to panel count
+    panelCount = Math.round(requiredKwp / panelKwp);
+    if (panelCount < 6) panelCount = 6;
+    console.log("Using automatic panel count:", panelCount);
   }
 
-  // 5. Convert to panel count
-  const panelOpt = cfg.panelOptions[input.panelOption] || cfg.panelOptions.value;
-  const panelKwp = panelOpt.watt / 1000;
-  let panelCount = Math.round(requiredKwp / panelKwp);
-  if (panelCount < 6) panelCount = 6;
+  // 4. Derive system size from panel count
   const systemSizeKwp = panelCount * panelKwp;
 
-  // 6. Base system cost
+  // 5. Base system cost
   const regionMult =
     cfg.regionalMultipliers[input.postcodeRegion] ||
     cfg.regionalMultipliers.default;
@@ -198,7 +216,7 @@ function calculateQuote(input) {
   const baseSystemCost =
     systemSizeKwp * cfg.baseCostPerKwp * panelOpt.multiplier * regionMult;
 
-  // 7. Components
+  // 6. Components
   const panelsCost = baseSystemCost * 0.5;
   const inverterCost = baseSystemCost * 0.15;
   const scaffoldingCost = cfg.scaffoldingFlat * regionMult;
@@ -217,11 +235,11 @@ function calculateQuote(input) {
 
   const total = directCosts + labourAndMargin;
 
-  // 8. Price range
+  // 7. Price range
   const priceLow = Math.round(total * (1 - cfg.priceRangeFactor));
   const priceHigh = Math.round(total * (1 + cfg.priceRangeFactor));
 
-  // 9. Estimated generation
+  // 8. Estimated generation
   const estAnnualGenerationKWh = Math.round(
     systemSizeKwp * cfg.irradianceFactor * 1000
   );
@@ -243,6 +261,7 @@ function calculateQuote(input) {
     estAnnualGenerationKWh,
   };
 }
+
 
 // ====== ROUTES ======
 app.get("/", (req, res) => {
@@ -270,7 +289,7 @@ app.post("/api/quote", async (req, res) => {
 
     // Sync to Brevo (fire-and-forget)
     const contact = { name, email, address, phone };
-    syncLeadToBrevo(contact, quote);
+    syncLeadToBrevo(contact, quote, input);
 
     res.json(quote);
   } catch (err) {
