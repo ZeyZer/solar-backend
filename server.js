@@ -117,14 +117,20 @@ async function syncLeadToBrevo(contact, quote, input) {
       system_kwp: quote.systemSizeKwp,
       panel_count: quote.panelCount,
       panel_watt: quote.panelWatt,
-      batteryKWh: quote.batteryKWh,
       annual_kwh: quote.estAnnualGenerationKWh,
       price_low: quote.priceLow,
       price_high: quote.priceHigh,
+
       battery_kwh: input?.batteryKWh || 0,
       bird_protection: input?.extras?.birdProtection ? "Yes" : "No",
       ev_charger: input?.extras?.evCharger ? "Yes" : "No",
+
+      annual_savings: quote.annualBillSavings || 0,
+      seg_income: quote.annualSegIncome || 0,
+      total_benefit: quote.totalAnnualBenefit || 0,
+      payback_years: quote.simplePaybackYears || "",
     };
+
 
     await brevoEmailApi.sendTransacEmail(sendSmtpEmail);
     console.log("Brevo quote email sent to:", contact.email);
@@ -139,11 +145,12 @@ app.use(cors());
 
 // ====== QUOTE CONFIG & LOGIC ======
 const CONFIG = {
-  baseCostPerKwp: 1300,
-  batteryCostPerKwh: 550,
-  scaffoldingFlat: 1000,
-  priceRangeFactor: 0.12,
-  assumedPricePerKWh: 0.28,
+  baseCostPerKwp: 800,
+  batteryCostPerKwh: 580,
+  scaffoldingFlat: 800,
+  priceRangeFactor: 0.10,
+  assumedPricePerKWh: 0.28, // import price
+  assumedSegPricePerKWh: 0.12, // export price
   irradianceFactor: 0.85,
   roofKwpCaps: {
     small: 2.5,
@@ -218,7 +225,7 @@ function calculateQuote(input) {
 
   // 6. Components
   const panelsCost = baseSystemCost * 0.5;
-  const inverterCost = baseSystemCost * 0.15;
+  const inverterCost = baseSystemCost * 0.18;
   const scaffoldingCost = cfg.scaffoldingFlat * regionMult;
 
   const batteryKWh = input.batteryKWh || 0;
@@ -259,6 +266,124 @@ function calculateQuote(input) {
       labourAndMargin: Math.round(labourAndMargin),
     },
     estAnnualGenerationKWh,
+    assumedAnnualConsumptionKWh: Math.round(annualKWh),
+  };
+}
+
+
+//==== Savings Calculator ====
+function estimateSelfConsumptionAndSavings(input, quote) {
+  const cfg = CONFIG;
+  const gen = quote.estAnnualGenerationKWh;
+  const demand =
+    quote.assumedAnnualConsumptionKWh || input.annualKWh || gen || 0;
+
+  if (!gen || !demand) {
+    return {
+      selfConsumptionFraction: 0,
+      selfConsumptionKWh: 0,
+      annualBillSavings: 0,
+      simplePaybackYears: null,
+    };
+  }
+
+  // Ratio of PV generation to demand, capped between 0.5 and 2 for stability
+  let ratio = gen / demand;
+  if (ratio < 0.5) ratio = 0.5;
+  if (ratio > 2) ratio = 2;
+
+  const occ = input.occupancyProfile || "half_day";
+
+  // Helper to interpolate between two points
+  function lerp(x, x1, y1, x2, y2) {
+    if (x <= x1) return y1;
+    if (x >= x2) return y2;
+    return y1 + ((y2 - y1) * (x - x1)) / (x2 - x1);
+  }
+
+  // Base self-consumption (PV-only), very roughly inspired by MCS guidance
+  // for different occupancy archetypes (not exact lookup tables).
+  let baseAt05, baseAt10, baseAt20;
+
+  switch (occ) {
+    case "home_all_day":
+      baseAt05 = 0.5; // 60% when PV < demand
+      baseAt10 = 0.30; // 40% when PV ~ demand
+      baseAt20 = 0.25; // 25% when PV >> demand
+      break;
+    case "out_all_day":
+      baseAt05 = 0.24;
+      baseAt10 = 0.18;
+      baseAt20 = 0.12;
+      break;
+    default: // "half_day" or unknown
+      baseAt05 = 0.40;
+      baseAt10 = 0.25;
+      baseAt20 = 0.15;
+  }
+
+  let baseSelf;
+  if (ratio <= 1) {
+    baseSelf = lerp(ratio, 0.5, baseAt05, 1.0, baseAt10);
+  } else {
+    baseSelf = lerp(ratio, 1.0, baseAt10, 2.0, baseAt20);
+  }
+
+  // Battery uplift – bigger uplift for "out all day", capped overall.
+  const batteryKWh = input.batteryKWh || 0;
+
+  let upliftPerKWh;
+  switch (occ) {
+    case "home_all_day":
+      upliftPerKWh = 0.05; // 2% per kWh
+      break;
+    case "out_all_day":
+      upliftPerKWh = 0.091; // 3.5% per kWh
+      break;
+    default: // half_day
+      upliftPerKWh = 0.0675;
+  }
+
+  // Slight extra uplift when PV generation is high vs demand
+  const ratioBoost =
+    ratio <= 1 ? 0.5 + 0.5 * ratio : 0.5 + 0.5 * Math.min(ratio, 2) / 2;
+
+  let batteryUplift = batteryKWh * upliftPerKWh * ratioBoost;
+
+  // Cap uplift so things stay realistic
+  if (batteryUplift > 0.75) batteryUplift = 0.75;
+
+  let selfFraction = baseSelf + batteryUplift;
+
+  // Cap total self-consumption between 0 and 95% of generation
+  if (selfFraction > 0.95) selfFraction = 0.95;
+  if (selfFraction < 0) selfFraction = 0;
+
+  const selfKWh = Math.round(selfFraction * gen);
+
+  // Use the same assumed price per kWh as elsewhere in your tool
+  const exportKWh = Math.max(gen - selfKWh, 0);
+  const importPrice = cfg.assumedPricePerKWh; // £/kWh
+  const segPrice = cfg.assumedSegPricePerKWh;     // £/kWh
+  const annualBillSavings = Math.round(selfKWh * importPrice);
+  const annualSegIncome = Math.round(exportKWh * segPrice);
+
+  const totalAnnualBenefit = annualBillSavings + annualSegIncome;
+
+  const midPrice = (quote.priceLow + quote.priceHigh) / 2;
+  const simplePaybackYears =
+    totalAnnualBenefit > 0
+      ? Number((midPrice / totalAnnualBenefit).toFixed(1))
+      : null;
+
+
+  return {
+  selfConsumptionFraction: selfFraction,
+  selfConsumptionKWh: selfKWh,
+  annualBillSavings,       // bill reduction only
+  annualSegIncome,         // SEG money
+  totalAnnualBenefit,      // sum of the two
+  simplePaybackYears,
   };
 }
 
@@ -273,7 +398,11 @@ app.post("/api/quote", async (req, res) => {
     const input = req.body || {};
     console.log("Received quote request with input:", input);
 
-    const quote = calculateQuote(input);
+    const baseQuote = calculateQuote(input);
+    const savings = estimateSelfConsumptionAndSavings(input, baseQuote);
+
+    // Merge everything into one quote object
+    const quote = { ...baseQuote, ...savings };
 
     const { name, email, address, phone } = input;
 
@@ -299,6 +428,7 @@ app.post("/api/quote", async (req, res) => {
     });
   }
 });
+
 
 app.listen(PORT, () => {
   console.log(`Backend listening on http://localhost:${PORT}`);
