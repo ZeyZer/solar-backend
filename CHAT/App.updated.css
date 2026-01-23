@@ -1,0 +1,43 @@
+
+/*
+  App.updated.css
+  =================
+  Paste this at the BOTTOM of your existing App.css
+*/
+
+/* --- System choices: reduce card usage --- */
+
+.system-row {
+  padding: 12px 0;
+}
+
+.system-row--split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  align-items: start;
+}
+
+.system-row h4 {
+  margin-bottom: 6px;
+}
+
+/* Daily usage chart */
+.daily-usage-chart {
+  border-left: 2px solid rgba(0,0,0,0.05);
+  padding-left: 16px;
+}
+
+.daily-usage-chart svg {
+  width: 100%;
+  height: 140px;
+  color: #2563eb;
+}
+
+/* Roof cards remain visually separated */
+.roof-list-item {
+  border: 1px solid rgba(148,163,184,0.3);
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 12px;
+}
