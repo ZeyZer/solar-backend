@@ -9,6 +9,11 @@ const MCS_TABLES = require("./data/mcs_self_consumption_tables.json")?.tables;
 
 const app = express();
 const PORT = process.env.PORT || 4000;
+let latestPdfQuoteData = null;
+
+// ====== EXPRESS SETUP ======
+app.use(cors());
+app.use(express.json({ limit: "2mb" }));
 
 console.log("[MCS] Loaded tables keys:", MCS_TABLES ? Object.keys(MCS_TABLES) : "❌ NOT LOADED");
 
@@ -48,100 +53,360 @@ function saveLeads(leads) {
   }
 }
 
+function formatUkPhoneForBrevo(phone) {
+  const raw = String(phone || "").replace(/\s+/g, "");
+
+  if (!raw) return "";
+
+  if (raw.startsWith("+44")) return raw;
+  if (raw.startsWith("0044")) return `+${raw.slice(2)}`;
+  if (raw.startsWith("0")) return `+44${raw.slice(1)}`;
+
+  return raw;
+}
+
+
+// ====================
+// PDF STUFF
+// ====================
+const puppeteer = require("puppeteer");
+
+console.log("Registering /api/quote/pdf route");
+
+app.post("/api/quote/pdf", async (req, res) => {
+  try {
+    const { quote, form, roofs } = req.body || {};
+
+    const pdf = await generateQuotePdfBuffer({
+      quote,
+      form,
+      roofs: roofs || [],
+    });
+
+    res.set({
+      "Content-Type": "application/pdf",
+      "Content-Disposition": 'attachment; filename="solar-quote.pdf"',
+    });
+
+    res.send(pdf);
+  } catch (err) {
+    console.error("PDF generation failed:", err);
+    res.status(500).json({ error: "PDF generation failed." });
+  }
+});
+
+app.get("/api/quote/pdf-data", (req, res) => {
+  if (!latestPdfQuoteData) {
+    return res.status(404).json({ error: "No PDF quote data found." });
+  }
+
+  res.json(latestPdfQuoteData);
+});
+
+
+// ==============================
+// Quote progress (SSE) plumbing
+// ==============================
+const activeProgressStreams = new Map(); // progressId -> res
+const lastProgressById = new Map(); // progressId -> payload
+
+
+app.get("/api/quote/progress/:id", (req, res) => {
+  const { id } = req.params;
+  console.log("✅ SSE client connected:", req.params.id);
+
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+
+  // If you have compression middleware, this helps flush
+  res.flushHeaders?.();
+
+  activeProgressStreams.set(id, res);
+
+  // Send an initial progress event
+  res.write(`event: progress\ndata: ${JSON.stringify({ step: "starting", pct: 5, label: "Starting…" })}\n\n`);
+
+  req.on("close", () => {
+    activeProgressStreams.delete(id);
+  });
+});
+
+function pushQuoteProgress(progressId, payload) {
+  if (!progressId) return;
+  lastProgressById.set(progressId, payload);
+
+  const res = activeProgressStreams.get(progressId);
+  if (!res) return;
+
+  res.write(`event: progress\ndata: ${JSON.stringify(payload)}\n\n`);
+}
+
+
+function closeQuoteProgress(progressId) {
+  if (!progressId) return;
+  const res = activeProgressStreams.get(progressId);
+  if (!res) return;
+  res.write(`event: done\ndata: ${JSON.stringify({ ok: true })}\n\n`);
+  res.end();
+  activeProgressStreams.delete(progressId);
+}
+
+// ====== TARIFF SETUP ======
+function getTariffPreset(type = "standard") {
+  // Rates in £/kWh (not pence)
+  if (type === "overnight") {
+    return {
+      type: "overnight",
+      name: "Cheap overnight",
+      importDay: 0.28,
+      importNight: 0.08,
+      nightStartHour: 0,
+      nightEndHour: 7, // 00:00–07:00
+      exportFlat: 0.12,
+      gridChargeEnabled: false,
+      gridChargeTargetPct: 80, // default
+    };
+  }
+
+  if (type === "flux") {
+    return {
+      type: "flux",
+      name: "Time-of-use (Flux style)",
+      // simple 3-band example — you can adjust later
+      importOffPeak: 0.15, // e.g., night
+      importDay: 0.28,
+      importPeak: 0.40,    // evening peak
+      exportOffPeak: 0.08,
+      exportDay: 0.15,
+      exportPeak: 0.30,
+      offPeakStartHour: 0,
+      offPeakEndHour: 6,   // 00:00–06:00
+      peakStartHour: 16,
+      peakEndHour: 19,     // 16:00–19:00
+      gridChargeEnabled: false,
+      gridChargeTargetPct: 70,
+    };
+  }
+
+  // default: standard variable
+  return {
+    type: "standard",
+    name: "Standard variable",
+    importFlat: 0.28,
+    exportFlat: 0.12,
+    gridChargeEnabled: false,
+    gridChargeTargetPct: 0,
+  };
+}
+
+
+
 // ====== BREVO SETUP ======
 const brevoClient = SibApiV3Sdk.ApiClient.instance;
-const apiKey = brevoClient.authentications["api-key"];
-apiKey.apiKey = process.env.BREVO_API_KEY || "";
+brevoClient.authentications["api-key"].apiKey = process.env.BREVO_API_KEY || "";
+brevoClient.authentications["partner-key"].apiKey = process.env.BREVO_API_KEY || "";
+console.log("BREVO key loaded:", (process.env.BREVO_API_KEY || "").slice(0, 8));
 
 const brevoContactsApi = new SibApiV3Sdk.ContactsApi();
 const brevoEmailApi = new SibApiV3Sdk.TransactionalEmailsApi();
 
-const BREVO_TEMPLATE_ID = process.env.BREVO_TEMPLATE_ID
-  ? Number(process.env.BREVO_TEMPLATE_ID)
+const BREVO_TEMPLATE_ID_QUOTE = process.env.BREVO_TEMPLATE_ID_QUOTE
+  ? Number(process.env.BREVO_TEMPLATE_ID_QUOTE)
   : undefined;
 
-const BREVO_LIST_ID = process.env.BREVO_LIST_ID
-  ? Number(process.env.BREVO_LIST_ID)
+const BREVO_TEMPLATE_ID_CALL = process.env.BREVO_TEMPLATE_ID_CALL
+  ? Number(process.env.BREVO_TEMPLATE_ID_CALL)
   : undefined;
 
-async function syncLeadToBrevo(contact, quote, input) {
+const BREVO_QUOTE_LIST_ID = process.env.BREVO_QUOTE_LIST_ID
+  ? Number(process.env.BREVO_QUOTE_LIST_ID)
+  : undefined;
+
+const BREVO_CALL_LIST_ID = process.env.BREVO_CALL_LIST_ID
+  ? Number(process.env.BREVO_CALL_LIST_ID)
+  : undefined;
+
+const BREVO_MARKETING_LIST_ID = process.env.BREVO_MARKETING_LIST_ID
+  ? Number(process.env.BREVO_MARKETING_LIST_ID)
+  : undefined;
+
+async function upsertBrevoContact(contact, { baseListId, marketingConsent = false, leadType = "" } = {}) {
+  if (!process.env.BREVO_API_KEY) {
+    console.log("No BREVO_API_KEY set, skipping Brevo sync.");
+    return;
+  }
+
+  if (!contact?.email) {
+    console.log("No email on contact, skipping Brevo sync.");
+    return;
+  }
+
+  const listIds = [];
+  if (baseListId) listIds.push(baseListId);
+  if (marketingConsent && BREVO_MARKETING_LIST_ID) listIds.push(BREVO_MARKETING_LIST_ID);
+
+  const attributes = {
+    FIRSTNAME: contact.name || "",
+    ADDRESS: contact.address || "",
+    SMS: formatUkPhoneForBrevo(contact.phone),
+    LEAD_TYPE: leadType || "",
+    MARKETING_CONSENT: !!marketingConsent,
+  };
+
+  const createContact = new SibApiV3Sdk.CreateContact();
+  createContact.email = contact.email;
+  createContact.attributes = attributes;
+  createContact.listIds = listIds;
+
   try {
-    if (!process.env.BREVO_API_KEY) {
-      console.log("No BREVO_API_KEY set, skipping Brevo sync.");
-      return;
-    }
-    if (!contact.email) {
-      console.log("No email on contact, skipping Brevo sync.");
-      return;
-    }
-
-    const createContact = new SibApiV3Sdk.CreateContact();
-    createContact.email = contact.email;
-    createContact.attributes = {
-      FIRSTNAME: contact.name || "",
-      ADDRESS: contact.address || "",
-      PHONE: contact.phone || "",
-    };
-
-    if (BREVO_LIST_ID) createContact.listIds = [BREVO_LIST_ID];
-
-    try {
-      await brevoContactsApi.createContact(createContact);
-      console.log("Brevo contact created:", contact.email);
-    } catch (err) {
-      if (err.response && err.response.body && err.response.body.code === "duplicate_parameter") {
-        const updateContact = new SibApiV3Sdk.UpdateContact();
-        updateContact.attributes = createContact.attributes;
-        await brevoContactsApi.updateContact(contact.email, updateContact);
-        console.log("Brevo contact updated:", contact.email);
-      } else {
-        console.error("Error creating/updating Brevo contact:", err.message);
-      }
-    }
-
-    if (!BREVO_TEMPLATE_ID) {
-      console.log("No BREVO_TEMPLATE_ID set, skipping Brevo email send.");
-      return;
-    }
-
-    const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
-    sendSmtpEmail.to = [{ email: contact.email, name: contact.name || "" }];
-    sendSmtpEmail.templateId = BREVO_TEMPLATE_ID;
-    sendSmtpEmail.params = {
-      name: contact.name || "",
-      address: contact.address || "",
-      system_kwp: quote.systemSizeKwp,
-      panel_count: quote.panelCount,
-      panel_watt: quote.panelWatt,
-      annual_kwh: quote.estAnnualGenerationKWh,
-      price_low: quote.priceLow,
-      price_high: quote.priceHigh,
-
-      battery_kwh: input?.batteryKWh || 0,
-      bird_protection: input?.extras?.birdProtection ? "Yes" : "No",
-      ev_charger: input?.extras?.evCharger ? "Yes" : "No",
-
-      annual_savings: quote.annualBillSavings || 0,
-      seg_income: quote.annualSegIncome || 0,
-      total_benefit: quote.totalAnnualBenefit || 0,
-      payback_years: quote.simplePaybackYears || "",
-    };
-
-    await brevoEmailApi.sendTransacEmail(sendSmtpEmail);
-    console.log("Brevo quote email sent to:", contact.email);
+    await brevoContactsApi.createContact(createContact);
+    console.log("Brevo contact created:", contact.email);
   } catch (err) {
-    console.error("Error syncing lead to Brevo:", err.message);
+    if (err.response && err.response.body && err.response.body.code === "duplicate_parameter") {
+      const updateContact = new SibApiV3Sdk.UpdateContact();
+      updateContact.attributes = attributes;
+      updateContact.listIds = listIds;
+      await brevoContactsApi.updateContact(contact.email, updateContact);
+      console.log("Brevo contact updated:", contact.email);
+    } else {
+      throw err;
+    }
   }
 }
 
-// ====== EXPRESS SETUP ======
-app.use(express.json());
-app.use(cors());
+async function generateQuotePdfBuffer({ quote, form, roofs }) {
+  if (!quote || !form) {
+    throw new Error("Missing quote or form data.");
+  }
+
+  latestPdfQuoteData = {
+    quote,
+    form,
+    roofs: roofs || [],
+  };
+
+  console.log("Saved latest PDF quote data");
+  console.log("Launching Puppeteer...");
+
+  const browser = await puppeteer.launch({
+    headless: true,
+    protocolTimeout: 120000,
+    timeout: 120000,
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+    ],
+  });
+
+  console.log("Puppeteer launched successfully");
+
+  try {
+    const page = await browser.newPage();
+
+    console.log("Opening /quote-pdf page...");
+    await page.goto("http://localhost:3000/quote-pdf", {
+      waitUntil: "networkidle0",
+      timeout: 120000,
+    });
+
+    await page.waitForFunction(
+      () =>
+        Array.from(document.images).every(
+          (img) => img.complete && img.naturalHeight > 0
+        ),
+      { timeout: 10000 }
+    ).catch(() => {
+      console.log("Some images did not finish loading before PDF render");
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+
+    console.log("/quote-pdf page loaded");
+
+    await page.emulateMediaType("print");
+
+    const pdfBytes = await page.pdf({
+      format: "A4",
+      printBackground: true,
+      margin: {
+        top: "12mm",
+        bottom: "15mm",
+        left: "14mm",
+        right: "14mm",
+      },
+    });
+
+    return Buffer.from(pdfBytes);
+  } finally {
+    await browser.close();
+  }
+}
+
+async function sendQuoteEmailWithAttachment(contact, quote, input, pdfBuffer, templateId) {
+  if (!process.env.BREVO_API_KEY) {
+    console.log("No BREVO_API_KEY set, skipping Brevo email send.");
+    return;
+  }
+
+  if (!templateId) {
+    console.log("No templateId provided, skipping Brevo email send.");
+    return;
+  }
+
+  if (!pdfBuffer) {
+    console.log("No pdfBuffer provided, skipping Brevo email send.");
+    return;
+  }
+
+  const pdfBase64 = Buffer.from(pdfBuffer).toString("base64");
+
+  console.log("PDF attachment bytes:", Buffer.from(pdfBuffer).length);
+  console.log("PDF attachment base64 length:", pdfBase64.length);
+
+  const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
+  sendSmtpEmail.to = [{ email: contact.email, name: contact.name || "" }];
+  sendSmtpEmail.templateId = templateId;
+
+  sendSmtpEmail.params = {
+    name: contact.name || "",
+    address: contact.address || "",
+    lead_type: input?.leadType || "",
+
+    system_kwp: quote.systemSizeKwp,
+    panel_count: quote.panelCount,
+    panel_watt: quote.panelWatt,
+    annual_kwh: quote.estAnnualGenerationKWh,
+    price_low: quote.priceLow,
+    price_high: quote.priceHigh,
+
+    battery_kwh: input?.batteryKWh || 0,
+    bird_protection: input?.extras?.birdProtection ? "Yes" : "No",
+    ev_charger: input?.extras?.evCharger ? "Yes" : "No",
+
+    annual_savings: quote.annualBillSavings || 0,
+    seg_income: quote.annualSegIncome || 0,
+    total_benefit: quote.totalAnnualBenefit || 0,
+    payback_years: quote.simplePaybackYears || "",
+  };
+
+  sendSmtpEmail.attachment = [
+    {
+      name: "solar-quote.pdf",
+      content: pdfBase64,
+    },
+  ];
+
+  await brevoEmailApi.sendTransacEmail(sendSmtpEmail);
+  console.log("Brevo quote email sent to:", contact.email, "using template:", templateId);
+}
+
 
 // ====== QUOTE CONFIG ======
 const CONFIG = {
   baseCostPerKwp: 800,
-  batteryCostPerKwh: 340,
+  batteryCostPerKwh: 280,
   scaffolding: {
     firstRoof: 600,
     additionalRoof: 400,
@@ -216,8 +481,8 @@ const PVGIS = {
 // ------------------------------
 function recommendBatterySizes({
   simulateFn,                 // function(batteryKWhUsable) => { annualBenefit, simplePaybackYears, annualImportedKWh, annualExportedKWh, annualSelfUsedKWh }
-  minBatteryKWh = 5,          // ✅ new: force minimum
-  maxBatteryKWh = 28,         // ✅ new: cap at 28
+  minBatteryKWh = 1,          // ✅ new: force minimum
+  maxBatteryKWh = 39,         // ✅ new: cap at 28
   stepKWh = 1,                // ✅ new: step 1kWh
 }) {
   const results = [];
@@ -303,50 +568,73 @@ function solarDegradationMultiplier(year, panelOption) {
 
 
 function makeMonthlyFinancialSeries({
-  monthlyLoadKWh,       // array[12] household demand
-  monthlyImportedKWh,   // array[12] grid import (after solar/battery)
-  monthlyExportedKWh,   // array[12] grid export
-  importPrice,          // £/kWh
-  segPrice,             // £/kWh
-  standingChargePerDay = 0, // £/day
+  monthlyLoadKWh,
+  monthlyImportedKWh,
+  monthlyExportedKWh,
+
+  // ✅ split tariffs
+  importPriceBefore,     // baseline £/kWh
+  importPriceAfter,      // after-solar £/kWh
+  segPriceAfter,         // after-solar export £/kWh
+
+  // Backward compatibility (if older callers still pass importPrice/segPrice)
+  importPrice,
+  segPrice,
+
+  standingChargePerDay = 0,
 }) {
-  const daysInMonth = [31,28,31,30,31,30,31,31,30,31,30,31];
+  const daysInMonth = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
   const monthlyStandingCharge = daysInMonth.map((d) => round2(d * Number(standingChargePerDay || 0)));
 
-  // Baseline = (load * import) + standing charge
+  const impBefore = Number.isFinite(importPriceBefore) ? importPriceBefore : Number(importPrice || 0);
+  const impAfter  = Number.isFinite(importPriceAfter)  ? importPriceAfter  : Number(importPrice || 0);
+  const expAfter  = Number.isFinite(segPriceAfter)     ? segPriceAfter     : Number(segPrice || 0);
+
+  // Baseline bill (before solar) = load * BEFORE import rate + standing charge
   const baselineMonthlyCost = monthlyLoadKWh.map((kwh, i) =>
-    round2((kwh * importPrice) + monthlyStandingCharge[i])
+    round2((Number(kwh || 0) * impBefore) + monthlyStandingCharge[i])
   );
 
-  // "After solar" bill = imports cost - export credit (SEG) + standing charge
-  const systemMonthlyCost = monthlyImportedKWh.map((imp, i) =>
-    round2((imp * importPrice) - (monthlyExportedKWh[i] * segPrice) + monthlyStandingCharge[i])
+  // After-solar import-only bill (what you pay your supplier) = imports * AFTER import rate + standing charge
+  const systemMonthlyCostBeforeSEG = monthlyImportedKWh.map((imp, i) =>
+    round2((Number(imp || 0) * impAfter) + monthlyStandingCharge[i])
   );
 
-  const monthlySavings = baselineMonthlyCost.map((base, i) =>
-    round2(base - systemMonthlyCost[i])
+  // Export income (paid out) = exports * AFTER export rate
+  const exportCreditMonthly = monthlyExportedKWh.map((exp) =>
+    round2(Number(exp || 0) * expAfter)
   );
 
-  const annualBaseline = round2(baselineMonthlyCost.reduce((a,b)=>a+b,0));
-  const annualSystem = round2(systemMonthlyCost.reduce((a,b)=>a+b,0));
-  const annualSavings = round2(monthlySavings.reduce((a,b)=>a+b,0));
+  // Optional net (import bill minus export income) - useful for internal comparisons
+  const systemMonthlyNet = systemMonthlyCostBeforeSEG.map((c, i) =>
+    round2(c - exportCreditMonthly[i])
+  );
+
+  const annualBaseline = round2(baselineMonthlyCost.reduce((a, b) => a + Number(b || 0), 0));
+  const annualSystemBeforeSEG = round2(systemMonthlyCostBeforeSEG.reduce((a, b) => a + Number(b || 0), 0));
+  const annualExportCredit = round2(exportCreditMonthly.reduce((a, b) => a + Number(b || 0), 0));
+  const annualSystemNet = round2(systemMonthlyNet.reduce((a, b) => a + Number(b || 0), 0));
 
   return {
-    labels: MONTH_LABELS,
     baselineMonthlyCost,
-    systemMonthlyCost,
-    monthlySavings,
-    monthlyStandingCharge,
+    systemMonthlyCostBeforeSEG,
+    exportCreditMonthly,
+    systemMonthlyNet,
+
+    // legacy names used by UI
+    monthlyBaseline: baselineMonthlyCost,
+    monthlyAfter: systemMonthlyNet,
+
     annualBaseline,
-    annualSystem,
-    annualSavings,
-    assumptions: {
-      importPrice,
-      segPrice,
-      standingChargePerDay: Number(standingChargePerDay || 0),
-    }
+    annualSystemBeforeSEG,
+    annualExportCredit,
+    annualSystemNet,
+
+    // ✅ UI expects this
+    annualSystem: annualSystemNet,
   };
 }
+
 
 function makePaybackAndLifetimeSeries({
   systemCostMid,          // £
@@ -631,6 +919,69 @@ async function getTotalPvgisAnnualKWh({ postcode, roofs, panelWatt }) {
   return Math.round(total);
 }
 
+async function getMcsRoofGroupData({ postcode, roofs, panelWatt }) {
+  const { lat, lon } = await getLatLonFromUkPostcode(postcode);
+
+  if (!Array.isArray(roofs) || roofs.length === 0) return [];
+
+  const watt = Number(panelWatt || 0);
+
+  return Promise.all(
+    roofs.map(async (roof, idx) => {
+      const panels = Number(roof?.panels || 0);
+      if (panels <= 0 || !watt) {
+        return {
+          group: idx + 1,
+          panels: 0,
+          kwp: 0,
+          orientation: roof?.orientation || "—",
+          tilt: roof?.tilt ?? null,
+          shading: roof?.shading || "none",
+          shadeFactor: 1.0,
+          annualPreShadeKWh: 0,
+          annualOutputKWh: 0,
+          kk: 0,
+        };
+      }
+
+      const tilt = Number(roof?.tilt);
+      const aspect = orientationToPvgisAspect(roof?.orientation);
+      const kwp = (panels * watt) / 1000;
+
+      // PRE-SHADE annual PVGIS generation
+      const annualPreShadeKWh = await getPvgisAnnualKWhForRoof({
+        lat,
+        lon,
+        tiltDeg: tilt,
+        aspectDeg: aspect,
+        peakPowerKwp: kwp,
+      });
+
+      const shadingKey = String(roof?.shading || "none");
+      const shadeFactor = PVGIS.shadingDerate[shadingKey] ?? 1.0;
+
+      // POST-SHADE annual output for this roof group
+      const annualOutputKWh = annualPreShadeKWh * shadeFactor;
+
+      // Option A: Kk is PRE-SHADE specific yield
+      const kk = kwp > 0 ? annualPreShadeKWh / kwp : 0;
+
+      return {
+        group: idx + 1,
+        panels,
+        kwp: Math.round(kwp * 1000) / 1000,
+        orientation: roof?.orientation || "—",
+        tilt: roof?.tilt ?? null,
+        shading: roof?.shading || "none",
+        shadeFactor: Math.round(shadeFactor * 1000) / 1000,
+        annualPreShadeKWh: Math.round(annualPreShadeKWh),
+        annualOutputKWh: Math.round(annualOutputKWh),
+        kk: Math.round(kk),
+      };
+    })
+  );
+}
+
 function daysInYear(year) {
   // leap year if divisible by 4 and (not by 100 unless by 400)
   const isLeap = (year % 4 === 0 && year % 100 !== 0) || (year % 400 === 0);
@@ -849,12 +1200,32 @@ async function runHourlyModelForYear({ input, panelWatt, year, includeHourlyArra
     hourOfDay,
   });
 
+
+  // Decide which tariff governs battery behaviour AFTER solar
+  const tariffAfter = input?.tariffAfter || input?.tariff || null;
+
+  // IMPORTANT: declare tariffType BEFORE using it
+  const tariffTypeAfter = String(tariffAfter?.tariffType || "standard");
+  const retailRateModeAfter = tariffTypeAfter === "overnight" || tariffTypeAfter === "flux";
+
+  const ta = normalizeTariff((input?.tariffAfter || input?.tariff || {}), "after");
+  const retail = isRetailRateTariff(ta);
+
   const sim = simulateHourByHour({
     pvHourlyKWh: pvHourly,
     loadHourlyKWh: loadHourly,
     monthIdx,
-    batteryKWh: input.batteryKWh || 0,
+    hourOfDay,
+    batteryKWh: Number(input.batteryKWh || 0),
+
+    tariff: ta,
+    dispatchMode: retail ? "retail_rate" : "self_consumption",
+
+    allowGridCharge: retail && !!ta.allowGridCharging,
+    allowEnergyTrading: retail && !!ta.allowEnergyTrading,
+    exportFromBatteryEnabled: retail && !!ta.exportFromBatteryEnabled,
   });
+
 
   if (!sim) throw new Error(`Simulation failed for year ${year}`);
 
@@ -871,6 +1242,13 @@ async function runHourlyModelForYear({ input, panelWatt, year, includeHourlyArra
     monthlyImportedKWh: sim.monthly.imported,
     monthlyBatteryChargeKWh: sim.monthly.batteryCharge,
     monthlyBatteryDischargeKWh: sim.monthly.batteryDischarge,
+
+    monthlyBatteryChargeFromPVKWh: sim.monthly.batteryChargeFromPV,
+    monthlyBatteryChargeFromGridKWh: sim.monthly.batteryChargeFromGrid,
+    monthlyPVExportedDirectKWh: sim.monthly.pvExportDirect,
+    monthlyBatteryDischargeFromPVToLoadKWh: sim.monthly.batteryDischargeFromPVToLoad,
+    monthlyBatteryDischargeFromGridToLoadKWh: sim.monthly.batteryDischargeFromGridToLoad,
+
     monthlyDirectToHomeKWh: monthlyDirect,
     annualGenerationKWh: sum12(sim.monthly.generation),
     annualSelfUsedKWh: sum12(sim.monthly.selfUsed),
@@ -882,6 +1260,12 @@ async function runHourlyModelForYear({ input, panelWatt, year, includeHourlyArra
     result._pvHourlyKWh = pvHourly;
     result._loadHourlyKWh = loadHourly;
     result._monthIdx = monthIdx;
+    result._hourOfDay = hourOfDay;
+
+    // NEW: battery + grid flow hourly arrays
+    result._importHourlyKWh = sim.hourly.importKWh;
+    result._exportHourlyKWh = sim.hourly.exportKWh;
+    result._battChargeFromGridHourlyKWh = sim.hourly.battChargeFromGridKWh;
   }
 
   return result;
@@ -919,41 +1303,41 @@ function softenMorningPeakHourly(fractions24, startHour = 6, endHour = 9, factor
 
 
 function getDailyProfileFractions(occupancyProfile) {
-  // 24 values that sum to ~1. These are simple “shape” profiles.
-  // You can tweak later. For now: morning + evening peaks, daytime varies.
+  // Calibrated to be closer to MCS-style self-consumption behaviour:
+  // less daytime overlap with PV, stronger evening demand.
+
   const homeAllDay = [
     // 0–5
-    0.030, 0.025, 0.022, 0.022, 0.023, 0.028,
+    0.032, 0.028, 0.025, 0.024, 0.025, 0.029,
     // 6–11
-    0.040, 0.052, 0.058, 0.055, 0.050, 0.047,
+    0.040, 0.050, 0.054, 0.050, 0.044, 0.040,
     // 12–17
-    0.046, 0.046, 0.048, 0.055, 0.060, 0.075,
+    0.038, 0.038, 0.040, 0.046, 0.056, 0.072,
     // 18–23
-    0.080, 0.085, 0.080, 0.070, 0.055, 0.040
-  ];
-
-  const outAllDay = [
-    // 0–5
-    0.028, 0.024, 0.021, 0.021, 0.022, 0.026,
-    // 6–11
-    0.035, 0.045, 0.050, 0.047, 0.045, 0.044,
-    // 12–17
-    0.044, 0.044, 0.045, 0.050, 0.060, 0.075,
-    // 18–23
-    0.090, 0.095, 0.090, 0.080, 0.065, 0.050
+    0.086, 0.092, 0.088, 0.076, 0.060, 0.045
   ];
 
   const halfDay = [
     // 0–5
-    0.030, 0.026, 0.024, 0.024, 0.026, 0.030,
+    0.033, 0.029, 0.026, 0.025, 0.026, 0.031,
     // 6–11
-    0.038, 0.048, 0.058, 0.062, 0.065, 0.067,
+    0.042, 0.056, 0.062, 0.050, 0.040, 0.036,
     // 12–17
-    0.068, 0.068, 0.070, 0.075, 0.082, 0.088,
+    0.034, 0.034, 0.036, 0.042, 0.054, 0.075,
     // 18–23
-    0.090, 0.088, 0.082, 0.075, 0.065, 0.055
+    0.095, 0.102, 0.095, 0.082, 0.066, 0.049
   ];
 
+  const outAllDay = [
+    // 0–5
+    0.034, 0.030, 0.027, 0.026, 0.027, 0.032,
+    // 6–11
+    0.046, 0.060, 0.052, 0.034, 0.024, 0.022,
+    // 12–17
+    0.022, 0.022, 0.024, 0.032, 0.045, 0.068,
+    // 18–23
+    0.106, 0.115, 0.110, 0.092, 0.074, 0.055
+  ];
 
   let arr;
   switch (String(occupancyProfile || "")) {
@@ -967,16 +1351,65 @@ function getDailyProfileFractions(occupancyProfile) {
       arr = halfDay;
   }
 
-  // ✅ Work on a copy, then normalize/smooth/normalize
+  // Work on a copy
   let fractions = normalizeToOne(arr);
 
-  // Smooth overall profile (reduces sharp spikes)
-  fractions = smoothArrayWeighted(fractions, 2);
+  // Lighter smoothing than before: your old 2-pass smoothing was
+  // spreading demand back into solar hours and increasing self-consumption.
+  fractions = smoothArrayWeighted(fractions, 1);
 
-  // Ensure it sums to 1 again
+  // Re-normalise to exactly 1.0 total
   fractions = normalizeToOne(fractions);
 
   return fractions;
+}
+
+
+function average8760Arrays(hourlyYearData) {
+  if (!Array.isArray(hourlyYearData) || hourlyYearData.length === 0) {
+    throw new Error("No hourlyYearData available for averaging");
+  }
+
+  const nYears = hourlyYearData.length;
+  const base = hourlyYearData[0];
+
+  const len = base.pvHourlyKWh.length;
+
+  const avgPV = Array(len).fill(0);
+  const avgLoad = Array(len).fill(0);
+
+  for (const yd of hourlyYearData) {
+    for (let i = 0; i < len; i++) {
+      avgPV[i] += Number(yd.pvHourlyKWh[i] || 0);
+      avgLoad[i] += Number(yd.loadHourlyKWh[i] || 0);
+    }
+  }
+
+  for (let i = 0; i < len; i++) {
+    avgPV[i] /= nYears;
+    avgLoad[i] /= nYears;
+  }
+
+  return {
+    pvHourlyKWh: avgPV,
+    loadHourlyKWh: avgLoad,
+    monthIdx: base.monthIdx,
+    hourOfDay: base.hourOfDay,
+  };
+}
+
+function averageHourlyArrays(listOf8760) {
+  if (!Array.isArray(listOf8760) || listOf8760.length === 0) return null;
+  const n = listOf8760[0]?.length || 0;
+  if (n === 0) return null;
+
+  const out = Array(n).fill(0);
+  for (const arr of listOf8760) {
+    if (!Array.isArray(arr) || arr.length !== n) return null;
+    for (let i = 0; i < n; i++) out[i] += Number(arr[i] || 0);
+  }
+  for (let i = 0; i < n; i++) out[i] /= listOf8760.length;
+  return out;
 }
 
 
@@ -1014,86 +1447,948 @@ function buildHourlyLoadForSeries({ annualKWh, occupancyProfile, monthIdx, hourO
 }
 
 
-function simulateHourByHour({ pvHourlyKWh, loadHourlyKWh, monthIdx, batteryKWh = 0 }) {
-  const n = Math.min(pvHourlyKWh.length, loadHourlyKWh.length);
-  if (n === 0) return null;
+function rateForHour(tariff, hod, kind /* "import" | "export" */) {
+  const tt = tariff?.tariffType || "standard";
 
-  if (!Array.isArray(monthIdx) || monthIdx.length < n) {
-    throw new Error("simulateHourByHour requires monthIdx array aligned to pv/load.");
+  // Defaults (your current style)
+  const importFlat = Number(tariff?.importPrice ?? 0.28);
+  const exportFlat = Number(tariff?.segPrice ?? 0.12);
+
+  if (tt === "standard") {
+    return kind === "import" ? importFlat : exportFlat;
   }
 
-  // ✅ Battery input is treated as *usable* kWh (no hidden usable fraction)
-  const capUsable = Math.max(0, Number(batteryKWh || 0)); // usable kWh
+  // Cheap overnight (e.g. EV style)
+  if (tt === "overnight") {
+    const nightStart = Number(tariff?.nightStartHour ?? 0);
+    const nightEnd = Number(tariff?.nightEndHour ?? 7);
+    const isNight = (hod >= nightStart && hod < nightEnd);
+
+    const importNight = Number(tariff?.importNight ?? 0.08);
+    const importDay = Number(tariff?.importDay ?? importFlat);
+
+    if (kind === "import") return isNight ? importNight : importDay;
+    return exportFlat;
+  }
+
+  // Flux-style simplified (3-band)
+  if (tt === "flux") {
+    const offPeakStart = Number(tariff?.offPeakStartHour ?? 0);
+    const offPeakEnd = Number(tariff?.offPeakEndHour ?? 6);
+    const peakStart = Number(tariff?.peakStartHour ?? 16);
+    const peakEnd = Number(tariff?.peakEndHour ?? 19);
+
+    const isOffPeak = (hod >= offPeakStart && hod < offPeakEnd);
+    const isPeak = (hod >= peakStart && hod < peakEnd);
+    const isDay = (!isOffPeak && !isPeak);
+
+    const importOffPeak = Number(tariff?.importOffPeak ?? 0.15);
+    const importDay = Number(tariff?.importPrice ?? importFlat);
+    const importPeak = Number(tariff?.importPeak ?? 0.40);
+
+    const exportOffPeak = Number(tariff?.exportOffPeak ?? exportFlat);
+    const exportDay = Number(tariff?.segPrice ?? exportFlat);
+    const exportPeak = Number(tariff?.exportPeak ?? 0.30);
+
+    if (kind === "import") return isOffPeak ? importOffPeak : isPeak ? importPeak : importDay;
+    return isOffPeak ? exportOffPeak : isPeak ? exportPeak : exportDay;
+  }
+
+  // fallback
+  return kind === "import" ? importFlat : exportFlat;
+}
+
+function extractDaySlice(hourly, startIndex) {
+  const start = Math.max(0, Number(startIndex || 0));
+  const end = Math.min(start + 24, (hourly?.pvKWh?.length || hourly?.pv?.length || 0));
+
+  const pick = (...keys) => {
+    for (const k of keys) {
+      const v = hourly?.[k];
+      if (Array.isArray(v)) return v;
+    }
+    return null;
+  };
+
+  const slice = (arr) => {
+    if (!Array.isArray(arr)) return Array(end - start).fill(0);
+    return arr.slice(start, end);
+  };
+
+  const hours = Array.from({ length: end - start }, (_, i) => i);
+
+  // Support both “new” keys (pvKWh) and older ones (pv)
+  const pvArr = pick("pvKWh", "pv");
+  const loadArr = pick("loadKWh", "load");
+  const socArr = pick("socKWh", "soc");
+
+  const importArr = pick("importKWh", "import");
+  const exportArr = pick("exportKWh", "export");
+
+  const chPVArr = pick("battChargeFromPVKWh", "battChargeFromPV", "batteryChargeFromPV");
+  const chGridArr = pick("battChargeFromGridKWh", "battChargeFromGrid", "batteryChargeFromGrid");
+
+  const disLoadArr = pick("battDischargeToLoadKWh", "battDischargeToLoad", "batteryDischargeToLoad");
+  const disExpArr = pick("battDischargeToExportKWh", "battDischargeToExport", "batteryDischargeToExport");
+
+  const directArr = pick("directPVToLoadKWh", "directPVToLoad");
+
+  return {
+    hours,
+
+    // Standardised names returned to the frontend
+    pv: slice(pvArr),
+    load: slice(loadArr),
+    soc: slice(socArr),
+
+    importKWh: slice(importArr),
+    exportKWh: slice(exportArr),
+
+    battChargeFromPVKWh: slice(chPVArr),
+    battChargeFromGridKWh: slice(chGridArr),
+
+    battDischargeToLoadKWh: slice(disLoadArr),
+    battDischargeToExportKWh: slice(disExpArr),
+
+    directPVToLoadKWh: slice(directArr),
+  };
+}
+
+// ===============================
+// Tariff normalization + hourly billing (single source of truth)
+// ===============================
+function normalizeTariff(raw, kind /* "before" | "after" */) {
+  const t = raw && typeof raw === "object" ? raw : {};
+
+  // defaults match your recalc defaults + your UI
+  const base = {
+    tariffType: "standard",
+    
+
+    // flat defaults
+    importPrice: 0.28,
+    segPrice: 0.12,
+
+    standingChargePerDay: 0.60,
+
+    // overnight
+    importNight: 0.08,
+    importDay: 0.20,
+    nightStartHour: 0,
+    nightEndHour: 7,
+
+    // flux
+    importOffPeak: 0.15,
+    importPeak: 0.40,
+    exportOffPeak: 0.08,
+    exportPeak: 0.30,
+    offPeakStartHour: 0,
+    offPeakEndHour: 6,
+    peakStartHour: 16,
+    peakEndHour: 19,
+
+    // toggles
+    exportFromBatteryEnabled: true,
+    allowGridCharging: false,
+    allowEnergyTrading: false,
+  };
+
+  // "before solar" generally doesn't have segPrice, but we normalize anyway.
+  // If kind === "before", export rates are irrelevant in billing because exportKWh is 0.
+  const out = { ...base, ...t };
+
+  // Coerce numerics safely
+  const numKeys = [
+    "importPrice","segPrice","standingChargePerDay",
+    "importNight","importDay","nightStartHour","nightEndHour",
+    "importOffPeak","importPeak","exportOffPeak","exportPeak",
+    "offPeakStartHour","offPeakEndHour","peakStartHour","peakEndHour",
+  ];
+  for (const k of numKeys) {
+    if (out[k] != null) out[k] = Number(out[k]);
+  }
+
+  out.tariffType = String(out.tariffType || "standard");
+  out.exportFromBatteryEnabled = !!out.exportFromBatteryEnabled;
+  out.allowGridCharging = !!out.allowGridCharging;      // default true
+  out.allowEnergyTrading = !!out.allowEnergyTrading;            // default false
+
+
+  // If user picked overnight/flux but left some fields blank, ensure importDay fallback
+  if (out.tariffType === "overnight") {
+    if (!Number.isFinite(out.importNight)) out.importNight = base.importNight;
+    if (!Number.isFinite(out.importDay)) out.importDay = out.importPrice || base.importDay;
+  }
+  if (out.tariffType === "flux") {
+    if (!Number.isFinite(out.importOffPeak)) out.importOffPeak = base.importOffPeak;
+    if (!Number.isFinite(out.importPeak)) out.importPeak = base.importPeak;
+    if (!Number.isFinite(out.exportOffPeak)) out.exportOffPeak = base.exportOffPeak;
+    if (!Number.isFinite(out.exportPeak)) out.exportPeak = base.exportPeak;
+  }
+
+  return out;
+}
+
+function isRetailRateTariff(tariff) {
+  const tt = String(tariff?.tariffType || "standard");
+  return tt === "overnight" || tt === "flux";
+}
+
+function simulateWithTariff({ pv, load, monthIdx, hourOfDay, batteryKWh, tariff }) {
+  const t = normalizeTariff(tariff, "after");
+  const retail = isRetailRateTariff(t);
+  const allowGridCharge = retail && !!t.allowGridCharging;
+
+  return simulateHourByHour({
+    pvHourlyKWh: pv,
+    loadHourlyKWh: load,
+    monthIdx,
+    hourOfDay,
+    batteryKWh: Number(batteryKWh || 0),
+    tariff: t,
+    dispatchMode: retail ? "retail_rate" : "self_consumption",
+    allowGridCharge,
+    exportFromBatteryEnabled: !!t.exportFromBatteryEnabled,
+  });
+}
+
+/**
+ * Computes baseline + after-solar bills using hourly TOU rates.
+ * Assumes arrays aligned, hourOfDay and monthIdx aligned with n hours.
+ */
+function computeHourlyBilling({
+  loadKWh,        // baseline demand (8760)
+  importKWh,      // after-solar grid import (8760)
+  exportKWh,      // after-solar export (8760)
+  hourOfDay,      // (8760) 0..23
+  monthIdx,       // (8760) 0..11
+  tariffBefore,
+  tariffAfter,
+}) {
+  const n = Math.min(
+    loadKWh?.length || 0,
+    importKWh?.length || 0,
+    exportKWh?.length || 0,
+    hourOfDay?.length || 0,
+    monthIdx?.length || 0
+  );
+  if (!n) {
+    return {
+      annualBaseline: 0,
+      annualAfterImportAndStanding: 0,
+      annualExportCredit: 0,
+      annualAfterNet: 0,
+      monthlyBaseline: Array(12).fill(0),
+      monthlyAfterImportAndStanding: Array(12).fill(0),
+      monthlyExportCredit: Array(12).fill(0),
+      monthlyAfterNet: Array(12).fill(0),
+    };
+  }
+
+  const tb = normalizeTariff(tariffBefore, "before");
+  const ta = normalizeTariff(tariffAfter, "after");
+
+  const monthlyBaseline = Array(12).fill(0);
+  const monthlyAfterImportOnly = Array(12).fill(0);
+  const monthlyExportIncome = Array(12).fill(0);
+
+  for (let i = 0; i < n; i++) {
+    const m = monthIdx[i] ?? 0;
+    const hod = hourOfDay[i] ?? (i % 24);
+
+    const load = Math.max(0, Number(loadKWh[i] || 0));
+    const imp = Math.max(0, Number(importKWh[i] || 0));
+    const exp = Math.max(0, Number(exportKWh[i] || 0));
+
+    const beforeRate = rateForHour(tb, hod, "import");
+    const afterImpRate = rateForHour(ta, hod, "import");
+    const afterExpRate = rateForHour(ta, hod, "export");
+
+    monthlyBaseline[m] += load * beforeRate;
+    monthlyAfterImportOnly[m] += imp * afterImpRate;
+    monthlyExportIncome[m] += exp * afterExpRate;
+  }
+
+  // standing charge allocation per month
+  const daysInMonth = [31,28,31,30,31,30,31,31,30,31,30,31];
+  const standingBeforeMonthly = daysInMonth.map(d => d * Number(tb.standingChargePerDay || 0));
+  const standingAfterMonthly = daysInMonth.map(d => d * Number(ta.standingChargePerDay || 0));
+
+  const monthlyAfterImportAndStanding = monthlyAfterImportOnly.map((v, i) => v + standingAfterMonthly[i]);
+  const monthlyBaselineWithStanding = monthlyBaseline.map((v, i) => v + standingBeforeMonthly[i]);
+
+  const monthlyAfterNet = monthlyAfterImportAndStanding.map((v, i) => v - monthlyExportIncome[i]);
+
+  const annualBaseline = monthlyBaselineWithStanding.reduce((a,b)=>a+b,0);
+  const annualAfterImportAndStanding = monthlyAfterImportAndStanding.reduce((a,b)=>a+b,0);
+  const annualExportCredit = monthlyExportIncome.reduce((a,b)=>a+b,0);
+  const annualAfterNet = monthlyAfterNet.reduce((a,b)=>a+b,0);
+
+  // 2dp stable
+  const r2 = (x) => Math.round((x + Number.EPSILON) * 100) / 100;
+
+  return {
+    monthlyBaseline: monthlyBaselineWithStanding.map(r2),
+    monthlyAfterImportAndStanding: monthlyAfterImportAndStanding.map(r2),
+    monthlyExportCredit: monthlyExportIncome.map(r2),
+    monthlyAfterNet: monthlyAfterNet.map(r2),
+
+    annualBaseline: r2(annualBaseline),
+    annualAfterImportAndStanding: r2(annualAfterImportAndStanding),
+    annualExportCredit: r2(annualExportCredit),
+    annualAfterNet: r2(annualAfterNet),
+  };
+}
+
+
+function simulateHourByHour({
+  pvHourlyKWh,
+  loadHourlyKWh,
+  monthIdx,
+  hourOfDay: hourOfDayIn,
+  batteryKWh = 0,
+  tariff = null,
+  dispatchMode = "self_consumption",
+  allowGridCharge = false,
+  exportFromBatteryEnabled = false,
+  allowEnergyTrading = false,
+  gridChargeTargetPct = 80,
+}) {
+  let hourOfDay = hourOfDayIn;
+
+  const n = Math.min(
+    pvHourlyKWh?.length || 0,
+    loadHourlyKWh?.length || 0,
+    monthIdx?.length || 0,
+    hourOfDay?.length || (pvHourlyKWh?.length || 0)
+  );
+  if (n === 0) return null;
+
+  if (!hourOfDay || hourOfDay.length < n) {
+    hourOfDay = Array.from({ length: n }, (_, i) => i % 24);
+  }
+
+  // Usable capacity (kWh)
+  const capUsable = Math.max(0, Number(batteryKWh || 0));
   const socMin = 0;
   const socMax = capUsable;
 
-  // round-trip efficiency (kept, realistic + explainable)
+  //====================
+  // New Helper Function
+  //====================
+  function isCheapImportWindow(tariff, hod) {
+    const tt = String(tariff?.tariffType || "standard");
+
+    if (tt === "overnight") {
+      const ns = Number(tariff?.nightStartHour ?? 0);
+      const ne = Number(tariff?.nightEndHour ?? 7);
+      return hod >= ns && hod < ne;
+    }
+
+    if (tt === "flux") {
+      const os = Number(tariff?.offPeakStartHour ?? 0);
+      const oe = Number(tariff?.offPeakEndHour ?? 6);
+      return hod >= os && hod < oe;
+    }
+
+    return false;
+  }
+
+  // ===============================
+  // Realistic inverter power limits
+  // ===============================
+  // < 8 kWh battery → 3.7 kW
+  // ≥ 8 kWh battery → 6 kW
+
+  let maxChargeKW = 0;
+  let maxDischargeKW = 0;
+
+  if (capUsable > 0) {
+    if (capUsable < 8) {
+      maxChargeKW = 3.7;
+      maxDischargeKW = 3.7;
+    } else {
+      maxChargeKW = 5;
+      maxDischargeKW = 6;
+    }
+  }
+
+  // Efficiency
   const roundTripEff = 0.90;
   const chargeEff = Math.sqrt(roundTripEff);
   const dischargeEff = Math.sqrt(roundTripEff);
 
-  // Start year at 50% SOC (neutral start)
-  let soc = capUsable > 0 ? capUsable * 0.5 : 0;
+  // Start SOC at 50% (realistic default, prevents “battery always full”)
+  // This also allows grid-charge behaviour to show up in debug days.
+  let soc = socMin;
+
+  // Track stored energy origin (kWh stored inside battery)
+  let socFromPV = 0;
+  let socFromGrid = soc; // assume initial SOC is grid-origin
+
+
+  // Hourly outputs (8760)
+  const importHourly = Array(n).fill(0);
+  const exportHourly = Array(n).fill(0);
+  const battChargeHourly_fromPV = Array(n).fill(0);   // PV -> battery (kWh PV input)
+  const battChargeHourly_fromGrid = Array(n).fill(0); // Grid -> battery (kWh grid input)
+  const battDischargeHourly_toLoad = Array(n).fill(0);// Battery -> load (kWh delivered)
+  const directPVtoLoadHourly = Array(n).fill(0);
+  const battDischargeFromPVToLoadHourly = Array(n).fill(0);
+  const battDischargeFromGridToLoadHourly = Array(n).fill(0);
 
   const monthly = {
     generation: Array(12).fill(0),
     selfUsed: Array(12).fill(0),
     exported: Array(12).fill(0),
     imported: Array(12).fill(0),
-    batteryCharge: Array(12).fill(0),    // PV diverted to battery (kWh from PV)
-    batteryDischarge: Array(12).fill(0), // battery delivered to load (kWh to home)
+    batteryCharge: Array(12).fill(0),
+    batteryDischarge: Array(12).fill(0),
+    batteryDischargeFromPVToLoad: Array(12).fill(0),
+    batteryDischargeFromGridToLoad: Array(12).fill(0),
+    batteryChargeFromPV: Array(12).fill(0),
+    batteryChargeFromGrid: Array(12).fill(0),
+    pvExportDirect: Array(12).fill(0)
   };
 
-  for (let t = 0; t < n; t++) {
-    const pv = Math.max(0, Number(pvHourlyKWh[t] || 0));
-    const load = Math.max(0, Number(loadHourlyKWh[t] || 0));
-    const m = monthIdx[t] ?? 0;
+  const hourly = {
+    pv: Array(n).fill(0),
+    load: Array(n).fill(0),
+    soc: Array(n).fill(0),
+    importKWh: Array(n).fill(0),
+    exportKWh: Array(n).fill(0),
 
-    // 1) Direct PV to load
-    const direct = Math.min(pv, load);
-    let pvLeft = pv - direct;
-    let loadLeft = load - direct;
+    // optional but very useful
+    battChargeFromPV: Array(n).fill(0),     // kWh INTO battery from PV (input)
+    battChargeFromGrid: Array(n).fill(0),   // kWh INTO battery from grid (input)
+    battDischargeToLoad: Array(n).fill(0),  // kWh delivered to load
+    battDischargeToExport: Array(n).fill(0), // kWh delivered to export
+    battDischargeFromPVToLoad: Array(n).fill(0),
+    battDischargeFromGridToLoad: Array(n).fill(0)
+  };
 
-    // 2) Charge battery from remaining PV
-    let chargedFromPV = 0;
-    if (capUsable > 0 && pvLeft > 0 && soc < socMax) {
-      const room = socMax - soc;                 // space inside battery (kWh stored)
-      const pvToBattery = Math.min(pvLeft, room / chargeEff); // PV kWh that can be sent to battery
-      const stored = pvToBattery * chargeEff;    // stored kWh after efficiency
+  // ---- SAM-like day-ahead plan for retail rate dispatch ----
+  // We plan desired battery discharge to cover the most expensive hours of NET LOAD (load - PV),
+  // and (optionally) grid-charge in cheapest hours to ensure energy is available.
+  function planDayRetailRate(dayStart, dayLen) {
+    const planDischargeToLoad = Array(dayLen).fill(0); // kWh delivered to load
+    const planGridChargeIn = Array(dayLen).fill(0);    // kWh drawn from grid into battery (input)
+    const planDischargeToExport = Array(dayLen).fill(0); // kWh delivered to export (optional)
 
-      soc += stored;
-      pvLeft -= pvToBattery;
-      chargedFromPV = pvToBattery;
+    // If no battery or not retail mode, do nothing special
+    if (capUsable <= 0 || dispatchMode !== "retail_rate" || !tariff) {
+      return { planDischargeToLoad, planGridChargeIn, planDischargeToExport };
     }
 
-    // 3) Discharge battery to meet remaining load
-    let dischargedToLoad = 0;
-    if (capUsable > 0 && loadLeft > 0 && soc > socMin) {
-      const availableStored = soc - socMin;         // kWh stored available
-      const canDeliver = availableStored * dischargeEff; // kWh that can be delivered to load
-      const deliver = Math.min(loadLeft, canDeliver);
+    // Build hourly forecast arrays for this day
+    const hours = [];
+    for (let i = 0; i < dayLen; i++) {
+      const tAbs = dayStart + i;
+      const pv = Math.max(0, Number(pvHourlyKWh[tAbs] || 0));
+      const load = Math.max(0, Number(loadHourlyKWh[tAbs] || 0));
+      const hod = hourOfDay[tAbs];
 
-      soc -= deliver / dischargeEff;
-      loadLeft -= deliver;
-      dischargedToLoad = deliver;
+      const imp = rateForHour(tariff, hod, "import");
+      const exp = rateForHour(tariff, hod, "export");
+
+      const netLoad = Math.max(0, load - pv);      // demand not met directly by PV
+      const pvSurplus = Math.max(0, pv - load);    // PV available to charge battery / export
+
+      hours.push({ i, tAbs, pv, load, hod, imp, exp, netLoad, pvSurplus });
     }
 
-    // 4) Export / import after battery actions
-    const exported = Math.max(0, pvLeft);
-    const imported = Math.max(0, loadLeft);
+    // Identify cheap import window hours (used for charging + arbitrage logic)
+    const cheapImportHours = hours.filter(h => {
+      if (tariff.tariffType === "overnight") {
+        const ns = Number(tariff.nightStartHour ?? 0);
+        const ne = Number(tariff.nightEndHour ?? 7);
+        return (h.hod >= ns && h.hod < ne);
+      }
+      if (tariff.tariffType === "flux") {
+        const os = Number(tariff.offPeakStartHour ?? 0);
+        const oe = Number(tariff.offPeakEndHour ?? 6);
+        return (h.hod >= os && h.hod < oe);
+      }
+      return true;
+    });
 
-    // Define self-used as energy that actually served load
-    const selfUsed = direct + dischargedToLoad;
+    // ------------------------------
+    // Decide whether we should reserve space for PV later
+    // If exporting PV later is financially better than storing it,
+    // we don't need to leave space (we can export PV and keep battery full from cheap import).
+    // ------------------------------
 
-    monthly.generation[m] += pv;
-    monthly.selfUsed[m] += selfUsed;
-    monthly.exported[m] += exported;
-    monthly.imported[m] += imported;
-    monthly.batteryCharge[m] += chargedFromPV;
-    monthly.batteryDischarge[m] += dischargedToLoad;
+    // Cheapest import rate available in the cheap window
+    const cheapestImport = cheapImportHours.length
+      ? Math.min(...cheapImportHours.map(h => h.imp))
+      : Math.min(...hours.map(h => h.imp)); // fallback
+
+    // Best export rate during hours where PV surplus exists (only matters when PV is available)
+    const pvSurplusHours = hours.filter(h => h.pvSurplus > 0.001);
+    const bestExportDuringPV = pvSurplusHours.length
+      ? Math.max(...pvSurplusHours.map(h => h.exp))
+      : 0;
+
+    // Round-trip efficiency (same as model assumptions)
+    const roundTripEff = 0.90;
+
+    // If exporting PV later is better than "saving" cheap import for later,
+    // then we do NOT need to reserve battery space for PV.
+    const exportingPVBeatsStoringIt =
+      bestExportDuringPV > 0 &&
+      (bestExportDuringPV * roundTripEff) > cheapestImport;
+
+
+
+    // ---- A) Plan discharge-to-load: cover most expensive import hours first ----
+    // IMPORTANT: do NOT limit planning to current SOC only.
+    // PV later in the day can fill the battery, so we plan as if the battery could
+    // reach full at some point during the day, and the real hour loop will cap by SOC.
+    const byExpensiveImport = [...hours].sort((a, b) => {
+      // highest import price first; if tied, larger net load first
+      if (b.imp !== a.imp) return b.imp - a.imp;
+      return b.netLoad - a.netLoad;
+    });
+
+    // Max energy the battery could deliver in a day if it became full at some point
+    let deliverableBudget = Math.max(0, (socMax - socMin)) * dischargeEff;
+
+    // If grid charging is OFF, estimate additional energy that can be stored from PV later today
+    if (!allowGridCharge) {
+      let socTemp = soc;
+
+      for (const h of hours) {
+        // PV surplus can charge battery
+        if (h.pvSurplus > 0 && socTemp < socMax) {
+          const roomStored = socMax - socTemp;
+          const pvToBattIn = Math.min(h.pvSurplus, maxChargeKW, roomStored / chargeEff);
+          socTemp += pvToBattIn * chargeEff;
+        }
+      }
+
+      // Use the best SOC we can reach from PV as today's discharge budget
+      deliverableBudget = Math.max(0, (socTemp - socMin)) * dischargeEff;
+    }
+
+
+    for (const h of byExpensiveImport) {
+      if (deliverableBudget <= 0) break;
+      if (h.netLoad <= 0) continue;
+
+      const deliver = Math.min(h.netLoad, maxDischargeKW, deliverableBudget);
+      planDischargeToLoad[h.i] = deliver;
+      deliverableBudget -= deliver;
+    }
+
+    // ---- B) Plan grid charging, but leave room for expected PV surplus ----
+    // ALSO: if arbitrage is profitable (cheap import < high export), allow charging for export.
+
+    if (allowGridCharge && capUsable > 0 && dispatchMode === "retail_rate" && tariff) {
+
+      // Round-trip efficiency (same as model)
+      const rtEff = chargeEff * dischargeEff;
+
+      const cheapestImport = cheapImportHours.length
+        ? Math.min(...cheapImportHours.map(h => h.imp))
+        : Math.min(...hours.map(h => h.imp));
+
+      // Best export price during the day (Flux peak export will naturally win)
+      const bestExport = Math.max(...hours.map(h => h.exp));
+
+      // Arbitrage profitable if: export value after losses beats cheapest import
+      // Add a tiny margin to avoid noise.
+      const arbitrageProfitable = exportFromBatteryEnabled && (bestExport * rtEff > cheapestImport + 0.005);
+
+      // 1) Estimate how much PV surplus could charge the battery today (stored energy)
+      let pvPotentialIn = 0; // kWh input into battery (before efficiency)
+      for (const h of hours) {
+        if (h.pvSurplus <= 0) continue;
+        pvPotentialIn += Math.min(h.pvSurplus, maxChargeKW);
+      }
+      const pvPotentialStored = pvPotentialIn * chargeEff;
+
+      // 2) Decide how much empty space to reserve for PV.
+      // If arbitrage is profitable, we reserve MUCH LESS space (because we'd rather export PV high).
+      const pvReserveCap = arbitrageProfitable ? 0.15 : 0.70; // 15% when arbitrage, else 70%
+      const pvReserveStored = Math.min(pvPotentialStored, socMax * pvReserveCap);
+
+      // 3) Target SOC:
+      // - Normal case: aim for pct target but never exceed capacity minus PV reserve.
+      // - Arbitrage case: aim higher (up to the allowed max), because cheap->export is profitable.
+      const pctTargetSOC = socMax * (gridChargeTargetPct / 100);
+
+      // If exporting PV is better than storing it, don't reserve PV space
+      const effectivePvReserveStored = exportingPVBeatsStoringIt ? 0 : pvReserveStored;
+
+      // Never exceed this, or we block reserved PV space (unless we decided no reserve needed)
+      const maxAllowedSOC = Math.max(socMin, socMax - effectivePvReserveStored);
+
+
+      // If arbitrage is profitable, push targetSOC up to maxAllowedSOC (fill as much as we're allowing)
+      const targetSOC = arbitrageProfitable
+        ? maxAllowedSOC
+        : Math.min(pctTargetSOC, maxAllowedSOC);
+
+      // 4) Only grid-charge if targetSOC is above current SOC
+      // IMPORTANT: do NOT mutate the real `soc` inside planning.
+      // Use `socAt` (planner's simulated SOC).
+      let socAt = soc; // start planning from current real SOC
+
+      if (socAt < targetSOC) {
+        const byCheapestImport = [...cheapImportHours].sort((a, b) => a.imp - b.imp);
+
+        for (const h of byCheapestImport) {
+          if (socAt >= targetSOC) break;
+
+          const roomStored = targetSOC - socAt;
+          if (roomStored <= 0) break;
+
+          // convert stored-room to grid input limit
+          const maxGridIn = roomStored / chargeEff;
+
+          const gridToBattery = Math.min(maxChargeKW, maxGridIn);
+          if (gridToBattery <= 0) continue;
+
+          planGridChargeIn[h.i] = gridToBattery;
+
+          // Update ONLY the planned SOC (socAt), NOT the real SOC.
+          socAt += gridToBattery * chargeEff;
+        }
+      }
+
+    }
+
+
+    // ---- C) Plan export-from-battery (reserve for future expensive imports) ----
+    // Export is allowed, but only the portion that is truly surplus after reserving energy
+    // to avoid future imports that cost MORE than exporting now.
+    if (exportFromBatteryEnabled && allowEnergyTrading) {
+      const rtEff = chargeEff * dischargeEff;
+
+      // For "is this export hour worth considering?"
+      const bestExport = Math.max(...hours.map(h => h.exp));
+
+      for (let idx = 0; idx < dayLen; idx++) {
+        const current = hours[idx];
+
+        if (current.exp <= 0.01) continue;
+
+        // Don’t export from battery during cheap import windows (especially overnight),
+        // because it leads to silly behaviour when export is flat.
+        // (If you REALLY want to allow it, remove this.)
+        if (isCheapImportWindow(tariff, current.hod)) continue;
+
+        // Optional: only bother exporting in "high export" hours (helps Flux behave nicely)
+        // If export is flat all day, this will allow all hours (since bestExport == exp).
+        if (current.exp < bestExport - 0.001) continue;
+
+        // ------------------------------------------------------------
+        // 1) Reserve deliverable energy for future hours where importing would cost more
+        //    than exporting now (imp > current.exp).
+        //
+        // Important: if grid charging is OFF, the discharge-to-load plan may be 0 in some
+        // expensive hours (because PV later refills). In that case, reserve based on netLoad.
+        // ------------------------------------------------------------
+        let reserveDeliver = 0;
+        for (let j = idx; j < dayLen; j++) {
+          const h = hours[j];
+
+          if (h.netLoad <= 0) continue;
+          if (h.imp <= current.exp + 0.0005) continue; // small margin to avoid noise
+
+          const needDeliver = allowGridCharge
+            ? Math.max(0, Number(planDischargeToLoad[h.i] || 0))   // planner-led case
+            : Math.min(h.netLoad, maxDischargeKW);                 // PV-refill case
+
+          reserveDeliver += Math.min(needDeliver, maxDischargeKW);
+        }
+        const reserveStored = reserveDeliver / dischargeEff;
+
+        // ------------------------------------------------------------
+        // 2) Estimate SOC at this hour (socAt) using the day plan up to idx
+        //    NOTE: include planned export discharge too (this was missing in your code).
+        // ------------------------------------------------------------
+        let socAt = soc;
+
+        for (let k = 0; k <= idx; k++) {
+          const h = hours[k];
+
+          // grid charge in (stored)
+          const gIn = Number(planGridChargeIn[h.i] || 0);
+          if (gIn > 0 && socAt < socMax) {
+            const roomStored = socMax - socAt;
+            const gUsed = Math.min(gIn, maxChargeKW, roomStored / chargeEff);
+            socAt += gUsed * chargeEff;
+          }
+
+          // PV charge in (stored)
+          if (h.pvSurplus > 0 && socAt < socMax) {
+            const roomStored = socMax - socAt;
+            const pvToBattIn = Math.min(h.pvSurplus, maxChargeKW, roomStored / chargeEff);
+            socAt += pvToBattIn * chargeEff;
+          }
+
+          // discharge-to-load (stored out)
+          const dLoad = Number(planDischargeToLoad[h.i] || 0);
+          if (dLoad > 0) {
+            socAt -= dLoad / dischargeEff;
+            if (socAt < socMin) socAt = socMin;
+          }
+
+          // discharge-to-export already planned earlier in the day (stored out)
+          const dExp = Number(planDischargeToExport[h.i] || 0);
+          if (dExp > 0) {
+            socAt -= dExp / dischargeEff;
+            if (socAt < socMin) socAt = socMin;
+          }
+        }
+
+        // ------------------------------------------------------------
+        // 3) Only export what’s surplus beyond reserve + socMin
+        // ------------------------------------------------------------
+        const surplusStored = Math.max(0, socAt - socMin - reserveStored);
+        if (surplusStored <= 0) continue;
+
+        const deliverableExport = surplusStored * dischargeEff;
+        let exportDeliver = Math.min(deliverableExport, maxDischargeKW);
+
+        // ------------------------------------------------------------
+        // 4) If this is true arbitrage (charging from cheap import), require profitability.
+        //    (We ONLY apply this profitability rule when grid charging is enabled.)
+        // ------------------------------------------------------------
+        if (allowGridCharge) {
+          const cheapestImp = cheapImportHours.length
+            ? Math.min(...cheapImportHours.map(h => h.imp))
+            : Math.min(...hours.map(h => h.imp));
+
+          const profitable = (current.exp * rtEff) > (cheapestImp + 0.005);
+          if (!profitable) continue;
+        }
+
+        planDischargeToExport[current.i] = exportDeliver;
+      }
+    }
+
+    return { planDischargeToLoad, planGridChargeIn, planDischargeToExport };
   }
 
-  // Round to 2dp for nice charts & stable totals
+
+  // Walk the year in day chunks
+  let t = 0;
+  while (t < n) {
+    const dayStart = t;
+    const dayLen = Math.min(24, n - dayStart);
+    const { planDischargeToLoad, planGridChargeIn, planDischargeToExport } = planDayRetailRate(dayStart, dayLen);
+
+    for (let i = 0; i < dayLen; i++) {
+      const idx = dayStart + i;
+
+      const pv = Math.max(0, Number(pvHourlyKWh[idx] || 0));
+      const load = Math.max(0, Number(loadHourlyKWh[idx] || 0));
+
+      // ✅ Correct indexing: use absolute hour index
+      hourly.pv[idx] = pv;
+      hourly.load[idx] = load;
+
+      const m = monthIdx[idx] ?? 0;
+
+      // 1) Direct PV to load
+      const direct = Math.min(pv, load);
+      let pvLeft = pv - direct;
+      let loadLeft = load - direct;
+
+      // 2) Planned grid charge (retail dispatch)
+      // Charge from grid first so SOC is ready for expensive hours.
+      // (This is a simplification; SAM uses iterative planning with forecasts.)
+      let chargedFromGrid = 0;
+      if (capUsable > 0 && dispatchMode === "retail_rate" && allowGridCharge) {
+        const gridIn = Math.max(0, Number(planGridChargeIn[i] || 0));
+        if (gridIn > 0 && soc < socMax) {
+          const roomStored = socMax - soc; // kWh stored room
+          const maxGridIn = roomStored / chargeEff; // grid kWh we can input this hour
+          const gridToBattery = Math.min(gridIn, maxChargeKW, maxGridIn);
+
+          const stored = gridToBattery * chargeEff;
+          soc += stored;
+          socFromGrid += stored;
+
+          chargedFromGrid = gridToBattery;
+          battChargeHourly_fromGrid[idx] = gridToBattery;
+          
+          hourly.battChargeFromGrid[idx] = gridToBattery;
+
+          // grid charging increases import later
+          // We’ll account by adding to loadLeft (grid import)
+          loadLeft += gridToBattery;
+        }
+      }
+
+      // 3) Charge battery from remaining PV
+      let chargedFromPV = 0;
+      if (capUsable > 0 && pvLeft > 0 && soc < socMax) {
+        const room = socMax - soc;
+        const pvToBattery = Math.min(pvLeft, maxChargeKW, room / chargeEff);
+        const stored = pvToBattery * chargeEff;
+
+        soc += stored;
+        socFromPV += stored;
+
+        pvLeft -= pvToBattery;
+        chargedFromPV = pvToBattery;
+
+        battChargeHourly_fromPV[idx] = pvToBattery;
+      }
+
+      hourly.battChargeFromPV[idx] = chargedFromPV;
+      monthly.batteryChargeFromPV[m] += chargedFromPV;
+
+
+      // 4) Discharge battery to meet load
+      // Goal:
+      // - Never discharge during cheap import windows (save for expensive hours)
+      // - If grid charging is OFF, do NOT cap discharge by the day-ahead plan,
+      //   because the plan doesn't "know" the battery will be refilled by PV later.
+      let dischargedToLoad = 0;
+
+      if (capUsable > 0 && loadLeft > 0 && soc > socMin) {
+        const availableStored = soc - socMin;
+        const canDeliver = availableStored * dischargeEff;
+
+        const hodNow = hourOfDay[idx];
+
+        // Are we in a "cheap import window" (overnight night window / flux off-peak)?
+        const cheapNow =
+          (dispatchMode === "retail_rate" && tariff)
+            ? isCheapImportWindow(tariff, hodNow)
+            : false;
+
+        // Do not discharge during cheap hours (regardless of grid-charging toggle)
+        if (!cheapNow) {
+          // In retail-rate mode, the planner tells us *where* to discharge.
+          // But if grid charging is OFF, the planner underestimates energy available later
+          // (because PV can refill the battery), so we must allow discharge even if plan=0.
+          const planned = Math.max(0, Number(planDischargeToLoad[i] || 0));
+
+          let capByPlan;
+          const tariffTypeNow = String(tariff?.tariffType || "");
+
+          // Flux: preserve charge for peak import hours
+          if (dispatchMode === "retail_rate" && tariff && tariffTypeNow === "flux") {
+            capByPlan = planned;
+          }
+          // Overnight: once outside cheap hours, behave like normal self-consumption
+          else if (dispatchMode === "retail_rate" && tariff && tariffTypeNow === "overnight") {
+            capByPlan = loadLeft;
+          }
+          // Non-retail / default
+          else {
+            capByPlan = loadLeft;
+          }
+
+          const deliver = Math.min(loadLeft, canDeliver, maxDischargeKW, capByPlan);
+
+          if (deliver > 0) {
+            const storedOut = deliver / dischargeEff;
+
+            // Work out current PV/grid mix inside the battery
+            const totalStoredTracked = socFromPV + socFromGrid;
+
+            const pvShare = totalStoredTracked > 0 ? socFromPV / totalStoredTracked : 0;
+            const gridShare = totalStoredTracked > 0 ? socFromGrid / totalStoredTracked : 0;
+
+            // Split delivered energy by source
+            const pvDeliveredToLoad = deliver * pvShare;
+            const gridDeliveredToLoad = deliver * gridShare;
+
+            // Split stored energy removed by source
+            const pvStoredOut = storedOut * pvShare;
+            const gridStoredOut = storedOut * gridShare;
+
+            // Update actual SOC
+            soc -= storedOut;
+
+            // Update tracked source balances
+            socFromPV = Math.max(0, socFromPV - pvStoredOut);
+            socFromGrid = Math.max(0, socFromGrid - gridStoredOut);
+
+            loadLeft -= deliver;
+            dischargedToLoad = deliver;
+
+            battDischargeHourly_toLoad[idx] = deliver;
+            hourly.battDischargeToLoad[idx] = deliver;
+            hourly.battDischargeFromPVToLoad[idx] = pvDeliveredToLoad;
+            hourly.battDischargeFromGridToLoad[idx] = gridDeliveredToLoad;
+
+            // NEW: source-aware discharge tracking
+            battDischargeFromPVToLoadHourly[idx] = pvDeliveredToLoad;
+            battDischargeFromGridToLoadHourly[idx] = gridDeliveredToLoad;
+          }
+        }
+      }
+
+
+      // 4b) Optional discharge to export (only if planned and battery has energy)
+      // SAFETY: never export battery while the home still has unmet load in the same hour
+      let dischargedToExport = 0;
+
+      if (
+        capUsable > 0 &&
+        dispatchMode === "retail_rate" &&
+        exportFromBatteryEnabled &&
+        allowEnergyTrading &&
+        loadLeft <= 0 // ✅ critical safeguard
+      ) {
+        const plannedExp = Math.max(0, Number(planDischargeToExport[i] || 0));
+
+        if (plannedExp > 0 && soc > socMin) {
+          const availableStored = soc - socMin;
+          const canDeliver = availableStored * dischargeEff;
+
+          const deliver = Math.min(plannedExp, canDeliver, maxDischargeKW);
+
+          if (deliver > 0) {
+            soc -= deliver / dischargeEff;
+            dischargedToExport = deliver;
+            hourly.battDischargeToExport[idx] = deliver;
+          }
+        }
+      }
+
+
+      // 5) Export / import
+      const exported = Math.max(0, pvLeft) + dischargedToExport;
+      const imported = Math.max(0, loadLeft);
+
+      hourly.exportKWh[idx] = exported;
+      hourly.importKWh[idx] = imported;
+      hourly.soc[idx] = soc;
+
+      exportHourly[idx] = exported;
+      importHourly[idx] = imported;
+      directPVtoLoadHourly[idx] = direct;
+
+      // 6) Monthly accounting
+      const selfUsed = direct + dischargedToLoad;
+
+      monthly.generation[m] += pv;
+      monthly.selfUsed[m] += selfUsed;
+      monthly.exported[m] += exported;
+      monthly.imported[m] += imported;
+      monthly.batteryCharge[m] += (chargedFromPV + chargedFromGrid);
+      monthly.batteryDischarge[m] += dischargedToLoad;
+      monthly.batteryDischargeFromPVToLoad[m] += Number(battDischargeFromPVToLoadHourly[idx] || 0);
+      monthly.batteryDischargeFromGridToLoad[m] += Number(battDischargeFromGridToLoadHourly[idx] || 0);
+      monthly.pvExportDirect[m] += Math.max(0,
+        Number(pv || 0) -
+        Number(direct || 0) -
+        Number(chargedFromPV || 0)
+      );
+    }
+
+    t += dayLen;
+  }
+
+  // Round monthly for stable charts
   for (const k of Object.keys(monthly)) {
     monthly[k] = monthly[k].map((v) => Math.round(v * 100) / 100);
   }
@@ -1105,8 +2400,41 @@ function simulateHourByHour({ pvHourlyKWh, loadHourlyKWh, monthIdx, batteryKWh =
     imported: monthly.imported.reduce((s, v) => s + v, 0),
   };
 
-  return { monthly, annual };
+  if (hourly.soc.some((v) => v < -1e-6)) {
+    console.warn("SOC went negative (should not happen).");
+  }
+
+
+  return {
+    monthly,
+    annual,
+    hourly: {
+      // 0–23 repeated for charts
+      hours: Array.from({ length: n }, (_, i) => i % 24),
+
+      // Core series for plotting
+      pvKWh: hourly.pv,
+      loadKWh: hourly.load,
+      socKWh: hourly.soc,
+
+      // Grid flows
+      importKWh: importHourly,
+      exportKWh: exportHourly,
+
+      // Battery flows
+      battChargeFromPVKWh: battChargeHourly_fromPV,
+      battChargeFromGridKWh: battChargeHourly_fromGrid,
+      battDischargeToLoadKWh: battDischargeHourly_toLoad,
+      battDischargeToExportKWh: hourly.battDischargeToExport,
+      battDischargeFromPVToLoadKWh: battDischargeFromPVToLoadHourly,
+      battDischargeFromGridToLoadKWh: battDischargeFromGridToLoadHourly,
+
+      // PV direct
+      directPVToLoadKWh: directPVtoLoadHourly,
+    },
+  };
 }
+
 
 
 function averageMonthlyArrays(monthlyArrays) {
@@ -1255,7 +2583,7 @@ function calculateQuote(input, opts = {}) {
   if (input.extras?.evCharger) extrasCost += 900 * regionMult;
 
   const directCosts = panelsCost + inverterCost + scaffoldingCost + batteryCost + extrasCost;
-  const labourAndMargin = directCosts * 0.3;
+  const labourAndMargin = directCosts * 0.18;
   const total = directCosts + labourAndMargin;
 
   const priceLow = Math.round(total * (1 - cfg.priceRangeFactor));
@@ -1723,7 +3051,7 @@ app.get("/", (req, res) => {
 // ------------------------------
 app.post("/api/lead/email-quote", async (req, res) => {
   try {
-    const { contact, quote, input } = req.body || {};
+    const { contact, quote, input, marketingConsent } = req.body || {};
     console.log("✅ /api/lead/email-quote hit", req.body?.contact?.email);
 
     if (!contact || !quote || !input) {
@@ -1734,13 +3062,25 @@ app.post("/api/lead/email-quote", async (req, res) => {
       return res.status(400).json({ ok: false, error: "Email is required." });
     }
 
-    // Optional: basic name validation
     if (!contact.name || typeof contact.name !== "string") {
       return res.status(400).json({ ok: false, error: "Name is required." });
     }
 
-    // This will create/update contact + send the transactional email (if configured)
-    await syncLeadToBrevo(contact, quote, input);
+    await upsertBrevoContact(contact, {
+      baseListId: BREVO_QUOTE_LIST_ID,
+      marketingConsent: !!marketingConsent,
+      leadType: "email_quote",
+    });
+
+    const pdfBuffer = await generateQuotePdfBuffer({
+      quote,
+      form: input,
+      roofs: input.roofs || [],
+    });
+
+    input.leadType = "email_quote";
+
+    await sendQuoteEmailWithAttachment(contact, quote, input, pdfBuffer, BREVO_TEMPLATE_ID_QUOTE);
 
     return res.json({ ok: true });
   } catch (err) {
@@ -1751,7 +3091,7 @@ app.post("/api/lead/email-quote", async (req, res) => {
 
 app.post("/api/lead/request-call", async (req, res) => {
   try {
-    const { contact, quote, input } = req.body || {};
+    const { contact, quote, input, marketingConsent } = req.body || {};
     console.log("✅ /api/lead/request-call hit", req.body?.contact?.email);
 
     if (!contact || !quote || !input) {
@@ -1770,10 +3110,22 @@ app.post("/api/lead/request-call", async (req, res) => {
       return res.status(400).json({ ok: false, error: "Phone is required." });
     }
 
-    // Same email action for now (as you requested)
-    await syncLeadToBrevo(contact, quote, input);
+    await upsertBrevoContact(contact, {
+      baseListId: BREVO_CALL_LIST_ID,
+      marketingConsent: !!marketingConsent,
+      leadType: "request_call",
+    });
 
-    // Optional: log callback request (simple)
+    const pdfBuffer = await generateQuotePdfBuffer({
+      quote,
+      form: input,
+      roofs: input.roofs || [],
+    });
+
+    input.leadType = "request_call";
+
+    await sendQuoteEmailWithAttachment(contact, quote, input, pdfBuffer, BREVO_TEMPLATE_ID_CALL);
+
     console.log("Callback requested:", {
       name: contact.name,
       email: contact.email,
@@ -1793,9 +3145,36 @@ app.post("/api/lead/request-call", async (req, res) => {
 app.post("/api/quote", async (req, res) => {
   try {
     const input = req.body || {};
-    console.log("Received quote request with input:", input);
 
-    const { form } = req.body;
+    // ==============================
+    // Tariffs: BEFORE vs AFTER (define ONCE, early)
+    // ==============================
+    const energyInflationRate = Number(CONFIG.energyInflationRate || 0.06);
+
+    const tariffBefore = input?.tariffBefore || {
+      tariffType: "standard",
+      importPrice: Number(CONFIG.assumedPricePerKWh || 0.29),
+      standingChargePerDay: Number(CONFIG.standingChargePerDay || 0.60),
+    };
+
+    const tariffAfter = input?.tariffAfter || input?.tariff || {
+      tariffType: "standard",
+      importPrice: Number(CONFIG.assumedPricePerKWh || 0.29),
+      standingChargePerDay: Number(CONFIG.standingChargePerDay || 0.60),
+      segPrice: Number(CONFIG.assumedSegPricePerKWh || 0.15),
+    };
+    
+    const importPriceBefore = Number(tariffBefore.importPrice || CONFIG.assumedPricePerKWh || 0.29);
+
+    // For “after solar”, import/export can be TOU; these are fallback values
+    const importPriceAfter = Number(tariffAfter.importPrice || CONFIG.assumedPricePerKWh || 0.29);
+    const segPriceAfter = Number(tariffAfter.segPrice || CONFIG.assumedSegPricePerKWh || 0.15);
+
+    const standingChargePerDayAfter = Number(
+      tariffAfter.standingChargePerDay ?? CONFIG.standingChargePerDay ?? 0.60
+    );
+
+    console.log("Received quote request with input:", input);
 
     // ✅ Normalise panelOption no matter what arrives
     input.panelOption = input.panelOption || input.PanelOption || "value";
@@ -1818,10 +3197,9 @@ app.post("/api/quote", async (req, res) => {
     const panelOpt = CONFIG.panelOptions[input.panelOption] || CONFIG.panelOptions.value;
     const panelWatt = panelOpt.watt;
 
-    // Prices
-    const importPrice = CONFIG.assumedPricePerKWh;     // £/kWh
-    const segPrice = CONFIG.assumedSegPricePerKWh;     // £/kWh
-    const batteryCostPerKWh = CONFIG.batteryCostPerKWh || 0; // you may add this to CONFIG
+    // Prices (use user tariff if provided, otherwise fallback to CONFIG)
+    const userTariff = input.tariff || {};
+
 
     // PVGIS outputs
     let pvgisAnnualKWh = null;
@@ -1830,6 +3208,7 @@ app.post("/api/quote", async (req, res) => {
     // ------------------------------
     // 1) Try PVGIS HOURLY simulation (3-year average)
     // ------------------------------
+    let hourlyYearData = null; // keep in outer scope for later use
     try {
       if (input.postcode && Array.isArray(input.roofs) && input.roofs.length > 0) {
         const years = [2021, 2022, 2023];
@@ -1837,22 +3216,54 @@ app.post("/api/quote", async (req, res) => {
         const results = [];
         for (const y of years) {
           console.log(`Running PVGIS hourly simulation for year ${y}...`);
-          // IMPORTANT: runHourlyModelForYear should return monthly + hourly arrays (see step 2 below)
-          const r = await runHourlyModelForYear({ input, panelWatt, year: y, includeHourlyArrays: true });
+          const r = await runHourlyModelForYear({
+            input,
+            panelWatt,
+            year: y,
+            includeHourlyArrays: true,
+          });
           results.push(r);
         }
 
-        // Average monthly series across years
-        const avgMonthlyGeneration = averageMonthlyArrays(results.map(r => r.monthlyGenerationKWh));
-        const avgMonthlySelfUsed = averageMonthlyArrays(results.map(r => r.monthlySelfUsedKWh));
-        const avgMonthlyExported = averageMonthlyArrays(results.map(r => r.monthlyExportedKWh));
-        const avgMonthlyImported = averageMonthlyArrays(results.map(r => r.monthlyImportedKWh));
-        const avgMonthlyBattCharge = averageMonthlyArrays(results.map(r => r.monthlyBatteryChargeKWh));
-        const avgMonthlyBattDischarge = averageMonthlyArrays(results.map(r => r.monthlyBatteryDischargeKWh));
-        const avgMonthlyDirect = averageMonthlyArrays(results.map(r => r.monthlyDirectToHomeKWh));
+        // ---- Monthly averages (for UI cards) ----
+        const avgMonthlyGeneration   = averageMonthlyArrays(results.map(r => r.monthlyGenerationKWh));
+        const avgMonthlySelfUsed     = averageMonthlyArrays(results.map(r => r.monthlySelfUsedKWh));
+        const avgMonthlyExported     = averageMonthlyArrays(results.map(r => r.monthlyExportedKWh));
+        const avgMonthlyImported     = averageMonthlyArrays(results.map(r => r.monthlyImportedKWh));
+        const avgMonthlyBattCharge   = averageMonthlyArrays(results.map(r => r.monthlyBatteryChargeKWh));
+        const avgMonthlyBattDischarge= averageMonthlyArrays(results.map(r => r.monthlyBatteryDischargeKWh));
+        const avgMonthlyDirect       = averageMonthlyArrays(results.map(r => r.monthlyDirectToHomeKWh));
+        const avgMonthlyBattChargeFromPV = averageMonthlyArrays(results.map(r => r.monthlyBatteryChargeFromPVKWh));
+        const avgMonthlyBattDischargeFromPVToLoad = averageMonthlyArrays(results.map(r => r.monthlyBatteryDischargeFromPVToLoadKWh));
+        const avgMonthlyBattDischargeFromGridToLoad = averageMonthlyArrays(results.map(r => r.monthlyBatteryDischargeFromGridToLoadKWh));
+        const avgMonthlyPVExportDirect = averageMonthlyArrays(results.map(r => r.monthlyPVExportedDirectKWh));
 
         const avgAnnualGeneration = Math.round(sum12(avgMonthlyGeneration));
         pvgisAnnualKWh = avgAnnualGeneration;
+
+        // ---- Canonical 8760 arrays used for ALL downstream calcs (recalc + battery recs) ----
+        // Average PV across the 3 years; use load/monthIdx/hourOfDay from year[0] (they should align)
+        const base = results[0];
+
+        const avgPv8760 = averageHourlyArrays(results.map(r => r._pvHourlyKWh));
+        const load8760  = base._loadHourlyKWh;
+        const monthIdx8760 = base._monthIdx;
+        const hod8760 = base._hourOfDay || (Array.isArray(avgPv8760) ? avgPv8760.map((_, i) => i % 24) : null);
+
+        // Defensive checks (prevents silent weird graphs)
+        if (!Array.isArray(avgPv8760) || avgPv8760.length !== 8760) throw new Error("avgPv8760 missing/invalid");
+        if (!Array.isArray(load8760)  || load8760.length  !== 8760) throw new Error("load8760 missing/invalid");
+        if (!Array.isArray(monthIdx8760) || monthIdx8760.length !== 8760) throw new Error("monthIdx8760 missing/invalid");
+        if (!Array.isArray(hod8760) || hod8760.length !== 8760) throw new Error("hod8760 missing/invalid");
+
+        // Store one “averaged year” record for downstream functions expecting hourlyYearData[0]
+        hourlyYearData = [{
+          year: "avg_2021_2023",
+          pvHourlyKWh: avgPv8760,
+          loadHourlyKWh: load8760,
+          monthIdx: monthIdx8760,
+          hourOfDay: hod8760,
+        }];
 
         hourlyModel = {
           model: "hourly_pvgis_3yr_avg_2021_2023",
@@ -1861,23 +3272,27 @@ app.post("/api/quote", async (req, res) => {
           monthlySelfUsedKWh: avgMonthlySelfUsed,
           monthlyExportedKWh: avgMonthlyExported,
           monthlyImportedKWh: avgMonthlyImported,
+
           monthlyBatteryChargeKWh: avgMonthlyBattCharge,
           monthlyBatteryDischargeKWh: avgMonthlyBattDischarge,
+          monthlyBatteryChargeFromPVKWh: avgMonthlyBattChargeFromPV,
+          monthlyBatteryDischargeFromPVToLoadKWh: avgMonthlyBattDischargeFromPVToLoad,
+          monthlyBatteryDischargeFromGridToLoadKWh: avgMonthlyBattDischargeFromGridToLoad,
+          monthlyPVExportedDirectKWh: avgMonthlyPVExportDirect,
+
           monthlyDirectToHomeKWh: avgMonthlyDirect,
           annualGenerationKWh: avgAnnualGeneration,
           annualSelfUsedKWh: Math.round(sum12(avgMonthlySelfUsed)),
           annualExportedKWh: Math.round(sum12(avgMonthlyExported)),
           annualImportedKWh: Math.round(sum12(avgMonthlyImported)),
-        };
 
-        // Keep these in memory for optimisation (do NOT send to client)
-        // We'll store per-year hourly arrays in a local variable for use below.
-        var hourlyYearData = results.map(r => ({
-          year: r.year,
-          pvHourlyKWh: r._pvHourlyKWh,
-          loadHourlyKWh: r._loadHourlyKWh,
-          monthIdx: r._monthIdx,
-        }));
+          // IMPORTANT: attach the canonical 8760 arrays so /recalc uses the SAME inputs
+          _pvHourlyKWh: avgPv8760,
+          _loadHourlyKWh: load8760,
+          _monthIdx: monthIdx8760,
+          _hourOfDay: hod8760,
+          _batteryKWh: Number(input.batteryKWh || 0),
+        };
 
         console.log("3-year average annual PV kWh:", pvgisAnnualKWh);
       }
@@ -1885,8 +3300,9 @@ app.post("/api/quote", async (req, res) => {
       console.warn("PVGIS hourly 3-year simulation failed, falling back to PVcalc annual:", e.message);
       pvgisAnnualKWh = null;
       hourlyModel = null;
-      var hourlyYearData = null;
+      hourlyYearData = null;
     }
+
 
     // ------------------------------
     // 2) If hourly didn't work, try PVGIS annual (existing method)
@@ -1917,7 +3333,18 @@ app.post("/api/quote", async (req, res) => {
     });
 
     const savings = estimateSelfConsumptionAndSavings(input, baseQuote);
-    const quote = { ...baseQuote, ...savings };
+    const quote = {
+      ...baseQuote,
+      ...savings,
+
+      // ✅ store both
+      tariffBefore: input.tariffBefore || null,
+      tariffAfter: input.tariffAfter || input.tariff || null,
+
+      // ✅ keep backward compatibility with your existing QuotePage UI
+      tariff: input.tariffAfter || input.tariff || null,
+    };
+
 
     const midPrice = (quote.priceLow + quote.priceHigh) / 2;
     const selectedBatteryUsable = Math.max(0, Number(input.batteryKWh || 0)); // user-entered is usable kWh
@@ -1934,49 +3361,279 @@ app.post("/api/quote", async (req, res) => {
       Array.isArray(hourlyModel.monthlySelfUsedKWh) &&
       hourlyModel.monthlySelfUsedKWh.length === 12
     ) {
+
+      // Attach hourlyModel to quote ONCE
       quote.hourlyModel = hourlyModel;
 
+      // Canonical averaged 8760 arrays for ALL downstream calcs
+      const pv8760   = hourlyModel._pvHourlyKWh;
+      const load8760 = hourlyModel._loadHourlyKWh;
+      const mIdx8760 = hourlyModel._monthIdx;
+      const hod8760  = hourlyModel._hourOfDay;
+
+      if (!Array.isArray(pv8760)   || pv8760.length   !== 8760) throw new Error("hourlyModel._pvHourlyKWh missing/invalid");
+      if (!Array.isArray(load8760) || load8760.length !== 8760) throw new Error("hourlyModel._loadHourlyKWh missing/invalid");
+      if (!Array.isArray(mIdx8760) || mIdx8760.length !== 8760) throw new Error("hourlyModel._monthIdx missing/invalid");
+      if (!Array.isArray(hod8760)  || hod8760.length  !== 8760) throw new Error("hourlyModel._hourOfDay missing/invalid");
+
       // Monthly household demand: load = selfUsed + imported
-      const monthlyLoadKWh = hourlyModel.monthlySelfUsedKWh.map((v, i) =>
-        round2(Number(v || 0) + Number(hourlyModel.monthlyImportedKWh[i] || 0))
-      );
+      const monthlyLoadKWh = Array(12).fill(0);
+      for (let i = 0; i < load8760.length; i++) {
+        const m = Number(mIdx8760[i] || 0);
+        monthlyLoadKWh[m] += Number(load8760[i] || 0);
+      }
+      for (let m = 0; m < 12; m++) {
+        monthlyLoadKWh[m] = round2(monthlyLoadKWh[m]);
+      }
+
       quote.hourlyModel.monthlyLoadKWh = monthlyLoadKWh;
 
-      // Annual benefit from hourly results (simple, consistent)
-      const annualSelfUsedKWh = sum12(hourlyModel.monthlySelfUsedKWh);
-      const annualExportedKWh = sum12(hourlyModel.monthlyExportedKWh);
+      // ===============================
+      // Re-simulate hourly with tariff-aware dispatch (overnight/flux)
+      // ===============================
+      const tb = normalizeTariff(input.tariffBefore || {}, "before");
+      const ta = normalizeTariff((input.tariffAfter || input.tariff || {}), "after");
+      const retail = isRetailRateTariff(ta);
 
-      const annualBillSavings = Math.round(annualSelfUsedKWh * importPrice);
-      const annualSegIncome = Math.round(annualExportedKWh * segPrice);
-      const totalAnnualBenefit = annualBillSavings + annualSegIncome;
+      let simTariff = null;
+
+      simTariff = simulateHourByHour({
+        pvHourlyKWh: pv8760,
+        loadHourlyKWh: load8760,
+        monthIdx: mIdx8760,
+        hourOfDay: hod8760,
+
+        batteryKWh: Number(input.batteryKWh || 0),
+
+        tariff: ta,
+        dispatchMode: retail ? "retail_rate" : "self_consumption",
+
+        allowGridCharge: retail && !!ta.allowGridCharging,
+        allowEnergyTrading: retail && !!ta.allowEnergyTrading,
+        exportFromBatteryEnabled: retail && !!ta.exportFromBatteryEnabled,
+      });
+
+      quote.hourlyModel = {
+        ...hourlyModel,
+
+        // Use tariff-aware re-simulated monthly outputs
+        monthlyGenerationKWh: simTariff.monthly.generation,
+        monthlySelfUsedKWh: simTariff.monthly.selfUsed,
+        monthlyExportedKWh: simTariff.monthly.exported,
+        monthlyImportedKWh: simTariff.monthly.imported,
+
+        monthlyBatteryChargeKWh: simTariff.monthly.batteryCharge,
+        monthlyBatteryDischargeKWh: simTariff.monthly.batteryDischarge,
+
+        monthlyBatteryChargeFromPVKWh: simTariff.monthly.batteryChargeFromPV,
+        monthlyBatteryChargeFromGridKWh: simTariff.monthly.batteryChargeFromGrid,
+        monthlyBatteryDischargeFromPVToLoadKWh: simTariff.monthly.batteryDischargeFromPVToLoad,
+        monthlyBatteryDischargeFromGridToLoadKWh: simTariff.monthly.batteryDischargeFromGridToLoad,
+        monthlyPVExportedDirectKWh: simTariff.monthly.pvExportDirect,
+
+        // keep monthly load from the household demand model
+        monthlyLoadKWh,
+
+        // keep canonical averaged 8760 arrays for recalc
+        _pvHourlyKWh: pv8760,
+        _loadHourlyKWh: load8760,
+        _monthIdx: mIdx8760,
+        _hourOfDay: hod8760,
+        _batteryKWh: Number(input.batteryKWh || 0),
+      };
+
+      const billing = computeHourlyBilling({
+        loadKWh: load8760,
+        importKWh: simTariff.hourly.importKWh,
+        exportKWh: simTariff.hourly.exportKWh,
+        hourOfDay: hod8760,
+        monthIdx: mIdx8760,
+        tariffBefore: tb,
+        tariffAfter: ta,
+      });
+
+      const mcsRoofGroups = await getMcsRoofGroupData({
+        postcode: input.postcode,
+        roofs: input.roofs,
+        panelWatt,
+      });
+
+      quote.mcsRoofGroups = mcsRoofGroups;
+
+      // ✅ Use hourly billing as single source of truth
+      const annualBaseline = round2(billing.annualBaseline);
+      const annualAfterImportAndStanding = round2(billing.annualAfterImportAndStanding);
+      const annualExportCredit = round2(billing.annualExportCredit);
+
+      const annualSystemNet = round2(
+        annualAfterImportAndStanding - annualExportCredit
+      );
+
+      quote.financialSeries = {
+        ...quote.financialSeries,
+        monthly: {
+          annualBaseline,
+          annualSystemBeforeSEG: annualAfterImportAndStanding,
+          annualExportCredit,
+          annualSystemNet,
+
+          // UI expects this alias
+          annualSystem: annualSystemNet,
+        },
+      };
+
+      // These are the canonical numbers now
+      const annualBillSavings = Math.max(0, round2(billing.annualBaseline - billing.annualAfterImportAndStanding));
+      const annualSegIncome = round2(billing.annualExportCredit);
+      const totalAnnualBenefit = round2(annualBillSavings + annualSegIncome);
 
       quote.annualBillSavings = annualBillSavings;
       quote.annualSegIncome = annualSegIncome;
       quote.totalAnnualBenefit = totalAnnualBenefit;
 
-      quote.simplePaybackYears = totalAnnualBenefit > 0 ? Number((midPrice / totalAnnualBenefit).toFixed(1)) : null;
+      quote.simplePaybackYears =
+        totalAnnualBenefit > 0 ? Number((midPrice / totalAnnualBenefit).toFixed(1)) : null;
+
       quote.selfConsumptionModel = "hourly";
 
-      // Monthly bill series
-      const monthlyFinance = makeMonthlyFinancialSeries({
-        monthlyLoadKWh,
-        monthlyImportedKWh: hourlyModel.monthlyImportedKWh,
-        monthlyExportedKWh: hourlyModel.monthlyExportedKWh,
-        importPrice,
-        segPrice,
-        standingChargePerDay: Number(CONFIG.standingChargePerDay || 0),
-      });
+      // Build a monthly finance object in the shape your UI already expects
+      const monthlyFinance = {
+        monthlyBaseline: billing.monthlyBaseline,
+        monthlyAfter: billing.monthlyAfterNet, // net after export income
 
-      // ------------------------------
-      // Tariff assumptions (for MCS display)
-      // ------------------------------
-      quote.tariff = {
-        importPrice,
-        segPrice,
-        standingChargePerDay: Number(CONFIG.standingChargePerDay || 0),
-        energyInflationRate: Number(CONFIG.energyInflationRate || 0.06),
-        tariffType: "Standard Residential Electricity Tariff",
+        baselineMonthlyCost: billing.monthlyBaseline,
+        systemMonthlyCostBeforeSEG: billing.monthlyAfterImportAndStanding,
+        exportCreditMonthly: billing.monthlyExportCredit,
+        systemMonthlyNet: billing.monthlyAfterNet,
+
+        annualBaseline: billing.annualBaseline,
+        annualSystemBeforeSEG: billing.annualAfterImportAndStanding,
+        annualExportCredit: billing.annualExportCredit,
+        annualSystemNet: billing.annualAfterNet,
+
+        // legacy name your UI expects
+        annualSystem: billing.annualAfterNet,
       };
+
+      // ---- Debug days (24h) for visualisation ----
+      try {
+        const pv = quote.hourlyModel._pvHourlyKWh;
+        const load = quote.hourlyModel._loadHourlyKWh;
+        const monthIdx = quote.hourlyModel._monthIdx;
+        const hourOfDay = quote.hourlyModel._hourOfDay;
+
+        if (Array.isArray(pv) && Array.isArray(load) && Array.isArray(monthIdx) && Array.isArray(hourOfDay)) {
+          const tAfter = tariffAfter || {};
+
+          const simDebug = simulateHourByHour({
+            pvHourlyKWh: pv,
+            loadHourlyKWh: load,
+            monthIdx,
+            hourOfDay,
+            batteryKWh: Number(input.batteryKWh || 0),
+
+            tariff: ta,
+            dispatchMode: retail ? "retail_rate" : "self_consumption",
+            allowGridCharge: retail && !!ta.allowGridCharging,
+            allowEnergyTrading: retail && !!ta.allowEnergyTrading,
+            exportFromBatteryEnabled: retail && !!ta.exportFromBatteryEnabled,
+          });
+
+          console.log("simDebug.hourly keys:", Object.keys(simDebug.hourly || {}));
+          console.log("sample hour 0:", Object.fromEntries(
+            Object.entries(simDebug.hourly || {}).map(([k,v]) => [k, Array.isArray(v) ? v[0] : v])
+          ));
+
+          // Pick a “winter” day (Jan = monthIdx 0) and “summer” day (Jun = monthIdx 5)
+          const pickDayStartBest = (targetMonth, scoreFn) => {
+            let bestStart = 0;
+            let bestScore = -Infinity;
+
+            for (let start = 0; start <= monthIdx.length - 24; start += 24) {
+              if (monthIdx[start] !== targetMonth) continue;
+
+              let score = 0;
+              for (let j = 0; j < 24; j++) {
+                score += scoreFn(start + j);
+              }
+
+              if (score > bestScore) {
+                bestScore = score;
+                bestStart = start;
+              }
+            }
+
+            return bestStart;
+          };
+
+          function pickDayStartByMedianPV(targetMonthIdx, monthIdxArr, pvArr) {
+            const candidates = [];
+
+            for (let start = 0; start <= monthIdxArr.length - 24; start += 24) {
+              if (monthIdxArr[start] !== targetMonthIdx) continue;
+
+              let pvSum = 0;
+              for (let k = 0; k < 24; k++) pvSum += Math.max(0, Number(pvArr[start + k] || 0));
+
+              candidates.push({ start, pvSum });
+            }
+
+            if (!candidates.length) return 0;
+
+            // median PV day
+            candidates.sort((a, b) => a.pvSum - b.pvSum);
+            return candidates[Math.floor(candidates.length / 2)].start;
+          }
+
+          // example: Jan = 0, Jun = 5 (based on your monthIdx)
+          //const winterStart = pickDayStartByMedianPV(0, monthIdx, pv);
+          //const summerStart = pickDayStartByMedianPV(5, monthIdx, pv);
+
+
+          // Winter: choose the Jan day with the MOST grid charging (shows overnight behaviour)
+          const winterStart = pickDayStartBest(0, (idx) => Number(simDebug.hourly.battChargeFromGridKWh?.[idx] || 0));
+
+          // Summer: choose the Jun day with the MOST PV (shows PV charging + export behaviour)
+          const summerStart = pickDayStartBest(5, (idx) => Number(simDebug.hourly.pvKWh?.[idx] || 0));
+
+
+          if (!Array.isArray(simDebug?.hourly?.pvKWh)) {
+            throw new Error("simulateHourByHour did not return hourly.pvKWh array");
+          }
+
+          quote.hourlyModel.debugWinterDay = extractDaySlice(simDebug.hourly, winterStart);
+          quote.hourlyModel.debugSummerDay = extractDaySlice(simDebug.hourly, summerStart);
+
+          console.log("WINTER slice chargeFromGrid sum:",
+            quote.hourlyModel.debugWinterDay.battChargeFromGridKWh.reduce((a,b)=>a+b,0)
+          );
+          console.log("WINTER slice chargeFromPV sum:",
+            quote.hourlyModel.debugWinterDay.battChargeFromPVKWh.reduce((a,b)=>a+b,0)
+          );
+        }
+      } catch (e) {
+        console.warn("Debug day slice failed:", e.message);
+      }
+
+      console.log("WINTER import sum:", quote.hourlyModel.debugWinterDay.importKWh.reduce((a,b)=>a+b,0));
+      console.log("WINTER gridCharge sum:", quote.hourlyModel.debugWinterDay.battChargeFromGridKWh.reduce((a,b)=>a+b,0));
+      console.log("WINTER export sum:", quote.hourlyModel.debugWinterDay.exportKWh.reduce((a,b)=>a+b,0));
+      console.log("WINTER dischargeToExport sum:", quote.hourlyModel.debugWinterDay.battDischargeToExportKWh.reduce((a,b)=>a+b,0));
+
+
+
+      // ✅ Store both on quote (frontend can show “before” + “after” if different)
+      quote.tariffBefore = { ...tb, importPrice: importPriceBefore, energyInflationRate };
+      quote.tariffAfter = {
+        ...ta,
+        importPrice: importPriceAfter,
+        segPrice: segPriceAfter,
+        standingChargePerDay: standingChargePerDayAfter,
+        energyInflationRate,
+      };
+
+      // ✅ Keep backward-compat UI field: quote.tariff = AFTER
+      quote.tariff = quote.tariffAfter;
 
       quote.dailyUsageProfile = buildDailyUsageProfile(
         quote.assumedAnnualConsumptionKWh,
@@ -1988,7 +3645,7 @@ app.post("/api/quote", async (req, res) => {
         systemCostMid: midPrice,
         annualBenefit: totalAnnualBenefit,
         years: 25,
-        panelOption: form?.panelOption || input?.panelOption || "",
+        panelOption: input.panelOption || input?.panelOption || "",
         energyInflationRate: Number(CONFIG.energyInflationRate || 0.06),
       });
 
@@ -1998,7 +3655,7 @@ app.post("/api/quote", async (req, res) => {
         const years = 25;
 
         const annualBaselineY1 = Number(monthlyFinance.annualBaseline || 0);
-        const annualSystemY1 = Number(monthlyFinance.annualSystem || 0);
+        const annualSystemY1 = Number(monthlyFinance.annualSystemBeforeSEG || 0);
 
         // Use PVGIS hourly annual gen if available; fallback to estimated annual gen
         const annualSolarGen = Math.round(
@@ -2014,7 +3671,7 @@ app.post("/api/quote", async (req, res) => {
           const m = Math.pow(1 + inflationRate, y - 1);
 
           // Degradation based on selected panel type
-          const d = solarDegradationMultiplier(y, form?.panelOption || input?.panelOption || "");
+          const d = solarDegradationMultiplier(y, input.panelOption || input?.panelOption || "");
 
           // Bills inflate with energy costs
           const billBefore = annualBaselineY1 * m;
@@ -2054,9 +3711,9 @@ app.post("/api/quote", async (req, res) => {
       //    Uses same PV/load hours already fetched; no extra PVGIS calls
       // ------------------------------
       if (hourlyYearData && Array.isArray(hourlyYearData) && hourlyYearData.length > 0) {
-        const MAX_BAT = 28;
+        const MAX_BAT = 35;
         const STEP = 1;
-        const MIN_RECOMMENDED_BAT = 5;
+        const MIN_RECOMMENDED_BAT = 2;
 
         // ✅ Make sure this exists in-scope
         const batteryCostPerKWh = Number(CONFIG.batteryCostPerKwh || 0);
@@ -2068,27 +3725,55 @@ app.post("/api/quote", async (req, res) => {
           const annualExported = [];
           const annualImported = [];
 
-          for (const yd of hourlyYearData) {
-            const sim = simulateHourByHour({
-              pvHourlyKWh: yd.pvHourlyKWh,
-              loadHourlyKWh: yd.loadHourlyKWh,
-              monthIdx: yd.monthIdx,
-              batteryKWh: batteryUsableKWh, // usable kWh
-            });
+          // ✅ Use averaged 8760 dataset (same as recalc)
 
-            const selfUsedKWh = sum12(sim.monthly.selfUsed);
-            const exportedKWh = sum12(sim.monthly.exported);
-            const importedKWh = sum12(sim.monthly.imported);
+          const yd = {
+            pvHourlyKWh: pv8760,
+            loadHourlyKWh: load8760,
+            monthIdx: mIdx8760,
+            hourOfDay: hod8760,
+          };
 
-            // Year-1 annual benefit estimate for this battery size
-            const billSavings = selfUsedKWh * importPrice;
-            const segIncome = exportedKWh * segPrice;
+          const sim = simulateHourByHour({
+            pvHourlyKWh: yd.pvHourlyKWh,
+            loadHourlyKWh: yd.loadHourlyKWh,
+            monthIdx: yd.monthIdx,
+            hourOfDay: yd.hourOfDay,
+            batteryKWh: batteryUsableKWh,
 
-            annualBenefits.push(billSavings + segIncome);
-            annualSelfUsed.push(selfUsedKWh);
-            annualExported.push(exportedKWh);
-            annualImported.push(importedKWh);
+            tariff: ta,
+            dispatchMode: retail ? "retail_rate" : "self_consumption",
+            allowGridCharge: retail && !!ta.allowGridCharging,
+            allowEnergyTrading: retail && !!ta.allowEnergyTrading,
+            exportFromBatteryEnabled: retail && !!ta.exportFromBatteryEnabled,
+          });
+
+          if (!sim || !sim.monthly) {
+            throw new Error("Hourly simulation failed for battery optimisation");
           }
+
+          const billing = computeHourlyBilling({
+            loadKWh: yd.loadHourlyKWh,
+            importKWh: sim.hourly.importKWh,
+            exportKWh: sim.hourly.exportKWh,
+            hourOfDay: yd.hourOfDay,
+            monthIdx: yd.monthIdx,
+            tariffBefore: tb,
+            tariffAfter: ta,
+          });
+
+          const annualBillSavings = Math.max(
+            0,
+            billing.annualBaseline - billing.annualAfterImportAndStanding
+          );
+
+          const annualSegIncome = billing.annualExportCredit;
+
+          annualBenefits.push(annualBillSavings + annualSegIncome);
+          annualSelfUsed.push(sum12(sim.monthly.selfUsed));
+          annualExported.push(sum12(sim.monthly.exported));
+          annualImported.push(sum12(sim.monthly.imported));
+
 
           const avg = (arr) => arr.reduce((a, b) => a + b, 0) / (arr.length || 1);
 
@@ -2255,12 +3940,17 @@ app.post("/api/quote", async (req, res) => {
       console.log("Hourly monthly load:", quote.hourlyModel.monthlyLoadKWh);
       console.log("Financial series attached?:", !!quote.financialSeries);
       console.log("Battery recommendations attached?:", !!quote.batteryRecommendations);
-      console.log("Best payback recommendation:", quote.batteryRecommendations?.finalBestPayback);
+      console.log("Best payback recommendation:", quote.batteryRecommendations?.bestPayback);
+      console.log("hourlyModel keys:", Object.keys(quote.hourlyModel || {}));
+      console.log("has _pvHourlyKWh?", Array.isArray(quote?.hourlyModel?._pvHourlyKWh), quote?.hourlyModel?._pvHourlyKWh?.length);
+      console.log("has _loadHourlyKWh?", Array.isArray(quote?.hourlyModel?._loadHourlyKWh), quote?.hourlyModel?._loadHourlyKWh?.length);
+      console.log("has _monthIdx?", Array.isArray(quote?.hourlyModel?._monthIdx), quote?.hourlyModel?._monthIdx?.length);
+      console.log("has _hourOfDay?", Array.isArray(quote?.hourlyModel?._hourOfDay), quote?.hourlyModel?._hourOfDay?.length);
 
     }
 
     // ------------------------------
-    // Lead saving + Brevo
+    // Optional local lead save
     // ------------------------------
     const { name, email, address, phone } = input;
 
@@ -2273,9 +3963,6 @@ app.post("/api/quote", async (req, res) => {
     });
     saveLeads(leads);
 
-    const contact = { name, email, address, phone };
-    syncLeadToBrevo(contact, quote, input);
-
     res.json(quote);
 
   } catch (err) {
@@ -2284,7 +3971,787 @@ app.post("/api/quote", async (req, res) => {
   }
 });
 
+app.post("/api/quote/recalc", async (req, res) => {
+  try {
+    const { quote, tariffBefore, tariffAfter, input, batteryRecommendationLifetimeYears } = req.body || {};
+    if (!quote) return res.status(400).json({ error: "Missing quote." });
+
+    const recommendationLifetimeYears =
+      Number.isFinite(Number(batteryRecommendationLifetimeYears)) &&
+      Number(batteryRecommendationLifetimeYears) > 0
+        ? Number(batteryRecommendationLifetimeYears)
+        : 25;
+
+    const hm = quote?.hourlyModel;
+    if (!hm) return res.status(400).json({ error: "Missing hourlyModel on quote." });
+
+    const pv = hm._pvHourlyKWh;
+    const load = hm._loadHourlyKWh;
+    const monthIdx = hm._monthIdx;
+    const hourOfDay = hm._hourOfDay;
+
+    if (!Array.isArray(pv) || !Array.isArray(load) || !Array.isArray(monthIdx) || !Array.isArray(hourOfDay)) {
+      return res.status(400).json({ error: "Quote missing hourly arrays for tariff recalculation." });
+    }
+
+    // -----------------------
+    // 1) Normalize tariffs
+    // -----------------------
+    const tb = normalizeTariff(
+      tariffBefore || quote?.tariffBefore || {},
+      "before"
+    );
+    const ta = normalizeTariff(
+      tariffAfter || quote?.tariffAfter || quote?.tariff || {},
+      "after"
+    );
+
+    const retail = isRetailRateTariff(ta);
+
+    // -----------------------
+    // 2) Re-simulate hourly with toggles (NO PVGIS)
+    // -----------------------
+    const sim = simulateHourByHour({
+      pvHourlyKWh: pv,
+      loadHourlyKWh: load,
+      monthIdx,
+      hourOfDay,
+      batteryKWh: Number(hm?._batteryKWh || 0),
+
+      tariff: ta,
+      dispatchMode: retail ? "retail_rate" : "self_consumption",
+
+      // these MUST respect toggles
+      allowGridCharge: retail && !!ta.allowGridCharging,
+      allowEnergyTrading: retail && !!ta.allowEnergyTrading,
+
+      exportFromBatteryEnabled: !!ta.exportFromBatteryEnabled,
+    });
+
+    if (!sim?.hourly?.importKWh || !sim?.hourly?.exportKWh) {
+      return res.status(500).json({ error: "Recalc simulation did not return hourly flows." });
+    }
+
+    // -----------------------
+    // 3) Hourly billing (baseline + after)
+    // -----------------------
+    const billing = computeHourlyBilling({
+      loadKWh: load,
+      importKWh: sim.hourly.importKWh,
+      exportKWh: sim.hourly.exportKWh,
+      hourOfDay,
+      monthIdx,
+      tariffBefore: tb,
+      tariffAfter: ta,
+    });
+
+    const annualBillSavings = Math.max(
+      0,
+      round2(Number(billing.annualBaseline || 0) - Number(billing.annualAfterImportAndStanding || 0))
+    );
+    const annualSegIncome = round2(Number(billing.annualExportCredit || 0));
+    const totalAnnualBenefit = round2(annualBillSavings + annualSegIncome);
+
+    // -----------------------
+    // 4) Payback + yearly table (this drives your charts)
+    // -----------------------
+    const midPrice = (Number(quote.priceLow || 0) + Number(quote.priceHigh || 0)) / 2;
+    const simplePaybackYears =
+      totalAnnualBenefit > 0 ? Number((midPrice / totalAnnualBenefit).toFixed(1)) : null;
+
+    const payback = makePaybackAndLifetimeSeries({
+      systemCostMid: midPrice,
+      annualBenefit: totalAnnualBenefit,
+      years: recommendationLifetimeYears,
+      panelOption: quote?.panelOption || "",
+      energyInflationRate: Number(CONFIG.energyInflationRate || 0.06),
+    });
+
+    // yearly table used by “cumulative savings” etc
+    {
+      const inflationRate = Number(CONFIG.energyInflationRate || 0.06);
+      const years = 25;
+
+      const annualBaselineY1 = Number(billing.annualBaseline || 0);
+      const annualAfterY1 = Number(billing.annualAfterNet || 0); // after net = after import+standing - export credit
+      const year1Savings = annualBaselineY1 - annualAfterY1;
+
+      // use the simulated annual generation (or fallback)
+      const annualSolarGen = Math.round(
+        (sim?.monthly?.generation || []).reduce((s, v) => s + Number(v || 0), 0) ||
+        (quote?.estAnnualGenerationKWh || 0) ||
+        0
+      );
+
+      const yearly = [];
+      let cumulative = 0;
+
+      for (let y = 1; y <= years; y++) {
+        const m = Math.pow(1 + inflationRate, y - 1);
+        const d = solarDegradationMultiplier(y, quote?.panelOption || "");
+
+        const billBefore = annualBaselineY1 * m;
+        const billSavings = year1Savings * m * d;
+        const billAfter = billBefore - billSavings;
+
+        cumulative += billSavings;
+
+        yearly.push({
+          year: y,
+          solarGenerationKWh: Math.round(annualSolarGen * d),
+          billBefore: round2(billBefore),
+          billAfter: round2(billAfter),
+          billSavings: round2(billSavings),
+          cumulativeSavings: round2(cumulative),
+          netPosition: round2(cumulative - Number(payback.systemCostMid || 0)),
+        });
+      }
+
+      payback.yearly = yearly;
+    }
+
+    // -----------------------
+    // 5) Debug day slices so graphs refresh instantly
+    //    IMPORTANT: choose the same kind of “representative” days as /api/quote
+    // -----------------------
+    function pickDayStartBest(targetMonth, scoreFn) {
+      let bestStart = 0;
+      let bestScore = -Infinity;
+
+      for (let start = 0; start <= monthIdx.length - 24; start += 24) {
+        if (monthIdx[start] !== targetMonth) continue;
+
+        let score = 0;
+        for (let j = 0; j < 24; j++) score += scoreFn(start + j);
+
+        if (score > bestScore) {
+          bestScore = score;
+          bestStart = start;
+        }
+      }
+
+      return bestStart;
+    }
+
+    // Match /api/quote behaviour:
+    // - Winter: Jan (0) day showing the MOST grid charging (if present)
+    // - Summer: Jun (5) day showing the MOST PV generation
+    const winterStart = pickDayStartBest(0, (idx) => Number(sim.hourly.battChargeFromGridKWh?.[idx] || 0));
+    const summerStart = pickDayStartBest(5, (idx) => Number(sim.hourly.pvKWh?.[idx] || 0));
+
+    const debugWinterDay = extractDaySlice(sim.hourly, winterStart);
+    const debugSummerDay = extractDaySlice(sim.hourly, summerStart);
+
+
+    // -----------------------
+    // 6) Battery recommendations (fast enough, no PVGIS)
+    //    Uses the same single 8760 arrays on the quote.
+    // -----------------------
+    const MAX_BAT = 35;
+    const STEP = 1;
+    const MIN_RECOMMENDED_BAT = 2;
+
+    const curve = [];
+    for (let b = 0; b <= MAX_BAT; b += STEP) {
+      const simB = simulateHourByHour({
+        pvHourlyKWh: pv,
+        loadHourlyKWh: load,
+        monthIdx,
+        hourOfDay,
+        batteryKWh: b,
+        tariff: ta,
+        dispatchMode: retail ? "retail_rate" : "self_consumption",
+        allowGridCharge: retail && !!ta.allowGridCharging,
+        allowEnergyTrading: retail && !!ta.allowEnergyTrading,
+        exportFromBatteryEnabled: !!ta.exportFromBatteryEnabled,
+      });
+
+      const billingB = computeHourlyBilling({
+        loadKWh: load,
+        importKWh: simB.hourly.importKWh,
+        exportKWh: simB.hourly.exportKWh,
+        hourOfDay,
+        monthIdx,
+        tariffBefore: tb,
+        tariffAfter: ta,
+      });
+
+      const benefitB =
+        Math.max(0, (billingB.annualBaseline || 0) - (billingB.annualAfterImportAndStanding || 0)) +
+        (billingB.annualExportCredit || 0);
+
+      const candidateInput = {
+        ...input,
+        batteryCapacity: b,
+        batteryKWh: b,
+        roofs: input?.roofs || [],
+        extras: input?.extras || {},
+        panelOption: input?.panelOption || quote?.panelOption || "value",
+        annualKWh: input?.annualKWh || quote?.assumedAnnualConsumptionKWh || 0,
+        occupancyProfile: input?.occupancyProfile || "half_day",
+      };
+
+      const annualGenerationForCandidate = Math.round(
+        (simB?.monthly?.generation || []).reduce((s, v) => s + Number(v || 0), 0)
+      );
+
+      const candidateBaseQuote = calculateQuote(candidateInput, {
+        annualGenerationOverrideKWh: annualGenerationForCandidate,
+        silent: true,
+      });
+
+      const candidateMidPrice = (candidateBaseQuote.priceLow + candidateBaseQuote.priceHigh) / 2;
+
+      const pb = makePaybackAndLifetimeSeries({
+        systemCostMid: candidateMidPrice,
+        annualBenefit: benefitB,
+        years: recommendationLifetimeYears,
+        panelOption: input?.panelOption || quote?.panelOption || "",
+        energyInflationRate: Number(CONFIG.energyInflationRate || 0.06),
+      });
+
+      const annualSelf = Math.round((simB?.monthly?.selfUsed || []).reduce((s, v) => s + Number(v || 0), 0));
+      const annualExp = Math.round((simB?.monthly?.exported || []).reduce((s, v) => s + Number(v || 0), 0));
+      const annualImp = Math.round((simB?.monthly?.imported || []).reduce((s, v) => s + Number(v || 0), 0));
+      const lifetimeNetSavings = Math.round(Number(pb.lifetimeSavings || 0));
+      const lifetimeGrossBenefit = Math.round(lifetimeNetSavings + candidateMidPrice);
+
+      curve.push({
+        batteryKWhUsable: b,
+        annualBenefit: Math.round(benefitB),
+        paybackYears: pb.paybackYear,
+        annualSelfUsedKWh: Math.round((simB?.monthly?.selfUsed || []).reduce((s, v) => s + Number(v || 0), 0)),
+        annualExportedKWh: Math.round((simB?.monthly?.exported || []).reduce((s, v) => s + Number(v || 0), 0)),
+        annualImportedKWh: Math.round((simB?.monthly?.imported || []).reduce((s, v) => s + Number(v || 0), 0)),
+        candidateMidPrice: Math.round(candidateMidPrice),
+        lifetimeYears: recommendationLifetimeYears,
+        lifetimeGrossBenefit: Math.round(Number(pb.lifetimeSavings || 0) + candidateMidPrice),
+        lifetimeNetSavings: Math.round(Number(pb.lifetimeSavings || 0)),
+      });
+    }
+
+    const candidates = curve.filter((x) => x.batteryKWhUsable >= MIN_RECOMMENDED_BAT);
+
+    const viablePayback = candidates.filter(
+      (x) => typeof x.paybackYears === "number" && Number.isFinite(x.paybackYears) && x.annualBenefit > 0
+    );
+
+    let bestPayback = null;
+    if (viablePayback.length > 0) {
+      bestPayback = viablePayback.reduce((best, cur) => {
+        if (cur.paybackYears < best.paybackYears) return cur;
+        if (cur.paybackYears === best.paybackYears && cur.annualBenefit > best.annualBenefit) return cur;
+        return best;
+      }, viablePayback[0]);
+    } else if (candidates.length > 0) {
+      bestPayback = candidates.reduce((best, cur) => (cur.annualBenefit > best.annualBenefit ? cur : best), candidates[0]);
+    }
+
+    const finalBestPayback = bestPayback || candidates[0] || curve[0] || null;
+
+    const viableLifetime = candidates.filter(
+      (x) => typeof x.lifetimeNetSavings === "number" && Number.isFinite(x.lifetimeNetSavings)
+    );
+
+    let bestLifetimeSavings = null;
+    if (viableLifetime.length > 0) {
+      bestLifetimeSavings = viableLifetime.reduce((best, cur) => {
+        if (cur.lifetimeNetSavings > best.lifetimeNetSavings) return cur;
+        if (cur.lifetimeNetSavings === best.lifetimeNetSavings) {
+          const bestPay = typeof best.paybackYears === "number" ? best.paybackYears : Infinity;
+          const curPay = typeof cur.paybackYears === "number" ? cur.paybackYears : Infinity;
+          if (curPay < bestPay) return cur;
+          if (curPay === bestPay && cur.annualBenefit > best.annualBenefit) return cur;
+        }
+        return best;
+      }, viableLifetime[0]);
+    }
+
+    if (bestLifetimeSavings && bestLifetimeSavings.lifetimeNetSavings <= 0) {
+      bestLifetimeSavings = null;
+    }
+
+    // -----------------------
+    // 7) Return updated quote
+    // -----------------------
+    const updated = {
+      ...quote,
+
+      tariffBefore: tb,
+      tariffAfter: ta,
+      tariff: ta, // backwards compat
+
+      annualBillSavings,
+      annualSegIncome,
+      totalAnnualBenefit,
+      simplePaybackYears,
+
+      financialSeries: {
+        monthly: {
+          // keep anything else you already use from billing (optional)
+          ...billing,
+
+          // ✅ explicitly provide the fields the UI expects
+          annualBaseline: round2(Number(billing.annualBaseline || 0)),
+          annualSystemBeforeSEG: round2(Number(billing.annualAfterImportAndStanding || 0)),
+          annualExportCredit: round2(Number(billing.annualExportCredit || 0)),
+
+          // net = import+standing - export credit
+          annualSystemNet: round2(
+            Number(billing.annualAfterImportAndStanding || 0) - Number(billing.annualExportCredit || 0)
+          ),
+
+          // ✅ UI alias (some parts of your UI use annualSystem)
+          annualSystem: round2(
+            Number(billing.annualAfterImportAndStanding || 0) - Number(billing.annualExportCredit || 0)
+          ),
+        },
+        payback,
+      },
+
+      batteryRecommendations: {
+        bestPayback: finalBestPayback,
+        bestLifetimeSavings,
+        curve,
+        assumptions: {
+          minRecommendedBatteryKWh: MIN_RECOMMENDED_BAT,
+          maxBatteryKWh: MAX_BAT,
+          stepKWh: STEP,
+          lifetimeYears: recommendationLifetimeYears,
+          note: "Recalculated using quote hourly arrays + current tariff toggles (no PVGIS).",
+        },
+      },
+
+      hourlyModel: {
+        ...hm,
+
+        monthlyGenerationKWh: sim.monthly.generation,
+        monthlySelfUsedKWh: sim.monthly.selfUsed,
+        monthlyExportedKWh: sim.monthly.exported,
+        monthlyImportedKWh: sim.monthly.imported,
+
+        monthlyBatteryChargeKWh: sim.monthly.batteryCharge,
+        monthlyBatteryDischargeKWh: sim.monthly.batteryDischarge,
+
+        // NEW: source-aware monthly battery flow fields
+        monthlyBatteryChargeFromPVKWh: sim.monthly.batteryChargeFromPV,
+        monthlyBatteryChargeFromGridKWh: sim.monthly.batteryChargeFromGrid,
+        monthlyBatteryDischargeFromPVToLoadKWh: sim.monthly.batteryDischargeFromPVToLoad,
+        monthlyBatteryDischargeFromGridToLoadKWh: sim.monthly.batteryDischargeFromGridToLoad,
+
+        // NEW: direct PV export at generation time
+        monthlyPVExportedDirectKWh: sim.monthly.pvExportDirect,
+
+        // KEEP / PRESERVE the household demand profile
+        monthlyLoadKWh: hm.monthlyLoadKWh,
+
+        debugWinterDay,
+        debugSummerDay,
+      },
+    };
+
+    return res.json(updated);
+  } catch (e) {
+    console.error("recalc error:", e);
+    return res.status(500).json({ error: e?.message || "Failed to recalculate." });
+  }
+});
+
+
+
 app.listen(PORT, () => {
   console.log(`Backend listening on http://localhost:${PORT}`);
   console.log(`Leads will be stored in: ${LEADS_FILE}`);
 });
+
+
+//===============//
+// PDF BUILDING  //
+//===============//
+
+function fmt(n) {
+  return Math.round(Number(n || 0)).toLocaleString("en-GB");
+}
+
+function renderMonthlyBars(values = [], colorClass = "gen") {
+  const max = Math.max(...values, 1);
+
+  return `
+    <div class="monthly-chart">
+      ${values.map((v, i) => {
+        const h = Math.max(8, (Number(v || 0) / max) * 180);
+        const month = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][i];
+        return `
+          <div class="bar-col">
+            <div class="bar-wrap">
+              <div class="bar ${colorClass}" style="height:${h}px;"></div>
+            </div>
+            <div class="bar-value">${fmt(v)}</div>
+            <div class="bar-label">${month}</div>
+          </div>
+        `;
+      }).join("")}
+    </div>
+  `;
+}
+
+function fmtNum(n) {
+  return Number(n || 0).toLocaleString("en-GB", { maximumFractionDigits: 0 });
+}
+
+function fmtMoney(n) {
+  return Number(n || 0).toLocaleString("en-GB", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0
+  });
+}
+
+function renderBarChart(values = [], barClass = "gen") {
+  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const max = Math.max(...values.map(v => Number(v || 0)), 1);
+
+  return `
+    <div class="chart-card">
+      <div class="bar-chart">
+        ${values.map((v, i) => {
+          const val = Number(v || 0);
+          const height = Math.max(10, (val / max) * 180);
+          return `
+            <div class="bar-col">
+              <div class="bar-wrap">
+                <div class="bar ${barClass}" style="height:${height}px;"></div>
+              </div>
+              <div class="bar-value">${fmtNum(val)}</div>
+              <div class="bar-label">${months[i]}</div>
+            </div>
+          `;
+        }).join("")}
+      </div>
+    </div>
+  `;
+}
+
+function buildQuoteHtml(quote = {}, form = {}) {
+  const systemSize = Number(quote.systemSizeKwp || 0);
+  const annualGeneration = Math.round(Number(quote.estAnnualGenerationKWh || 0));
+  const annualBillSavings = Math.round(Number(quote.annualBillSavings || 0));
+  const annualSegIncome = Math.round(Number(quote.annualSegIncome || 0));
+  const totalAnnualBenefit = Math.round(Number(quote.totalAnnualBenefit || 0));
+  const paybackYears = Number(quote.simplePaybackYears || 0);
+
+  const batterySize = Number(
+    quote.hourlyModel?._batteryKWh ||
+    quote.batteryKWh ||
+    quote.batterySizeKWh ||
+    0
+  );
+
+  const priceLow = Math.round(Number(quote.priceLow || 0));
+  const priceHigh = Math.round(Number(quote.priceHigh || 0));
+
+  const financial = quote.financialSeries?.monthly || {};
+  const hourly = quote.hourlyModel || {};
+
+  const monthlyGeneration = hourly.monthlyGenerationKWh || Array(12).fill(0);
+  const monthlyImported = hourly.monthlyImportedKWh || Array(12).fill(0);
+  const monthlyExported = hourly.monthlyExportedKWh || Array(12).fill(0);
+
+  const annualBaseline = Math.round(Number(financial.annualBaseline || 0));
+  const annualAfterNet = Math.round(Number(financial.annualAfterNet || 0));
+
+  console.log("PDF mapped values:", {
+    systemSize,
+    annualGeneration,
+    annualBillSavings,
+    annualSegIncome,
+    totalAnnualBenefit,
+    paybackYears,
+    batterySize,
+    annualBaseline,
+    annualAfterNet
+  });
+
+    return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    * { box-sizing: border-box; }
+
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 32px;
+      color: #111827;
+      background: #ffffff;
+    }
+
+    h1, h2, h3, p {
+      margin: 0;
+    }
+
+    .header {
+      padding: 24px;
+      border-radius: 16px;
+      background: linear-gradient(135deg, #4f46e5, #7c3aed);
+      color: white;
+      margin-bottom: 24px;
+    }
+
+    .header h1 {
+      font-size: 30px;
+      margin-bottom: 8px;
+    }
+
+    .header p {
+      font-size: 14px;
+      opacity: 0.95;
+    }
+
+    .section {
+      margin-top: 28px;
+      page-break-inside: avoid;
+    }
+
+    .section h2 {
+      font-size: 20px;
+      margin-bottom: 14px;
+    }
+
+    .muted {
+      color: #6b7280;
+      font-size: 13px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 14px;
+    }
+
+    .card {
+      border: 1px solid #e5e7eb;
+      border-radius: 14px;
+      padding: 16px;
+      background: #fff;
+    }
+
+    .stat-value {
+      font-size: 26px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .stat-label {
+      font-size: 12px;
+      color: #6b7280;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .chart-card {
+      border: 1px solid #e5e7eb;
+      border-radius: 14px;
+      padding: 16px;
+      background: #fff;
+    }
+
+    .bar-chart {
+      display: flex;
+      align-items: flex-end;
+      gap: 8px;
+      height: 240px;
+    }
+
+    .bar-col {
+      width: 48px;
+      text-align: center;
+      font-size: 11px;
+    }
+
+    .bar-wrap {
+      height: 180px;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+    }
+
+    .bar {
+      width: 24px;
+      border-radius: 8px 8px 0 0;
+    }
+
+    .bar.gen { background: #f59e0b; }
+    .bar.import { background: #6366f1; }
+    .bar.export { background: #10b981; }
+
+    .bar-value {
+      margin-top: 8px;
+      font-weight: 700;
+      font-size: 11px;
+    }
+
+    .bar-label {
+      margin-top: 4px;
+      color: #6b7280;
+      font-size: 11px;
+    }
+
+    .list {
+      margin: 10px 0 0;
+      padding-left: 18px;
+      color: #374151;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .footer {
+      margin-top: 32px;
+      border-top: 1px solid #e5e7eb;
+      padding-top: 16px;
+      color: #6b7280;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <h1>Solar Quote</h1>
+    <p>Estimated system performance, savings and energy impact for your home</p>
+  </div>
+
+  <div class="section">
+    <h2>Customer details</h2>
+    <div class="grid-2">
+      <div class="card">
+        <div class="stat-value">${form.name || "Customer"}</div>
+        <div class="stat-label">Customer name</div>
+      </div>
+      <div class="card">
+        <div class="stat-value">${form.postcode || "-"}</div>
+        <div class="stat-label">Postcode</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Recommended system</h2>
+    <div class="grid">
+      <div class="card">
+        <div class="stat-value">${systemSize} kWp</div>
+        <div class="stat-label">System size</div>
+      </div>
+      <div class="card">
+        <div class="stat-value">${batterySize} kWh</div>
+        <div class="stat-label">Battery size</div>
+      </div>
+      <div class="card">
+        <div class="stat-value">${fmtNum(annualGeneration)} kWh</div>
+        <div class="stat-label">Annual generation</div>
+      </div>
+      <div class="card">
+        <div class="stat-value">${quote.panelCount || 0}</div>
+        <div class="stat-label">Panel count</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Financial summary</h2>
+    <div class="grid">
+      <div class="card">
+        <div class="stat-value">£${fmtMoney(annualBillSavings)}</div>
+        <div class="stat-label">Bill savings</div>
+      </div>
+      <div class="card">
+        <div class="stat-value">£${fmtMoney(annualSegIncome)}</div>
+        <div class="stat-label">SEG income</div>
+      </div>
+      <div class="card">
+        <div class="stat-value">£${fmtMoney(totalAnnualBenefit)}</div>
+        <div class="stat-label">Total annual benefit</div>
+      </div>
+      <div class="card">
+        <div class="stat-value">${paybackYears}</div>
+        <div class="stat-label">Simple payback (years)</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Estimated annual electricity cost</h2>
+    <div class="grid-2">
+      <div class="card">
+        <div class="stat-value">£${fmtMoney(annualBaseline)}</div>
+        <div class="stat-label">Before solar</div>
+      </div>
+      <div class="card">
+        <div class="stat-value">£${fmtMoney(annualAfterNet)}</div>
+        <div class="stat-label">After solar and export</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Monthly solar generation</h2>
+    <p class="muted">Estimated solar production by month</p>
+    ${renderBarChart(monthlyGeneration, "gen")}
+  </div>
+
+  <div class="section">
+    <h2>Monthly grid import</h2>
+    <p class="muted">Electricity still imported from the grid after solar and battery operation</p>
+    ${renderBarChart(monthlyImported, "import")}
+  </div>
+
+  <div class="section">
+    <h2>Monthly export</h2>
+    <p class="muted">Excess energy exported back to the grid</p>
+    ${renderBarChart(monthlyExported, "export")}
+  </div>
+
+  <div class="section">
+    <h2>Quote range</h2>
+    <div class="grid-2">
+      <div class="card">
+        <div class="stat-value">£${fmtMoney(priceLow)}</div>
+        <div class="stat-label">Lower estimate</div>
+      </div>
+      <div class="card">
+        <div class="stat-value">£${fmtMoney(priceHigh)}</div>
+        <div class="stat-label">Upper estimate</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>What this includes</h2>
+    <div class="card">
+      <ul class="list">
+        <li>${quote.panelCount || 0} solar panels rated at ${quote.panelWatt || 0}W each</li>
+        <li>Estimated annual generation of ${fmtNum(annualGeneration)} kWh</li>
+        <li>Estimated annual bill savings of £${fmtMoney(annualBillSavings)}</li>
+        <li>Estimated annual export income of £${fmtMoney(annualSegIncome)}</li>
+        <li>Simple payback of around ${paybackYears} years</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="footer">
+    This quote is based on PVGIS generation modelling, tariff assumptions and estimated household electricity usage.
+    Actual performance and savings will vary with weather, usage patterns, final system design and future tariff changes.
+  </div>
+
+</body>
+</html>
+`;
+}
