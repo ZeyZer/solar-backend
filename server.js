@@ -275,6 +275,16 @@ async function upsertBrevoContact(contact, { baseListId, marketingConsent = fals
   }
 }
 
+//============//
+// PDF SET UP //
+//============//
+
+const FRONTEND_URL =
+  process.env.FRONTEND_URL ||
+  "https://www.zeyzersolar.com";
+
+  //http://localhost:3000
+
 async function generateQuotePdfBuffer({ quote, form, roofs }) {
   if (!quote || !form) {
     throw new Error("Missing quote or form data.");
@@ -306,7 +316,7 @@ async function generateQuotePdfBuffer({ quote, form, roofs }) {
     const page = await browser.newPage();
 
     console.log("Opening /quote-pdf page...");
-    await page.goto("http://localhost:3000/quote-pdf", {
+    await page.goto(`${FRONTEND_URL}/quote-pdf`, {
       waitUntil: "networkidle0",
       timeout: 120000,
     });
