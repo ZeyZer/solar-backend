@@ -315,8 +315,10 @@ async function generateQuotePdfBuffer({ quote, form, roofs }) {
   try {
     const page = await browser.newPage();
 
-    console.log("Opening /quote-pdf page...");
-    await page.goto(`${FRONTEND_URL}/quote-pdf`, {
+    const pdfUrl = `${FRONTEND_URL}/#/quote-pdf`;
+    console.log("Opening PDF page:", pdfUrl);
+
+    await page.goto(pdfUrl, {
       waitUntil: "networkidle0",
       timeout: 120000,
     });
