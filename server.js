@@ -281,9 +281,10 @@ async function upsertBrevoContact(contact, { baseListId, marketingConsent = fals
 
 const FRONTEND_URL =
   process.env.FRONTEND_URL ||
-  "https://www.zeyzersolar.com";
+  "http://localhost:3000";
 
   //http://localhost:3000
+  //https://www.zeyzersolar.com
 
 async function generateQuotePdfBuffer({ quote, form, roofs }) {
   if (!quote || !form) {
@@ -307,6 +308,11 @@ async function generateQuotePdfBuffer({ quote, form, roofs }) {
       "--no-sandbox",
       "--disable-setuid-sandbox",
       "--disable-dev-shm-usage",
+      "--disable-gpu",
+      "--font-render-hinting=none",
+      "--disable-background-timer-throttling",
+      "--disable-backgrounding-occluded-windows",
+      "--disable-renderer-backgrounding",
     ],
   });
 
@@ -318,35 +324,56 @@ async function generateQuotePdfBuffer({ quote, form, roofs }) {
     const pdfUrl = `${FRONTEND_URL}/#/quote-pdf`;
     console.log("Opening PDF page:", pdfUrl);
 
+    await page.setViewport({
+      width: 1240,
+      height: 1754,
+      deviceScaleFactor: 1,
+    });
+
     await page.goto(pdfUrl, {
-      waitUntil: "networkidle0",
+      waitUntil: ["load", "domcontentloaded", "networkidle0"],
       timeout: 120000,
     });
 
-    await page.waitForFunction(
-      () =>
-        Array.from(document.images).every(
-          (img) => img.complete && img.naturalHeight > 0
-        ),
-      { timeout: 10000 }
-    ).catch(() => {
-      console.log("Some images did not finish loading before PDF render");
+    await page.emulateMediaType("print");
+
+    // Wait for fonts.
+    await page.evaluateHandle("document.fonts.ready");
+
+    // Wait for images more patiently on Render.
+    await page
+      .waitForFunction(
+        () =>
+          Array.from(document.images).every(
+            (img) => img.complete && img.naturalHeight > 0
+          ),
+        { timeout: 30000 }
+      )
+      .catch(() => {
+        console.log("Some images did not finish loading before PDF render");
+      });
+
+    // Let React/layout/print CSS settle.
+    await page.waitForTimeout?.(2500).catch?.(() => null);
+    await new Promise((resolve) => setTimeout(resolve, 2500));
+
+    // Force one layout pass before printing.
+    await page.evaluate(() => {
+      document.body.offsetHeight;
+      window.scrollTo(0, 0);
     });
 
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-
-    console.log("/quote-pdf page loaded");
-
-    await page.emulateMediaType("print");
+    console.log("/quote-pdf page loaded and settled");
 
     const pdfBytes = await page.pdf({
       format: "A4",
       printBackground: true,
+      preferCSSPageSize: true,
       margin: {
-        top: "12mm",
-        bottom: "15mm",
-        left: "14mm",
-        right: "14mm",
+        top: "0mm",
+        bottom: "0mm",
+        left: "0mm",
+        right: "0mm",
       },
     });
 
@@ -1768,6 +1795,17 @@ function simulateHourByHour({
 }) {
   let hourOfDay = hourOfDayIn;
 
+  // ===============================
+  // Debug controls
+  // Turn DEBUG_SIM to true only when diagnosing dispatch behaviour
+  // ===============================
+  const DEBUG_SIM = false;
+  const DEBUG_DAY_START = 3600;
+
+  function debugSim(...args) {
+    if (DEBUG_SIM) console.log(...args);
+  }
+
   const n = Math.min(
     pvHourlyKWh?.length || 0,
     loadHourlyKWh?.length || 0,
@@ -1788,19 +1826,37 @@ function simulateHourByHour({
   //====================
   // New Helper Function
   //====================
+    function isHourInWindow(hod, startHour, endHour) {
+    const start = Number(startHour ?? 0);
+    const end = Number(endHour ?? 0);
+
+    // Normal same-day window, e.g. 00 -> 05
+    if (start < end) {
+      return hod >= start && hod < end;
+    }
+
+    // Cross-midnight window, e.g. 23 -> 05
+    if (start > end) {
+      return hod >= start || hod < end;
+    }
+
+    // If start === end, treat as no active window
+    return false;
+  }
+
   function isCheapImportWindow(tariff, hod) {
     const tt = String(tariff?.tariffType || "standard");
 
     if (tt === "overnight") {
       const ns = Number(tariff?.nightStartHour ?? 0);
       const ne = Number(tariff?.nightEndHour ?? 7);
-      return hod >= ns && hod < ne;
+      return isHourInWindow(hod, ns, ne);
     }
 
     if (tt === "flux") {
       const os = Number(tariff?.offPeakStartHour ?? 0);
       const oe = Number(tariff?.offPeakEndHour ?? 6);
-      return hod >= os && hod < oe;
+      return isHourInWindow(hod, os, oe);
     }
 
     return false;
@@ -1883,13 +1939,14 @@ function simulateHourByHour({
   // We plan desired battery discharge to cover the most expensive hours of NET LOAD (load - PV),
   // and (optionally) grid-charge in cheapest hours to ensure energy is available.
   function planDayRetailRate(dayStart, dayLen) {
-    const planDischargeToLoad = Array(dayLen).fill(0); // kWh delivered to load
-    const planGridChargeIn = Array(dayLen).fill(0);    // kWh drawn from grid into battery (input)
-    const planDischargeToExport = Array(dayLen).fill(0); // kWh delivered to export (optional)
+    const planDischargeToLoad = Array(dayLen).fill(0);   // kWh delivered to load
+    const planGridChargeIn = Array(dayLen).fill(0);      // kWh drawn from grid into battery (input)
+    const planDischargeToExport = Array(dayLen).fill(0); // kWh delivered to export
+    const planStorePV = Array(dayLen).fill(false);       // whether PV surplus should be stored this hour
 
     // If no battery or not retail mode, do nothing special
     if (capUsable <= 0 || dispatchMode !== "retail_rate" || !tariff) {
-      return { planDischargeToLoad, planGridChargeIn, planDischargeToExport };
+      return { planDischargeToLoad, planGridChargeIn, planDischargeToExport, planStorePV };
     }
 
     // Build hourly forecast arrays for this day
@@ -1910,24 +1967,16 @@ function simulateHourByHour({
     }
 
     // Identify cheap import window hours (used for charging + arbitrage logic)
-    const cheapImportHours = hours.filter(h => {
-      if (tariff.tariffType === "overnight") {
-        const ns = Number(tariff.nightStartHour ?? 0);
-        const ne = Number(tariff.nightEndHour ?? 7);
-        return (h.hod >= ns && h.hod < ne);
-      }
-      if (tariff.tariffType === "flux") {
-        const os = Number(tariff.offPeakStartHour ?? 0);
-        const oe = Number(tariff.offPeakEndHour ?? 6);
-        return (h.hod >= os && h.hod < oe);
-      }
-      return true;
+    const cheapImportHours = hours.filter((h) => {
+      return isCheapImportWindow(tariff, h.hod);
     });
 
     // ------------------------------
-    // Decide whether we should reserve space for PV later
-    // If exporting PV later is financially better than storing it,
-    // we don't need to leave space (we can export PV and keep battery full from cheap import).
+    // Phase 1 planning inputs
+    //
+    // We want two separate budgets:
+    // 1) battery room to keep for low-value PV later in the day
+    // 2) battery energy we may want to buy overnight for later expensive home demand
     // ------------------------------
 
     // Cheapest import rate available in the cheap window
@@ -1935,21 +1984,83 @@ function simulateHourByHour({
       ? Math.min(...cheapImportHours.map(h => h.imp))
       : Math.min(...hours.map(h => h.imp)); // fallback
 
-    // Best export rate during hours where PV surplus exists (only matters when PV is available)
-    const pvSurplusHours = hours.filter(h => h.pvSurplus > 0.001);
-    const bestExportDuringPV = pvSurplusHours.length
-      ? Math.max(...pvSurplusHours.map(h => h.exp))
-      : 0;
+    const rtEff = chargeEff * dischargeEff;
 
-    // Round-trip efficiency (same as model assumptions)
-    const roundTripEff = 0.90;
+    // A) PV surplus that is better STORED than EXPORTED immediately
+    //
+    // We now reserve battery room for two kinds of solar:
+    //
+    // 1) Solar where exporting now is worse than avoiding later imports
+    //    (current export < cheapest off-peak import)
+    //
+    // 2) Solar where there is a better export opportunity later in the same day
+    //    (store now, export later at a higher export price)
+    let pvReserveInput = 0;
 
-    // If exporting PV later is better than "saving" cheap import for later,
-    // then we do NOT need to reserve battery space for PV.
-    const exportingPVBeatsStoringIt =
-      bestExportDuringPV > 0 &&
-      (bestExportDuringPV * roundTripEff) > cheapestImport;
+    for (let j = 0; j < hours.length; j++) {
+      const h = hours[j];
+      if (h.pvSurplus <= 0.001) continue;
 
+      const pvCouldChargeThisHour = Math.min(h.pvSurplus, maxChargeKW);
+
+      // Best export value from this hour onward
+      const laterBestExport = Math.max(
+        ...hours.slice(j).map((x) => Number(x.exp || 0))
+      );
+
+      // What is 1 kWh of solar worth if we store it for later home use?
+      // Benchmark it against the cheapest off-peak import we could buy instead.
+      const valueOfStoringForHome = cheapestImport * rtEff;
+
+      // Case 1: store PV for later home use
+      const shouldStoreForHome = valueOfStoringForHome > h.exp + 0.0005;
+
+      // Case 2: store PV because there is a genuinely better export hour later
+      const shouldStoreForLaterExport = laterBestExport > h.exp + 0.0005;
+
+      const shouldReserveRoomForThisPv = shouldStoreForHome || shouldStoreForLaterExport;
+
+      // Save the planner decision for the hourly execution layer
+      planStorePV[j] = shouldReserveRoomForThisPv;
+
+      if (dayStart === DEBUG_DAY_START) {
+        debugSim("PV RESERVE DECISION", {
+          hod: h.hod,
+          pvSurplus: h.pvSurplus,
+          exportNow: h.exp,
+          cheapestImport,
+          valueOfStoringForHome,
+          laterBestExport,
+          shouldStoreForHome,
+          shouldStoreForLaterExport,
+          shouldReserveRoomForThisPv,
+        });
+      }
+
+      if (shouldReserveRoomForThisPv) {
+        pvReserveInput += pvCouldChargeThisHour;
+      }
+    }
+
+    // Convert PV input into stored kWh inside the battery
+    const pvReserveStored = Math.min(pvReserveInput * chargeEff, socMax);
+
+    // B) Future expensive home-demand hours that are worth serving from the battery
+    // We only count hours where import later is more expensive than cheap off-peak import.
+    let futureExpensiveDemandDeliver = 0;
+
+    for (const h of hours) {
+      if (h.netLoad <= 0.001) continue;
+      if (h.imp <= cheapestImport + 0.0005) continue;
+
+      futureExpensiveDemandDeliver += Math.min(h.netLoad, maxDischargeKW);
+    }
+
+    // Convert deliverable battery output into stored kWh needed
+    const homeDemandReserveStored = Math.min(
+      futureExpensiveDemandDeliver / dischargeEff,
+      socMax
+    );
 
 
     // ---- A) Plan discharge-to-load: cover most expensive import hours first ----
@@ -1997,51 +2108,69 @@ function simulateHourByHour({
 
     if (allowGridCharge && capUsable > 0 && dispatchMode === "retail_rate" && tariff) {
 
-      // Round-trip efficiency (same as model)
-      const rtEff = chargeEff * dischargeEff;
-
-      const cheapestImport = cheapImportHours.length
-        ? Math.min(...cheapImportHours.map(h => h.imp))
-        : Math.min(...hours.map(h => h.imp));
-
-      // Best export price during the day (Flux peak export will naturally win)
-      const bestExport = Math.max(...hours.map(h => h.exp));
-
-      // Arbitrage profitable if: export value after losses beats cheapest import
-      // Add a tiny margin to avoid noise.
-      const arbitrageProfitable = exportFromBatteryEnabled && (bestExport * rtEff > cheapestImport + 0.005);
-
-      // 1) Estimate how much PV surplus could charge the battery today (stored energy)
-      let pvPotentialIn = 0; // kWh input into battery (before efficiency)
-      for (const h of hours) {
-        if (h.pvSurplus <= 0) continue;
-        pvPotentialIn += Math.min(h.pvSurplus, maxChargeKW);
-      }
-      const pvPotentialStored = pvPotentialIn * chargeEff;
-
-      // 2) Decide how much empty space to reserve for PV.
-      // If arbitrage is profitable, we reserve MUCH LESS space (because we'd rather export PV high).
-      const pvReserveCap = arbitrageProfitable ? 0.15 : 0.70; // 15% when arbitrage, else 70%
-      const pvReserveStored = Math.min(pvPotentialStored, socMax * pvReserveCap);
-
-      // 3) Target SOC:
-      // - Normal case: aim for pct target but never exceed capacity minus PV reserve.
-      // - Arbitrage case: aim higher (up to the allowed max), because cheap->export is profitable.
+      // 1) Base overnight target from the UI setting
       const pctTargetSOC = socMax * (gridChargeTargetPct / 100);
 
-      // If exporting PV is better than storing it, don't reserve PV space
-      const effectivePvReserveStored = exportingPVBeatsStoringIt ? 0 : pvReserveStored;
+      // 2) If energy trading is enabled, work out how much EXTRA spare capacity
+      // could be used for profitable arbitrage later.
+      let arbitrageReserveStored = 0;
 
-      // Never exceed this, or we block reserved PV space (unless we decided no reserve needed)
-      const maxAllowedSOC = Math.max(socMin, socMax - effectivePvReserveStored);
+      if (allowEnergyTrading && exportFromBatteryEnabled) {
+        const profitableExportHours = hours.filter((h) => {
+          return h.exp > 0 && (h.exp * rtEff) > (cheapestImport + 0.005);
+        });
 
+        let arbitrageReserveDeliver = 0;
+        for (const h of profitableExportHours) {
+          arbitrageReserveDeliver += maxDischargeKW;
+        }
 
-      // If arbitrage is profitable, push targetSOC up to maxAllowedSOC (fill as much as we're allowing)
-      const targetSOC = arbitrageProfitable
-        ? maxAllowedSOC
-        : Math.min(pctTargetSOC, maxAllowedSOC);
+        arbitrageReserveStored = Math.min(
+          arbitrageReserveDeliver / dischargeEff,
+          socMax
+        );
+      }
 
-      // 4) Only grid-charge if targetSOC is above current SOC
+      // 3) Keep room for low-value / better-later solar
+      const maxAllowedSOCForSolarRoom = Math.max(socMin, socMax - pvReserveStored);
+
+      // 4) First reserve battery for future expensive home demand
+      let targetSOC = Math.min(pctTargetSOC, homeDemandReserveStored);
+
+      // 5) If energy trading is ON, allow extra overnight charge for arbitrage,
+      // but only using spare capacity beyond the home-demand reserve.
+      if (allowEnergyTrading && exportFromBatteryEnabled) {
+        const spareCapacityAfterHomeReserve = Math.max(0, socMax - homeDemandReserveStored);
+        const usableArbitrageStored = Math.min(arbitrageReserveStored, spareCapacityAfterHomeReserve);
+
+        targetSOC = Math.max(
+          targetSOC,
+          Math.min(pctTargetSOC, homeDemandReserveStored + usableArbitrageStored)
+        );
+      }
+
+      // 6) Never exceed the level that would block solar we want to keep
+      targetSOC = Math.min(targetSOC, maxAllowedSOCForSolarRoom);
+
+      if (dayStart === DEBUG_DAY_START) {
+        debugSim("----- PHASE 3 DAY PLAN DEBUG -----");
+        debugSim("dayStart:", dayStart);
+        debugSim("cheapestImport:", cheapestImport);
+        debugSim("pvReserveStored:", pvReserveStored);
+        debugSim("homeDemandReserveStored:", homeDemandReserveStored);
+        debugSim("arbitrageReserveStored:", arbitrageReserveStored);
+        debugSim("pctTargetSOC:", pctTargetSOC);
+        debugSim("maxAllowedSOCForSolarRoom:", maxAllowedSOCForSolarRoom);
+        debugSim("targetSOC:", targetSOC);
+        debugSim("allowEnergyTrading:", allowEnergyTrading);
+        debugSim("exportFromBatteryEnabled:", exportFromBatteryEnabled);
+        debugSim(
+          "planGridChargeIn:",
+          planGridChargeIn.map((v) => Math.round((v || 0) * 1000) / 1000)
+        );
+      }
+
+      // 6) Only grid-charge if targetSOC is above current SOC
       // IMPORTANT: do NOT mutate the real `soc` inside planning.
       // Use `socAt` (planner's simulated SOC).
       let socAt = soc; // start planning from current real SOC
@@ -2074,7 +2203,7 @@ function simulateHourByHour({
     // ---- C) Plan export-from-battery (reserve for future expensive imports) ----
     // Export is allowed, but only the portion that is truly surplus after reserving energy
     // to avoid future imports that cost MORE than exporting now.
-    if (exportFromBatteryEnabled && allowEnergyTrading) {
+    if (exportFromBatteryEnabled) {
       const rtEff = chargeEff * dischargeEff;
 
       // For "is this export hour worth considering?"
@@ -2094,23 +2223,33 @@ function simulateHourByHour({
         // If export is flat all day, this will allow all hours (since bestExport == exp).
         if (current.exp < bestExport - 0.001) continue;
 
-        // ------------------------------------------------------------
-        // 1) Reserve deliverable energy for future hours where importing would cost more
-        //    than exporting now (imp > current.exp).
+        // If energy trading is OFF, only export from battery in hours that are
+        // genuinely better than earlier PV-surplus export hours.
         //
-        // Important: if grid charging is OFF, the discharge-to-load plan may be 0 in some
-        // expensive hours (because PV later refills). In that case, reserve based on netLoad.
+        // This prevents silly "store then export later at the same flat export rate" behaviour.
+        if (!allowEnergyTrading) {
+          const earlierPvWithLowerExport = hours
+            .slice(0, idx)
+            .some((h) => h.pvSurplus > 0.001 && h.exp < current.exp - 0.0005);
+
+          if (!earlierPvWithLowerExport) continue;
+        }
+
+        // ------------------------------------------------------------
+        // 1) Reserve deliverable energy for future HOME demand first.
+        //
+        // We should only export battery energy that is genuinely surplus after
+        // protecting later household demand.
         // ------------------------------------------------------------
         let reserveDeliver = 0;
         for (let j = idx; j < dayLen; j++) {
           const h = hours[j];
 
           if (h.netLoad <= 0) continue;
-          if (h.imp <= current.exp + 0.0005) continue; // small margin to avoid noise
 
           const needDeliver = allowGridCharge
-            ? Math.max(0, Number(planDischargeToLoad[h.i] || 0))   // planner-led case
-            : Math.min(h.netLoad, maxDischargeKW);                 // PV-refill case
+            ? Math.max(0, Number(planDischargeToLoad[h.i] || 0))
+            : Math.min(h.netLoad, maxDischargeKW);
 
           reserveDeliver += Math.min(needDeliver, maxDischargeKW);
         }
@@ -2181,7 +2320,7 @@ function simulateHourByHour({
       }
     }
 
-    return { planDischargeToLoad, planGridChargeIn, planDischargeToExport };
+    return { planDischargeToLoad, planGridChargeIn, planDischargeToExport, planStorePV };
   }
 
 
@@ -2190,7 +2329,7 @@ function simulateHourByHour({
   while (t < n) {
     const dayStart = t;
     const dayLen = Math.min(24, n - dayStart);
-    const { planDischargeToLoad, planGridChargeIn, planDischargeToExport } = planDayRetailRate(dayStart, dayLen);
+    const { planDischargeToLoad, planGridChargeIn, planDischargeToExport, planStorePV } = planDayRetailRate(dayStart, dayLen);
 
     for (let i = 0; i < dayLen; i++) {
       const idx = dayStart + i;
@@ -2235,9 +2374,20 @@ function simulateHourByHour({
         }
       }
 
-      // 3) Charge battery from remaining PV
+      // 3) Charge battery from remaining PV only if the planner says this PV is worth storing
       let chargedFromPV = 0;
-      if (capUsable > 0 && pvLeft > 0 && soc < socMax) {
+      const shouldStorePVNow = !allowGridCharge || !!planStorePV[i];
+
+      if (idx >= DEBUG_DAY_START && idx < DEBUG_DAY_START + 24) {
+        debugSim("PV STORE EXECUTION", {
+          idx,
+          hod: hourOfDay[idx],
+          shouldStorePVNow,
+          pvLeftBeforeStore: pvLeft,
+        });
+      }
+
+      if (capUsable > 0 && pvLeft > 0 && soc < socMax && shouldStorePVNow) {
         const room = socMax - soc;
         const pvToBattery = Math.min(pvLeft, maxChargeKW, room / chargeEff);
         const stored = pvToBattery * chargeEff;
@@ -2347,21 +2497,55 @@ function simulateHourByHour({
         capUsable > 0 &&
         dispatchMode === "retail_rate" &&
         exportFromBatteryEnabled &&
-        allowEnergyTrading &&
         loadLeft <= 0 // ✅ critical safeguard
       ) {
         const plannedExp = Math.max(0, Number(planDischargeToExport[i] || 0));
 
         if (plannedExp > 0 && soc > socMin) {
-          const availableStored = soc - socMin;
-          const canDeliver = availableStored * dischargeEff;
+          let deliver = 0;
+          let storedOut = 0;
 
-          const deliver = Math.min(plannedExp, canDeliver, maxDischargeKW);
+          if (allowEnergyTrading) {
+            // Phase 3 behaviour will allow exporting any surplus battery energy
+            const availableStored = soc - socMin;
+            const canDeliver = availableStored * dischargeEff;
 
-          if (deliver > 0) {
-            soc -= deliver / dischargeEff;
-            dischargedToExport = deliver;
-            hourly.battDischargeToExport[idx] = deliver;
+            deliver = Math.min(plannedExp, canDeliver, maxDischargeKW);
+
+            if (deliver > 0) {
+              storedOut = deliver / dischargeEff;
+
+              const totalStoredTracked = socFromPV + socFromGrid;
+              const pvShare = totalStoredTracked > 0 ? socFromPV / totalStoredTracked : 0;
+              const gridShare = totalStoredTracked > 0 ? socFromGrid / totalStoredTracked : 0;
+
+              const pvStoredOut = storedOut * pvShare;
+              const gridStoredOut = storedOut * gridShare;
+
+              soc -= storedOut;
+              socFromPV = Math.max(0, socFromPV - pvStoredOut);
+              socFromGrid = Math.max(0, socFromGrid - gridStoredOut);
+
+              dischargedToExport = deliver;
+              hourly.battDischargeToExport[idx] = deliver;
+            }
+          } else {
+            // Phase 2 behaviour:
+            // only export solar-origin energy from the battery
+            const availablePvStored = Math.max(0, socFromPV);
+            const canDeliverPv = availablePvStored * dischargeEff;
+
+            deliver = Math.min(plannedExp, canDeliverPv, maxDischargeKW);
+
+            if (deliver > 0) {
+              storedOut = deliver / dischargeEff;
+
+              soc -= storedOut;
+              socFromPV = Math.max(0, socFromPV - storedOut);
+
+              dischargedToExport = deliver;
+              hourly.battDischargeToExport[idx] = deliver;
+            }
           }
         }
       }
@@ -2395,6 +2579,27 @@ function simulateHourByHour({
         Number(direct || 0) -
         Number(chargedFromPV || 0)
       );
+      // Debug first summer-like day block if needed
+      if (idx >= DEBUG_DAY_START && idx < DEBUG_DAY_START + 24) {
+        debugSim("SUMMER FLOW DEBUG", {
+          idx,
+          hod: hourOfDay[idx],
+          pv,
+          load,
+          direct,
+          chargedFromPV,
+          chargedFromGrid,
+          dischargedToLoad,
+          dischargedToExport,
+          pvLeft,
+          loadLeft,
+          exported,
+          imported,
+          soc,
+          socFromPV,
+          socFromGrid,
+        });
+      }
     }
 
     t += dayLen;
