@@ -281,7 +281,7 @@ async function upsertBrevoContact(contact, { baseListId, marketingConsent = fals
 
 const FRONTEND_URL =
   process.env.FRONTEND_URL ||
-  "http://localhost:3000";
+  "https://www.zeyzersolar.com";
 
   //http://localhost:3000
   //https://www.zeyzersolar.com
@@ -302,8 +302,8 @@ async function generateQuotePdfBuffer({ quote, form, roofs }) {
 
   const browser = await puppeteer.launch({
     headless: true,
-    protocolTimeout: 120000,
-    timeout: 120000,
+    protocolTimeout: 80000,
+    timeout: 80000,
     args: [
       "--no-sandbox",
       "--disable-setuid-sandbox",
@@ -332,7 +332,7 @@ async function generateQuotePdfBuffer({ quote, form, roofs }) {
 
     await page.goto(pdfUrl, {
       waitUntil: ["load", "domcontentloaded", "networkidle0"],
-      timeout: 120000,
+      timeout: 80000,
     });
 
     await page.emulateMediaType("print");
@@ -347,7 +347,7 @@ async function generateQuotePdfBuffer({ quote, form, roofs }) {
           Array.from(document.images).every(
             (img) => img.complete && img.naturalHeight > 0
           ),
-        { timeout: 30000 }
+        { timeout: 10000 }
       )
       .catch(() => {
         console.log("Some images did not finish loading before PDF render");
