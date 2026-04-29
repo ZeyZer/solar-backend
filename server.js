@@ -3,13 +3,14 @@ const express = require("express");
 const cors = require("cors");
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 require("dotenv").config();
 const SibApiV3Sdk = require("sib-api-v3-sdk");
 const MCS_TABLES = require("./data/mcs_self_consumption_tables.json")?.tables;
 
 const app = express();
 const PORT = process.env.PORT || 4000;
-let latestPdfQuoteData = null;
+const pdfQuoteDataById = new Map();
 
 // ====== EXPRESS SETUP ======
 app.use(cors());
@@ -95,12 +96,20 @@ app.post("/api/quote/pdf", async (req, res) => {
   }
 });
 
-app.get("/api/quote/pdf-data", (req, res) => {
-  if (!latestPdfQuoteData) {
-    return res.status(404).json({ error: "No PDF quote data found." });
+app.get("/api/quote/pdf-data/:id", (req, res) => {
+  const { id } = req.params;
+
+  const data = pdfQuoteDataById.get(id);
+
+  if (!data) {
+    return res.status(404).json({ error: "No PDF quote data found for this ID." });
   }
 
-  res.json(latestPdfQuoteData);
+  res.json(data);
+});
+
+app.get("/api/quote/pdf-data", (req, res) => {
+  res.status(400).json({ error: "Missing PDF ID." });
 });
 
 
@@ -281,7 +290,7 @@ async function upsertBrevoContact(contact, { baseListId, marketingConsent = fals
 
 const FRONTEND_URL =
   process.env.FRONTEND_URL ||
-  "https://www.zeyzersolar.com";
+  "http://localhost:3000";
 
   //http://localhost:3000
   //https://www.zeyzersolar.com
@@ -291,13 +300,15 @@ async function generateQuotePdfBuffer({ quote, form, roofs }) {
     throw new Error("Missing quote or form data.");
   }
 
-  latestPdfQuoteData = {
+  const pdfId = crypto.randomUUID();
+
+  pdfQuoteDataById.set(pdfId, {
     quote,
     form,
     roofs: roofs || [],
-  };
+  });
 
-  console.log("Saved latest PDF quote data");
+  console.log("Saved PDF quote data for ID:", pdfId);
   console.log("Launching Puppeteer...");
 
   const browser = await puppeteer.launch({
@@ -321,7 +332,7 @@ async function generateQuotePdfBuffer({ quote, form, roofs }) {
   try {
     const page = await browser.newPage();
 
-    const pdfUrl = `${FRONTEND_URL}/#/quote-pdf`;
+    const pdfUrl = `${FRONTEND_URL}/#/quote-pdf?pdfId=${encodeURIComponent(pdfId)}`;
     console.log("Opening PDF page:", pdfUrl);
 
     await page.setViewport({
@@ -379,6 +390,7 @@ async function generateQuotePdfBuffer({ quote, form, roofs }) {
 
     return Buffer.from(pdfBytes);
   } finally {
+    pdfQuoteDataById.delete(pdfId);
     await browser.close();
   }
 }
@@ -441,38 +453,8 @@ async function sendQuoteEmailWithAttachment(contact, quote, input, pdfBuffer, te
   console.log("Brevo quote email sent to:", contact.email, "using template:", templateId);
 }
 
-
 // ====== QUOTE CONFIG ======
-const CONFIG = {
-  baseCostPerKwp: 800,
-  batteryCostPerKwh: 280,
-  scaffolding: {
-    firstRoof: 600,
-    additionalRoof: 400,
-  },
-  priceRangeFactor: 0.10,
-  assumedPricePerKWh: 0.28,
-  assumedSegPricePerKWh: 0.12,
-
-  standingChargePerDay: 0.60,
-  energyInflationRate: 0.06,
-
-  irradianceFactor: 0.85,
-  roofKwpCaps: {
-    small: 2.5,
-    medium: 4.0,
-    large: 6.5,
-  },
-  panelOptions: {
-    value: { watt: 430, multiplier: 1.0 },
-    premium: { watt: 460, multiplier: 1.1 },
-  },
-  regionalMultipliers: {
-    default: 1.0,
-    london: 1.1,
-    scotland: 0.95,
-  },
-};
+const { CONFIG } = require("./config/quoteConfig");
 
 // ====== POSTCODE HELPERS ======
 function validateAndNormalisePostcode(rawPostcode) {
@@ -4172,13 +4154,44 @@ app.post("/api/quote", async (req, res) => {
     const { name, email, address, phone } = input;
 
     const leads = readLeads();
+
     leads.push({
       createdAt: new Date().toISOString(),
       contact: { name, email, address, phone },
-      inputs: input,
-      quote,
+      inputSummary: {
+        postcode: input.postcode,
+        annualKWh: input.annualKWh,
+        monthlyBill: input.monthlyBill,
+        roofSize: input.roofSize,
+        shading: input.shading,
+        occupancyProfile: input.occupancyProfile,
+        panelOption: input.panelOption,
+        batteryKWh: input.batteryKWh,
+        panelCount: input.panelCount,
+        roofs: input.roofs,
+        extras: input.extras,
+        tariffBefore: input.tariffBefore,
+        tariffAfter: input.tariffAfter,
+      },
+      quoteSummary: {
+        systemSizeKwp: quote.systemSizeKwp,
+        panelCount: quote.panelCount,
+        panelWatt: quote.panelWatt,
+        estAnnualGenerationKWh: quote.estAnnualGenerationKWh,
+        priceLow: quote.priceLow,
+        priceHigh: quote.priceHigh,
+        annualBillSavings: quote.annualBillSavings,
+        annualSegIncome: quote.annualSegIncome,
+        totalAnnualBenefit: quote.totalAnnualBenefit,
+        simplePaybackYears: quote.simplePaybackYears,
+        selfConsumptionModel: quote.selfConsumptionModel,
+        recommendedBatteryKWh:
+          quote.batteryRecommendations?.bestPayback?.batteryKWhUsable ?? null,
+      },
     });
-    saveLeads(leads);
+
+    // Keep only the latest 200 local quote records so this file cannot grow forever.
+    saveLeads(leads.slice(-200));
 
     res.json(quote);
 

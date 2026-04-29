@@ -1,3 +1,8 @@
 node_modules
 .env
 leads.json
+
+# Local/private lead data
+leads.json
+leads_old.json
+leads*.json
