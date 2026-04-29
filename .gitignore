@@ -6,3 +6,18 @@ leads.json
 leads.json
 leads_old.json
 leads*.json
+.env.local
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Local/private lead data
+leads.json
+leads_old.json
+leads*.json
+private-backups/
+
+# Debug files
+debug-pdf-page.png

@@ -4,13 +4,30 @@ const cors = require("cors");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
-require("dotenv").config();
-const SibApiV3Sdk = require("sib-api-v3-sdk");
-const MCS_TABLES = require("./data/mcs_self_consumption_tables.json")?.tables;
 
 const app = express();
 const PORT = process.env.PORT || 4000;
 const pdfQuoteDataById = new Map();
+
+// ======== IMPORTED FUNCTIONS AND FILES =========
+// MCS TABLES
+const MCS_TABLES = require("./data/mcs_self_consumption_tables.json")?.tables;
+
+// POSTCODE HELPERS
+const {validateAndNormalisePostcode, getPostcodeArea,} = require("./utils/postcodeUtils");
+
+// QUOTE CONFIG
+const { CONFIG } = require("./config/quoteConfig");
+
+// LEAD STORAGE
+const {readLeads, saveLeads,} = require("./services/leadStorageService");
+
+// BREVO SERVICES
+const {BREVO_TEMPLATE_ID_QUOTE, BREVO_TEMPLATE_ID_CALL, BREVO_QUOTE_LIST_ID, BREVO_CALL_LIST_ID, upsertBrevoContact, sendQuoteEmailWithAttachment,} = require("./services/brevoService");
+
+// PDF SETUP
+const {generateQuotePdfBuffer, getLatestPdfQuoteData,} = require("./services/pdfService");
+
 
 // ====== EXPRESS SETUP ======
 app.use(cors());
@@ -27,51 +44,10 @@ if (!fetchFn) {
   fetchFn = (...args) => import("node-fetch").then(({ default: fetch }) => fetch(...args));
 }
 
-function readLeads() {
-  try {
-    if (!fs.existsSync(LEADS_FILE)) {
-      console.log("leads.json does not exist yet, starting with empty array.");
-      return [];
-    }
-    const data = fs.readFileSync(LEADS_FILE, "utf8");
-    if (!data.trim()) {
-      console.log("leads.json is empty, starting with empty array.");
-      return [];
-    }
-    return JSON.parse(data);
-  } catch (err) {
-    console.error("Error reading leads file:", err.message);
-    return [];
-  }
-}
-
-function saveLeads(leads) {
-  try {
-    fs.writeFileSync(LEADS_FILE, JSON.stringify(leads, null, 2));
-    console.log(`Saved leads to ${LEADS_FILE}. Total leads: ${leads.length}`);
-  } catch (err) {
-    console.error("Error writing leads file:", err.message);
-  }
-}
-
-function formatUkPhoneForBrevo(phone) {
-  const raw = String(phone || "").replace(/\s+/g, "");
-
-  if (!raw) return "";
-
-  if (raw.startsWith("+44")) return raw;
-  if (raw.startsWith("0044")) return `+${raw.slice(2)}`;
-  if (raw.startsWith("0")) return `+44${raw.slice(1)}`;
-
-  return raw;
-}
-
 
 // ====================
 // PDF STUFF
 // ====================
-const puppeteer = require("puppeteer");
-
 console.log("Registering /api/quote/pdf route");
 
 app.post("/api/quote/pdf", async (req, res) => {
@@ -96,20 +72,14 @@ app.post("/api/quote/pdf", async (req, res) => {
   }
 });
 
-app.get("/api/quote/pdf-data/:id", (req, res) => {
-  const { id } = req.params;
+app.get("/api/quote/pdf-data", (req, res) => {
+  const latestPdfQuoteData = getLatestPdfQuoteData();
 
-  const data = pdfQuoteDataById.get(id);
-
-  if (!data) {
-    return res.status(404).json({ error: "No PDF quote data found for this ID." });
+  if (!latestPdfQuoteData) {
+    return res.status(404).json({ error: "No PDF quote data found." });
   }
 
-  res.json(data);
-});
-
-app.get("/api/quote/pdf-data", (req, res) => {
-  res.status(400).json({ error: "Missing PDF ID." });
+  res.json(latestPdfQuoteData);
 });
 
 
@@ -209,275 +179,6 @@ function getTariffPreset(type = "standard") {
   };
 }
 
-
-
-// ====== BREVO SETUP ======
-const brevoClient = SibApiV3Sdk.ApiClient.instance;
-brevoClient.authentications["api-key"].apiKey = process.env.BREVO_API_KEY || "";
-brevoClient.authentications["partner-key"].apiKey = process.env.BREVO_API_KEY || "";
-console.log("BREVO key loaded:", (process.env.BREVO_API_KEY || "").slice(0, 8));
-
-const brevoContactsApi = new SibApiV3Sdk.ContactsApi();
-const brevoEmailApi = new SibApiV3Sdk.TransactionalEmailsApi();
-
-const BREVO_TEMPLATE_ID_QUOTE = process.env.BREVO_TEMPLATE_ID_QUOTE
-  ? Number(process.env.BREVO_TEMPLATE_ID_QUOTE)
-  : undefined;
-
-const BREVO_TEMPLATE_ID_CALL = process.env.BREVO_TEMPLATE_ID_CALL
-  ? Number(process.env.BREVO_TEMPLATE_ID_CALL)
-  : undefined;
-
-const BREVO_QUOTE_LIST_ID = process.env.BREVO_QUOTE_LIST_ID
-  ? Number(process.env.BREVO_QUOTE_LIST_ID)
-  : undefined;
-
-const BREVO_CALL_LIST_ID = process.env.BREVO_CALL_LIST_ID
-  ? Number(process.env.BREVO_CALL_LIST_ID)
-  : undefined;
-
-const BREVO_MARKETING_LIST_ID = process.env.BREVO_MARKETING_LIST_ID
-  ? Number(process.env.BREVO_MARKETING_LIST_ID)
-  : undefined;
-
-async function upsertBrevoContact(contact, { baseListId, marketingConsent = false, leadType = "" } = {}) {
-  if (!process.env.BREVO_API_KEY) {
-    console.log("No BREVO_API_KEY set, skipping Brevo sync.");
-    return;
-  }
-
-  if (!contact?.email) {
-    console.log("No email on contact, skipping Brevo sync.");
-    return;
-  }
-
-  const listIds = [];
-  if (baseListId) listIds.push(baseListId);
-  if (marketingConsent && BREVO_MARKETING_LIST_ID) listIds.push(BREVO_MARKETING_LIST_ID);
-
-  const attributes = {
-    FIRSTNAME: contact.name || "",
-    ADDRESS: contact.address || "",
-    SMS: formatUkPhoneForBrevo(contact.phone),
-    LEAD_TYPE: leadType || "",
-    MARKETING_CONSENT: !!marketingConsent,
-  };
-
-  const createContact = new SibApiV3Sdk.CreateContact();
-  createContact.email = contact.email;
-  createContact.attributes = attributes;
-  createContact.listIds = listIds;
-
-  try {
-    await brevoContactsApi.createContact(createContact);
-    console.log("Brevo contact created:", contact.email);
-  } catch (err) {
-    if (err.response && err.response.body && err.response.body.code === "duplicate_parameter") {
-      const updateContact = new SibApiV3Sdk.UpdateContact();
-      updateContact.attributes = attributes;
-      updateContact.listIds = listIds;
-      await brevoContactsApi.updateContact(contact.email, updateContact);
-      console.log("Brevo contact updated:", contact.email);
-    } else {
-      throw err;
-    }
-  }
-}
-
-//============//
-// PDF SET UP //
-//============//
-
-const FRONTEND_URL =
-  process.env.FRONTEND_URL ||
-  "http://localhost:3000";
-
-  //http://localhost:3000
-  //https://www.zeyzersolar.com
-
-async function generateQuotePdfBuffer({ quote, form, roofs }) {
-  if (!quote || !form) {
-    throw new Error("Missing quote or form data.");
-  }
-
-  const pdfId = crypto.randomUUID();
-
-  pdfQuoteDataById.set(pdfId, {
-    quote,
-    form,
-    roofs: roofs || [],
-  });
-
-  console.log("Saved PDF quote data for ID:", pdfId);
-  console.log("Launching Puppeteer...");
-
-  const browser = await puppeteer.launch({
-    headless: true,
-    protocolTimeout: 80000,
-    timeout: 80000,
-    args: [
-      "--no-sandbox",
-      "--disable-setuid-sandbox",
-      "--disable-dev-shm-usage",
-      "--disable-gpu",
-      "--font-render-hinting=none",
-      "--disable-background-timer-throttling",
-      "--disable-backgrounding-occluded-windows",
-      "--disable-renderer-backgrounding",
-    ],
-  });
-
-  console.log("Puppeteer launched successfully");
-
-  try {
-    const page = await browser.newPage();
-
-    const pdfUrl = `${FRONTEND_URL}/#/quote-pdf?pdfId=${encodeURIComponent(pdfId)}`;
-    console.log("Opening PDF page:", pdfUrl);
-
-    await page.setViewport({
-      width: 1240,
-      height: 1754,
-      deviceScaleFactor: 1,
-    });
-
-    await page.goto(pdfUrl, {
-      waitUntil: ["load", "domcontentloaded", "networkidle0"],
-      timeout: 80000,
-    });
-
-    await page.emulateMediaType("print");
-
-    // Wait for fonts.
-    await page.evaluateHandle("document.fonts.ready");
-
-    // Wait for images more patiently on Render.
-    await page
-      .waitForFunction(
-        () =>
-          Array.from(document.images).every(
-            (img) => img.complete && img.naturalHeight > 0
-          ),
-        { timeout: 10000 }
-      )
-      .catch(() => {
-        console.log("Some images did not finish loading before PDF render");
-      });
-
-    // Let React/layout/print CSS settle.
-    await page.waitForTimeout?.(2500).catch?.(() => null);
-    await new Promise((resolve) => setTimeout(resolve, 2500));
-
-    // Force one layout pass before printing.
-    await page.evaluate(() => {
-      document.body.offsetHeight;
-      window.scrollTo(0, 0);
-    });
-
-    console.log("/quote-pdf page loaded and settled");
-
-    const pdfBytes = await page.pdf({
-      format: "A4",
-      printBackground: true,
-      preferCSSPageSize: true,
-      margin: {
-        top: "0mm",
-        bottom: "0mm",
-        left: "0mm",
-        right: "0mm",
-      },
-    });
-
-    return Buffer.from(pdfBytes);
-  } finally {
-    pdfQuoteDataById.delete(pdfId);
-    await browser.close();
-  }
-}
-
-async function sendQuoteEmailWithAttachment(contact, quote, input, pdfBuffer, templateId) {
-  if (!process.env.BREVO_API_KEY) {
-    console.log("No BREVO_API_KEY set, skipping Brevo email send.");
-    return;
-  }
-
-  if (!templateId) {
-    console.log("No templateId provided, skipping Brevo email send.");
-    return;
-  }
-
-  if (!pdfBuffer) {
-    console.log("No pdfBuffer provided, skipping Brevo email send.");
-    return;
-  }
-
-  const pdfBase64 = Buffer.from(pdfBuffer).toString("base64");
-
-  console.log("PDF attachment bytes:", Buffer.from(pdfBuffer).length);
-  console.log("PDF attachment base64 length:", pdfBase64.length);
-
-  const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
-  sendSmtpEmail.to = [{ email: contact.email, name: contact.name || "" }];
-  sendSmtpEmail.templateId = templateId;
-
-  sendSmtpEmail.params = {
-    name: contact.name || "",
-    address: contact.address || "",
-    lead_type: input?.leadType || "",
-
-    system_kwp: quote.systemSizeKwp,
-    panel_count: quote.panelCount,
-    panel_watt: quote.panelWatt,
-    annual_kwh: quote.estAnnualGenerationKWh,
-    price_low: quote.priceLow,
-    price_high: quote.priceHigh,
-
-    battery_kwh: input?.batteryKWh || 0,
-    bird_protection: input?.extras?.birdProtection ? "Yes" : "No",
-    ev_charger: input?.extras?.evCharger ? "Yes" : "No",
-
-    annual_savings: quote.annualBillSavings || 0,
-    seg_income: quote.annualSegIncome || 0,
-    total_benefit: quote.totalAnnualBenefit || 0,
-    payback_years: quote.simplePaybackYears || "",
-  };
-
-  sendSmtpEmail.attachment = [
-    {
-      name: "solar-quote.pdf",
-      content: pdfBase64,
-    },
-  ];
-
-  await brevoEmailApi.sendTransacEmail(sendSmtpEmail);
-  console.log("Brevo quote email sent to:", contact.email, "using template:", templateId);
-}
-
-// ====== QUOTE CONFIG ======
-const { CONFIG } = require("./config/quoteConfig");
-
-// ====== POSTCODE HELPERS ======
-function validateAndNormalisePostcode(rawPostcode) {
-  if (!rawPostcode || typeof rawPostcode !== "string") {
-    throw new Error("Postcode is required.");
-  }
-
-  const cleaned = rawPostcode.toUpperCase().replace(/\s+/g, "");
-  if (cleaned.length < 5) throw new Error("Postcode looks too short.");
-
-  const formatted = `${cleaned.slice(0, -3)} ${cleaned.slice(-3)}`;
-  const re = /^[A-Z]{1,2}\d[A-Z\d]?\s\d[A-Z]{2}$/;
-
-  if (!re.test(formatted)) throw new Error("Postcode format is not recognised.");
-  return formatted;
-}
-
-function getPostcodeArea(postcode) {
-  if (!postcode) return null;
-  const outward = postcode.trim().toUpperCase().split(" ")[0];
-  const match = outward.match(/^[A-Z]{1,2}/);
-  return match ? match[0] : null;
-}
 
 // ===== PVGIS =====
 const PVGIS = {
