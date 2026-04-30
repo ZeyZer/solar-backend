@@ -30,12 +30,14 @@ const {BREVO_TEMPLATE_ID_QUOTE, BREVO_TEMPLATE_ID_CALL, BREVO_QUOTE_LIST_ID, BRE
 
 // PDF SETUP
 const {generateQuotePdfBuffer, getLatestPdfQuoteData,} = require("./services/pdfService");
+const pdfRoutes = require("./routes/pdfRoutes");
 
 
 // ====== EXPRESS SETUP ======
 app.use(cors());
 app.use(express.json({ limit: "2mb" }));
 app.use("/api/lead", leadRoutes);
+app.use("/api/quote", pdfRoutes);
 
 console.log("[MCS] Loaded tables keys:", MCS_TABLES ? Object.keys(MCS_TABLES) : "❌ NOT LOADED");
 
@@ -47,44 +49,6 @@ let fetchFn = global.fetch;
 if (!fetchFn) {
   fetchFn = (...args) => import("node-fetch").then(({ default: fetch }) => fetch(...args));
 }
-
-
-// ====================
-// PDF STUFF
-// ====================
-console.log("Registering /api/quote/pdf route");
-
-app.post("/api/quote/pdf", async (req, res) => {
-  try {
-    const { quote, form, roofs } = req.body || {};
-
-    const pdf = await generateQuotePdfBuffer({
-      quote,
-      form,
-      roofs: roofs || [],
-    });
-
-    res.set({
-      "Content-Type": "application/pdf",
-      "Content-Disposition": 'attachment; filename="solar-quote.pdf"',
-    });
-
-    res.send(pdf);
-  } catch (err) {
-    console.error("PDF generation failed:", err);
-    res.status(500).json({ error: "PDF generation failed." });
-  }
-});
-
-app.get("/api/quote/pdf-data", (req, res) => {
-  const latestPdfQuoteData = getLatestPdfQuoteData();
-
-  if (!latestPdfQuoteData) {
-    return res.status(404).json({ error: "No PDF quote data found." });
-  }
-
-  res.json(latestPdfQuoteData);
-});
 
 
 // ==============================
