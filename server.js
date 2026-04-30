@@ -34,6 +34,10 @@ const {normalizeTariff, isRetailRateTariff, rateForHour, computeHourlyBilling,} 
 // LOAD PROFILES
 const {buildDailyUsageProfile, buildHourlyLoadForSeries,} = require("./services/loadProfileService");
 
+// FINANCIAL SERVICES
+const {round2, solarDegradationMultiplier, makePaybackAndLifetimeSeries,} = require("./services/financialService");
+
+
 
 // ====== EXPRESS SETUP ======
 app.use(cors());
@@ -126,7 +130,7 @@ const PVGIS = {
 function recommendBatterySizes({
   simulateFn,                 // function(batteryKWhUsable) => { annualBenefit, simplePaybackYears, annualImportedKWh, annualExportedKWh, annualSelfUsedKWh }
   minBatteryKWh = 1,          // ✅ new: force minimum
-  maxBatteryKWh = 39,         // ✅ new: cap at 28
+  maxBatteryKWh = 39,         // ✅ new: cap at 39
   stepKWh = 1,                // ✅ new: step 1kWh
 }) {
   const results = [];
@@ -172,178 +176,6 @@ function recommendBatterySizes({
   return {
     bestPayback,  // ✅ only recommendation we keep
     curve: results,
-  };
-}
-
-
-// ------------------------------
-// Financial helpers (monthly bills + payback + lifetime savings)
-// ------------------------------
-const MONTH_LABELS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-
-function round2(n) {
-  return Math.round((Number(n) + Number.EPSILON) * 100) / 100;
-}
-
-function getPanelDegradationRate(panelOption) {
-  const s = String(panelOption || "").toLowerCase();
-  if (s.includes("premium")) return 0.0035; // 0.35%
-  if (s.includes("value")) return 0.0040; // 0.40%
-  // default
-  return 0.0040;
-}
-
-function solarDegradationMultiplier(year, panelOption) {
-  // year is 1..N
-  const firstYearDrop = 0.01; // 1% drop applies AFTER year 1 (i.e. starting year 2)
-  const annualRate = getPanelDegradationRate(panelOption);
-
-  if (year <= 0) return 1;
-
-  // Year 1: no degradation yet (it happens at end of year)
-  if (year === 1) return 1;
-
-  // Year 2: apply the 1% first-year drop
-  if (year === 2) return 1 - firstYearDrop;
-
-  // Year 3+: keep the first-year drop, then compound ongoing degradation
-  return (1 - firstYearDrop) * Math.pow(1 - annualRate, year - 2);
-}
-
-
-function makeMonthlyFinancialSeries({
-  monthlyLoadKWh,
-  monthlyImportedKWh,
-  monthlyExportedKWh,
-
-  // ✅ split tariffs
-  importPriceBefore,     // baseline £/kWh
-  importPriceAfter,      // after-solar £/kWh
-  segPriceAfter,         // after-solar export £/kWh
-
-  // Backward compatibility (if older callers still pass importPrice/segPrice)
-  importPrice,
-  segPrice,
-
-  standingChargePerDay = 0,
-}) {
-  const daysInMonth = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-  const monthlyStandingCharge = daysInMonth.map((d) => round2(d * Number(standingChargePerDay || 0)));
-
-  const impBefore = Number.isFinite(importPriceBefore) ? importPriceBefore : Number(importPrice || 0);
-  const impAfter  = Number.isFinite(importPriceAfter)  ? importPriceAfter  : Number(importPrice || 0);
-  const expAfter  = Number.isFinite(segPriceAfter)     ? segPriceAfter     : Number(segPrice || 0);
-
-  // Baseline bill (before solar) = load * BEFORE import rate + standing charge
-  const baselineMonthlyCost = monthlyLoadKWh.map((kwh, i) =>
-    round2((Number(kwh || 0) * impBefore) + monthlyStandingCharge[i])
-  );
-
-  // After-solar import-only bill (what you pay your supplier) = imports * AFTER import rate + standing charge
-  const systemMonthlyCostBeforeSEG = monthlyImportedKWh.map((imp, i) =>
-    round2((Number(imp || 0) * impAfter) + monthlyStandingCharge[i])
-  );
-
-  // Export income (paid out) = exports * AFTER export rate
-  const exportCreditMonthly = monthlyExportedKWh.map((exp) =>
-    round2(Number(exp || 0) * expAfter)
-  );
-
-  // Optional net (import bill minus export income) - useful for internal comparisons
-  const systemMonthlyNet = systemMonthlyCostBeforeSEG.map((c, i) =>
-    round2(c - exportCreditMonthly[i])
-  );
-
-  const annualBaseline = round2(baselineMonthlyCost.reduce((a, b) => a + Number(b || 0), 0));
-  const annualSystemBeforeSEG = round2(systemMonthlyCostBeforeSEG.reduce((a, b) => a + Number(b || 0), 0));
-  const annualExportCredit = round2(exportCreditMonthly.reduce((a, b) => a + Number(b || 0), 0));
-  const annualSystemNet = round2(systemMonthlyNet.reduce((a, b) => a + Number(b || 0), 0));
-
-  return {
-    baselineMonthlyCost,
-    systemMonthlyCostBeforeSEG,
-    exportCreditMonthly,
-    systemMonthlyNet,
-
-    // legacy names used by UI
-    monthlyBaseline: baselineMonthlyCost,
-    monthlyAfter: systemMonthlyNet,
-
-    annualBaseline,
-    annualSystemBeforeSEG,
-    annualExportCredit,
-    annualSystemNet,
-
-    // ✅ UI expects this
-    annualSystem: annualSystemNet,
-  };
-}
-
-
-function makePaybackAndLifetimeSeries({
-  systemCostMid,          // £
-  annualBenefit,          // £/yr (bill savings + SEG income)
-  years = 25,
-  panelOption = "",  // for degradation calcs
-  energyInflationRate = 0.06, // 6%/yr
-}) {
-  // Series for charts: year 0..years
-  const labels = Array.from({ length: years + 1 }, (_, i) => `${i}`);
-  const cumulativeSavings = [];
-  let cum = 0;
-
-  for (let y = 0; y <= years; y++) {
-    if (y === 0) {
-      cumulativeSavings.push(0);
-      continue;
-    }
-
-    const inflationMultiplier = Math.pow(1 + energyInflationRate, y - 1);
-    const degradationMultiplier = solarDegradationMultiplier(y, panelOption);
-
-    const benefitThisYear = annualBenefit * inflationMultiplier * degradationMultiplier;
-
-    cum += benefitThisYear;
-    cumulativeSavings.push(round2(cum));
-  }
-
-  // Payback (decimal years): interpolate between years for smoother values
-  let paybackYear = null;
-  let paybackYearIndex = null;
-
-  for (let i = 1; i < cumulativeSavings.length; i++) {
-    const prev = cumulativeSavings[i - 1];
-    const cur = cumulativeSavings[i];
-
-    if (cur >= systemCostMid) {
-      // Linear interpolation between (i-1) and i
-      const gap = cur - prev;
-      const needed = systemCostMid - prev;
-      const frac = gap > 0 ? (needed / gap) : 0;
-      const paybackDecimal = Math.round(((i - 1) + frac) * 10) / 10; // 1dp
-      paybackYear = paybackDecimal;
-      paybackYearIndex = i; // integer year where it first crosses (used for chart marker)
-      break;
-    }
-  }
-
-  // Lifetime savings (net) = total cumulative - cost
-  const lifetimeNetSavings = round2((cumulativeSavings[cumulativeSavings.length - 1] || 0) - systemCostMid);
-
-  return {
-    labels,
-    cumulativeSavings,
-    systemCostMid: round2(systemCostMid),
-    paybackYear,
-    paybackYearIndex,
-    lifetimeSavings: lifetimeNetSavings, // keep field name to avoid breaking frontend
-    assumptions: {
-      annualBenefit: round2(annualBenefit),
-      energyInflationRate,
-      panelOption,
-      firstYearDegradation: 0.01,
-      ongoingDegradationRate: getPanelDegradationRate(panelOption),
-    }
   };
 }
 
@@ -2847,21 +2679,32 @@ app.post("/api/quote", async (req, res) => {
 
       // Build a monthly finance object in the shape your UI already expects
       const monthlyFinance = {
-        monthlyBaseline: billing.monthlyBaseline,
-        monthlyAfter: billing.monthlyAfterNet, // net after export income
+        // Keep the full billing object so /api/quote matches /api/quote/recalc more closely
+        ...billing,
 
+        // Monthly fields expected by frontend tables/charts
+        monthlyBaseline: billing.monthlyBaseline,
+        monthlyAfterImportAndStanding: billing.monthlyAfterImportAndStanding,
+        monthlyExportCredit: billing.monthlyExportCredit,
+        monthlyAfterNet: billing.monthlyAfterNet,
+
+        // Backward-compatible monthly aliases
+        monthlyAfter: billing.monthlyAfterNet,
         baselineMonthlyCost: billing.monthlyBaseline,
         systemMonthlyCostBeforeSEG: billing.monthlyAfterImportAndStanding,
         exportCreditMonthly: billing.monthlyExportCredit,
         systemMonthlyNet: billing.monthlyAfterNet,
 
-        annualBaseline: billing.annualBaseline,
-        annualSystemBeforeSEG: billing.annualAfterImportAndStanding,
-        annualExportCredit: billing.annualExportCredit,
-        annualSystemNet: billing.annualAfterNet,
+        // Annual fields expected by frontend
+        annualBaseline: round2(Number(billing.annualBaseline || 0)),
+        annualAfterImportAndStanding: round2(Number(billing.annualAfterImportAndStanding || 0)),
+        annualExportCredit: round2(Number(billing.annualExportCredit || 0)),
+        annualAfterNet: round2(Number(billing.annualAfterNet || 0)),
 
-        // legacy name your UI expects
-        annualSystem: billing.annualAfterNet,
+        // Backward-compatible annual aliases
+        annualSystemBeforeSEG: round2(Number(billing.annualAfterImportAndStanding || 0)),
+        annualSystemNet: round2(Number(billing.annualAfterNet || 0)),
+        annualSystem: round2(Number(billing.annualAfterNet || 0)),
       };
 
       // ---- Debug days (24h) for visualisation ----
@@ -3004,7 +2847,12 @@ app.post("/api/quote", async (req, res) => {
         const years = 25;
 
         const annualBaselineY1 = Number(monthlyFinance.annualBaseline || 0);
-        const annualSystemY1 = Number(monthlyFinance.annualSystemBeforeSEG || 0);
+        const annualSystemY1 = Number(
+          monthlyFinance.annualAfterNet ??
+          monthlyFinance.annualSystemNet ??
+          monthlyFinance.annualSystem ??
+          0
+        );
 
         // Use PVGIS hourly annual gen if available; fallback to estimated annual gen
         const annualSolarGen = Math.round(
