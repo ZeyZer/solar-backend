@@ -47,54 +47,6 @@ if (!fetchFn) {
 }
 
 
-// ==============================
-// Quote progress (SSE) plumbing
-// ==============================
-const activeProgressStreams = new Map(); // progressId -> res
-const lastProgressById = new Map(); // progressId -> payload
-
-
-app.get("/api/quote/progress/:id", (req, res) => {
-  const { id } = req.params;
-  console.log("✅ SSE client connected:", req.params.id);
-
-  res.setHeader("Content-Type", "text/event-stream");
-  res.setHeader("Cache-Control", "no-cache");
-  res.setHeader("Connection", "keep-alive");
-
-  // If you have compression middleware, this helps flush
-  res.flushHeaders?.();
-
-  activeProgressStreams.set(id, res);
-
-  // Send an initial progress event
-  res.write(`event: progress\ndata: ${JSON.stringify({ step: "starting", pct: 5, label: "Starting…" })}\n\n`);
-
-  req.on("close", () => {
-    activeProgressStreams.delete(id);
-  });
-});
-
-function pushQuoteProgress(progressId, payload) {
-  if (!progressId) return;
-  lastProgressById.set(progressId, payload);
-
-  const res = activeProgressStreams.get(progressId);
-  if (!res) return;
-
-  res.write(`event: progress\ndata: ${JSON.stringify(payload)}\n\n`);
-}
-
-
-function closeQuoteProgress(progressId) {
-  if (!progressId) return;
-  const res = activeProgressStreams.get(progressId);
-  if (!res) return;
-  res.write(`event: done\ndata: ${JSON.stringify({ ok: true })}\n\n`);
-  res.end();
-  activeProgressStreams.delete(progressId);
-}
-
 // ====== TARIFF SETUP ======
 function getTariffPreset(type = "standard") {
   // Rates in £/kWh (not pence)
