@@ -22,6 +22,9 @@ const { CONFIG } = require("./config/quoteConfig");
 // LEAD STORAGE
 const {readLeads, saveLeads,} = require("./services/leadStorageService");
 
+// LEAD CAPTURE AND EMAILS
+const leadRoutes = require("./routes/leadRoutes");
+
 // BREVO SERVICES
 const {BREVO_TEMPLATE_ID_QUOTE, BREVO_TEMPLATE_ID_CALL, BREVO_QUOTE_LIST_ID, BREVO_CALL_LIST_ID, upsertBrevoContact, sendQuoteEmailWithAttachment,} = require("./services/brevoService");
 
@@ -32,6 +35,7 @@ const {generateQuotePdfBuffer, getLatestPdfQuoteData,} = require("./services/pdf
 // ====== EXPRESS SETUP ======
 app.use(cors());
 app.use(express.json({ limit: "2mb" }));
+app.use("/api/lead", leadRoutes);
 
 console.log("[MCS] Loaded tables keys:", MCS_TABLES ? Object.keys(MCS_TABLES) : "❌ NOT LOADED");
 
@@ -2946,100 +2950,6 @@ app.get("/", (req, res) => {
   res.send("Solar quote API is running");
 });
 
-// ------------------------------
-// Lead capture + Brevo email
-// ------------------------------
-app.post("/api/lead/email-quote", async (req, res) => {
-  try {
-    const { contact, quote, input, marketingConsent } = req.body || {};
-    console.log("✅ /api/lead/email-quote hit", req.body?.contact?.email);
-
-    if (!contact || !quote || !input) {
-      return res.status(400).json({ ok: false, error: "Missing contact, quote, or input." });
-    }
-
-    if (!contact.email || typeof contact.email !== "string") {
-      return res.status(400).json({ ok: false, error: "Email is required." });
-    }
-
-    if (!contact.name || typeof contact.name !== "string") {
-      return res.status(400).json({ ok: false, error: "Name is required." });
-    }
-
-    await upsertBrevoContact(contact, {
-      baseListId: BREVO_QUOTE_LIST_ID,
-      marketingConsent: !!marketingConsent,
-      leadType: "email_quote",
-    });
-
-    const pdfBuffer = await generateQuotePdfBuffer({
-      quote,
-      form: input,
-      roofs: input.roofs || [],
-    });
-
-    input.leadType = "email_quote";
-
-    await sendQuoteEmailWithAttachment(contact, quote, input, pdfBuffer, BREVO_TEMPLATE_ID_QUOTE);
-
-    return res.json({ ok: true });
-  } catch (err) {
-    console.error("Error in /api/lead/email-quote:", err);
-    return res.status(500).json({ ok: false, error: "Server error sending quote email." });
-  }
-});
-
-app.post("/api/lead/request-call", async (req, res) => {
-  try {
-    const { contact, quote, input, marketingConsent } = req.body || {};
-    console.log("✅ /api/lead/request-call hit", req.body?.contact?.email);
-
-    if (!contact || !quote || !input) {
-      return res.status(400).json({ ok: false, error: "Missing contact, quote, or input." });
-    }
-
-    if (!contact.email || typeof contact.email !== "string") {
-      return res.status(400).json({ ok: false, error: "Email is required." });
-    }
-
-    if (!contact.name || typeof contact.name !== "string") {
-      return res.status(400).json({ ok: false, error: "Name is required." });
-    }
-
-    if (!contact.phone || typeof contact.phone !== "string") {
-      return res.status(400).json({ ok: false, error: "Phone is required." });
-    }
-
-    await upsertBrevoContact(contact, {
-      baseListId: BREVO_CALL_LIST_ID,
-      marketingConsent: !!marketingConsent,
-      leadType: "request_call",
-    });
-
-    const pdfBuffer = await generateQuotePdfBuffer({
-      quote,
-      form: input,
-      roofs: input.roofs || [],
-    });
-
-    input.leadType = "request_call";
-
-    await sendQuoteEmailWithAttachment(contact, quote, input, pdfBuffer, BREVO_TEMPLATE_ID_CALL);
-
-    console.log("Callback requested:", {
-      name: contact.name,
-      email: contact.email,
-      phone: contact.phone,
-      address: contact.address || "",
-      ts: new Date().toISOString(),
-    });
-
-    return res.json({ ok: true });
-  } catch (err) {
-    console.error("Error in /api/lead/request-call:", err);
-    return res.status(500).json({ ok: false, error: "Server error requesting call." });
-  }
-});
 
 
 app.post("/api/quote", async (req, res) => {
