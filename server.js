@@ -37,6 +37,9 @@ const {buildDailyUsageProfile, buildHourlyLoadForSeries,} = require("./services/
 // FINANCIAL SERVICES
 const {round2, solarDegradationMultiplier, makePaybackAndLifetimeSeries,} = require("./services/financialService");
 
+// BATTERY RECOMMENDATIONS CALCULATIONS
+const {buildBatteryRecommendations,} = require("./services/batteryRecommendationService");
+
 
 
 // ====== EXPRESS SETUP ======
@@ -3024,7 +3027,7 @@ app.post("/api/quote", async (req, res) => {
         }
 
 
-        // Build curve (skip any battery sizes that error)
+        // BATTERY RECOMMENDATIONS
         const curve = [];
         for (let b = 0; b <= MAX_BAT; b += STEP) {
           try {
@@ -3035,75 +3038,15 @@ app.post("/api/quote", async (req, res) => {
           }
         }
 
-        // Only consider sizes >= minimum for recommendation
-        const candidates = curve.filter((x) => x.batteryKWhUsable >= MIN_RECOMMENDED_BAT);
-
-        // Prefer any candidate with a real payback number
-        const viablePayback = candidates.filter(
-          (x) => typeof x.paybackYears === "number" && Number.isFinite(x.paybackYears) && x.annualBenefit > 0
-        );
-
-        let bestPayback = null;
-
-        if (viablePayback.length > 0) {
-          // Lowest payback wins; tie-breaker: higher annual benefit
-          bestPayback = viablePayback.reduce((best, cur) => {
-            if (cur.paybackYears < best.paybackYears) return cur;
-            if (cur.paybackYears === best.paybackYears && cur.annualBenefit > best.annualBenefit) return cur;
-            return best;
-          }, viablePayback[0]);
-        } else if (candidates.length > 0) {
-          // If nothing has a numeric payback (rare), pick the highest annual benefit
-          bestPayback = candidates.reduce((best, cur) => (cur.annualBenefit > best.annualBenefit ? cur : best), candidates[0]);
-        }
-
-        // Final safety fallback
-        const finalBestPayback = bestPayback || candidates[0] || curve[0] || null;
-
-        // ------------------------------
-        // NEW) Battery recommendation (maximum lifetime net savings)
-        // ------------------------------
-        const viableLifetime = candidates.filter(
-          (x) => typeof x.lifetimeNetSavings === "number" && Number.isFinite(x.lifetimeNetSavings)
-        );
-
-        // Prefer the maximum lifetime net savings; tie-breaker: lower payback; then higher annual benefit
-        let bestLifetimeSavings = null;
-
-        if (viableLifetime.length > 0) {
-          bestLifetimeSavings = viableLifetime.reduce((best, cur) => {
-            if (cur.lifetimeNetSavings > best.lifetimeNetSavings) return cur;
-            if (cur.lifetimeNetSavings === best.lifetimeNetSavings) {
-              const bestPay = typeof best.paybackYears === "number" ? best.paybackYears : Infinity;
-              const curPay = typeof cur.paybackYears === "number" ? cur.paybackYears : Infinity;
-              if (curPay < bestPay) return cur;
-              if (curPay === bestPay && cur.annualBenefit > best.annualBenefit) return cur;
-            }
-            return best;
-          }, viableLifetime[0]);
-        }
-
-        // Optional: don’t recommend if it doesn’t make money over lifetime
-        if (bestLifetimeSavings && bestLifetimeSavings.lifetimeNetSavings <= 0) {
-          bestLifetimeSavings = null;
-        }
-
-        quote.batteryRecommendations = {
-          bestPayback: finalBestPayback,
-
-          // ✅ NEW: best option for maximum lifetime savings
-          bestLifetimeSavings,
-
+        quote.batteryRecommendations = buildBatteryRecommendations({
           curve,
-          assumptions: {
-            batteryCostPerKWh,
-            minRecommendedBatteryKWh: MIN_RECOMMENDED_BAT,
-            maxBatteryKWh: MAX_BAT,
-            stepKWh: STEP,
-            lifetimeYears: 25,
-            note: "Includes recommendations for fastest payback and maximum lifetime net savings.",
-          },
-        };
+          batteryCostPerKWh,
+          minRecommendedBatteryKWh: MIN_RECOMMENDED_BAT,
+          maxBatteryKWh: MAX_BAT,
+          stepKWh: STEP,
+          lifetimeYears: 25,
+        });
+
       }
     } else {
       quote.hourlyModel = null;
