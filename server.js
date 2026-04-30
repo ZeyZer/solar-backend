@@ -25,11 +25,7 @@ const {readLeads, saveLeads,} = require("./services/leadStorageService");
 // LEAD CAPTURE AND EMAILS
 const leadRoutes = require("./routes/leadRoutes");
 
-// BREVO SERVICES
-const {BREVO_TEMPLATE_ID_QUOTE, BREVO_TEMPLATE_ID_CALL, BREVO_QUOTE_LIST_ID, BREVO_CALL_LIST_ID, upsertBrevoContact, sendQuoteEmailWithAttachment,} = require("./services/brevoService");
-
 // PDF SETUP
-const {generateQuotePdfBuffer, getLatestPdfQuoteData,} = require("./services/pdfService");
 const pdfRoutes = require("./routes/pdfRoutes");
 
 
