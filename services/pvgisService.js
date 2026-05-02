@@ -4,6 +4,23 @@ if (!fetchFn) {
   fetchFn = (...args) => import("node-fetch").then(({ default: fetch }) => fetch(...args));
 }
 
+const {
+  normalizeTariff, 
+  isRetailRateTariff,
+} = require("../services/tariffService");
+
+const {
+  buildHourlyLoadForSeries,
+} = require("../services/loadProfileService");
+
+const {
+  simulateHourByHour,
+} = require("../services/batterySimulationService");
+
+const {
+  sum12,
+} = require("../utils/arrayUtils");
+
 // ===== PVGIS =====
 const PVGIS = {
   // Keep existing PVcalc (used for your current annual fallback)
@@ -372,6 +389,108 @@ async function getTotalPvgisHourlyKWh({ postcode, roofs, panelWatt, year = 2023 
   return { pvHourly, monthIdx, hourOfDay };
 }
 
+async function runHourlyModelForYear({ input, panelWatt, year, includeHourlyArrays = false }) {
+  const pvRes = await getTotalPvgisHourlyKWh({
+    postcode: input.postcode,
+    roofs: input.roofs,
+    panelWatt,
+    year,
+  });
+
+  if (!pvRes || !Array.isArray(pvRes.pvHourly) || pvRes.pvHourly.length === 0) {
+    throw new Error(`No PVGIS hourly data for year ${year}`);
+  }
+
+  const pvHourly = pvRes.pvHourly;
+  const monthIdx = pvRes.monthIdx;
+  const hourOfDay = pvRes.hourOfDay;
+
+  // Annual demand (same as your existing logic)
+  let annualKWh = input.annualKWh;
+  if (!annualKWh && input.monthlyBill) {
+    const annualBill = input.monthlyBill * 12;
+    annualKWh = annualBill / CONFIG.assumedPricePerKWh;
+  }
+  if (!annualKWh) annualKWh = 3000;
+
+  const loadHourly = buildHourlyLoadForSeries({
+    annualKWh,
+    occupancyProfile: input.occupancyProfile,
+    monthIdx,
+    hourOfDay,
+  });
+
+
+  // Decide which tariff governs battery behaviour AFTER solar
+  const tariffAfter = input?.tariffAfter || input?.tariff || null;
+
+  // IMPORTANT: declare tariffType BEFORE using it
+  const tariffTypeAfter = String(tariffAfter?.tariffType || "standard");
+  const retailRateModeAfter = tariffTypeAfter === "overnight" || tariffTypeAfter === "flux";
+
+  const ta = normalizeTariff((input?.tariffAfter || input?.tariff || {}), "after");
+  const retail = isRetailRateTariff(ta);
+
+  const sim = simulateHourByHour({
+    pvHourlyKWh: pvHourly,
+    loadHourlyKWh: loadHourly,
+    monthIdx,
+    hourOfDay,
+    batteryKWh: Number(input.batteryKWh || 0),
+
+    tariff: ta,
+    dispatchMode: retail ? "retail_rate" : "self_consumption",
+
+    allowGridCharge: retail && !!ta.allowGridCharging,
+    allowEnergyTrading: retail && !!ta.allowEnergyTrading,
+    exportFromBatteryEnabled: retail && !!ta.exportFromBatteryEnabled,
+  });
+
+
+  if (!sim) throw new Error(`Simulation failed for year ${year}`);
+
+  // Build derived monthly series
+  const monthlyDirect = sim.monthly.selfUsed.map((v, i) =>
+    Math.max(0, Number(v || 0) - Number(sim.monthly.batteryDischarge[i] || 0))
+  );
+  
+    const result = {
+    year,
+    monthlyGenerationKWh: sim.monthly.generation,
+    monthlySelfUsedKWh: sim.monthly.selfUsed,
+    monthlyExportedKWh: sim.monthly.exported,
+    monthlyImportedKWh: sim.monthly.imported,
+    monthlyBatteryChargeKWh: sim.monthly.batteryCharge,
+    monthlyBatteryDischargeKWh: sim.monthly.batteryDischarge,
+
+    monthlyBatteryChargeFromPVKWh: sim.monthly.batteryChargeFromPV,
+    monthlyBatteryChargeFromGridKWh: sim.monthly.batteryChargeFromGrid,
+    monthlyPVExportedDirectKWh: sim.monthly.pvExportDirect,
+    monthlyBatteryDischargeFromPVToLoadKWh: sim.monthly.batteryDischargeFromPVToLoad,
+    monthlyBatteryDischargeFromGridToLoadKWh: sim.monthly.batteryDischargeFromGridToLoad,
+
+    monthlyDirectToHomeKWh: monthlyDirect,
+    annualGenerationKWh: sum12(sim.monthly.generation),
+    annualSelfUsedKWh: sum12(sim.monthly.selfUsed),
+    annualExportedKWh: sum12(sim.monthly.exported),
+    annualImportedKWh: sum12(sim.monthly.imported),
+  };
+
+  if (includeHourlyArrays) {
+    result._pvHourlyKWh = pvHourly;
+    result._loadHourlyKWh = loadHourly;
+    result._monthIdx = monthIdx;
+    result._hourOfDay = hourOfDay;
+
+    // NEW: battery + grid flow hourly arrays
+    result._importHourlyKWh = sim.hourly.importKWh;
+    result._exportHourlyKWh = sim.hourly.exportKWh;
+    result._battChargeFromGridHourlyKWh = sim.hourly.battChargeFromGridKWh;
+  }
+
+  return result;
+}
+
 module.exports = {
   PVGIS,
   orientationToPvgisAspect,
@@ -382,4 +501,5 @@ module.exports = {
   getTotalPvgisAnnualKWh,
   getPvgisHourlyKWhForRoof,
   getTotalPvgisHourlyKWh,
+  runHourlyModelForYear,
 };
