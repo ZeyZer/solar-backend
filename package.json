@@ -5,6 +5,7 @@
   "scripts": {
     "start": "node server.js",
     "smoke": "node smoke-test.js",
+    "regression": "node regression-test.js",
     "postinstall": "npx puppeteer browsers install chrome"
   },
   "keywords": [],
