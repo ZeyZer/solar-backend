@@ -21,8 +21,6 @@ const {
 } = require("../utils/arrayUtils");
 
 const {
-  getLatLonFromUkPostcode,
-  getTotalPvgisHourlySeries,
   runHourlyModelForYear,
   getTotalPvgisAnnualKWh,
 } = require("../services/pvgisService");
