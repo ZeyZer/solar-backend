@@ -8,6 +8,84 @@ const {
   getPvgisAnnualKWhForRoof,
 } = require("../services/pvgisService");
 
+// ===============================
+// Heuristic battery uplift shaped like MCS tables
+// ===============================
+
+function lerp(x, x1, y1, x2, y2) {
+  if (x <= x1) return y1;
+  if (x >= x2) return y2;
+
+  return y1 + ((y2 - y1) * (x - x1)) / (x2 - x1);
+}
+
+function piecewiseRatioValue(ratio, points) {
+  if (ratio <= points[0].r) return points[0].v;
+
+  for (let i = 0; i < points.length - 1; i++) {
+    const a = points[i];
+    const b = points[i + 1];
+
+    if (ratio >= a.r && ratio <= b.r) {
+      return lerp(ratio, a.r, a.v, b.r, b.v);
+    }
+  }
+
+  return points[points.length - 1].v;
+}
+
+function batteryUpliftMcsTrend({ occupancyProfile, ratio, batteryKWh }) {
+  const b = Math.max(0, Number(batteryKWh || 0));
+
+  if (b <= 0) return 0;
+
+  const r = Math.max(0.5, Math.min(2, Number(ratio || 1)));
+
+  let scale;
+  let points;
+
+  switch (occupancyProfile) {
+    case "home_all_day":
+      scale = 2.4;
+      points = [
+        { r: 0.6, v: 0.49 },
+        { r: 0.9, v: 0.46 },
+        { r: 1.1, v: 0.41 },
+        { r: 1.35, v: 0.37 },
+        { r: 1.75, v: 0.30 },
+      ];
+      break;
+
+    case "out_all_day":
+      scale = 4.3;
+      points = [
+        { r: 0.6, v: 0.68 },
+        { r: 0.9, v: 0.64 },
+        { r: 1.1, v: 0.58 },
+        { r: 1.35, v: 0.47 },
+        { r: 1.75, v: 0.38 },
+      ];
+      break;
+
+    default:
+      scale = 3.0;
+      points = [
+        { r: 0.6, v: 0.57 },
+        { r: 0.9, v: 0.53 },
+        { r: 1.1, v: 0.48 },
+        { r: 1.35, v: 0.41 },
+        { r: 1.75, v: 0.34 },
+      ];
+      break;
+  }
+
+  const maxAdd = piecewiseRatioValue(r, points);
+
+  const uplift = maxAdd * (1 - Math.exp(-b / scale));
+
+  return Math.max(0, Math.min(uplift, 0.80));
+}
+
 // Main function: returns a self-consumption fraction from MCS tables, or null if not possible
 function lookupMcsSelfConsumptionFraction({
   annualGenerationKWh,
@@ -303,4 +381,7 @@ module.exports = {
   lookupMcsSelfConsumptionFraction,
   getMcsRoofGroupData,
   estimateSelfConsumptionAndSavings,
+
+  // exported mainly for future testing/debugging
+  batteryUpliftMcsTrend,
 };
