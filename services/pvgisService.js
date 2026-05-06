@@ -39,6 +39,46 @@ const PVGIS = {
   },
 };
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function fetchWithRetry(url, options = {}, retries = 3) {
+  let lastError;
+
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const response = await fetch(url, options);
+
+      if (response.ok) {
+        return response;
+      }
+
+      lastError = new Error(`HTTP ${response.status} from PVGIS`);
+
+      // Retry 429/rate limit and 5xx/server errors.
+      if (response.status !== 429 && response.status < 500) {
+        return response;
+      }
+    } catch (err) {
+      lastError = err;
+    }
+
+    if (attempt < retries) {
+      const delayMs = 750 * attempt;
+      console.warn(`PVGIS fetch failed, retrying ${attempt}/${retries - 1}:`, {
+        message: lastError?.message,
+        url,
+        delayMs,
+      });
+
+      await sleep(delayMs);
+    }
+  }
+
+  throw lastError || new Error("PVGIS fetch failed after retries");
+}
+
 // ✅ Supports "N/NE/E/SE/S/SW/W/NW" AND "south/south_east" etc
 function orientationToPvgisAspect(orientation) {
   const raw = String(orientation || "").trim();
@@ -80,7 +120,7 @@ async function getLatLonFromUkPostcode(postcodeRaw) {
   if (!postcode) throw new Error("Missing postcode for PVGIS lookup.");
 
   const url = `https://api.postcodes.io/postcodes/${encodeURIComponent(postcode)}`;
-  const res = await fetchFn(url);
+  const res = await fetch(url);
   if (!res.ok) throw new Error("Postcode lookup failed. Please check the postcode.");
 
   const data = await res.json();
@@ -115,7 +155,7 @@ async function getPvgisAnnualKWhForRoof({ lat, lon, tiltDeg, aspectDeg, peakPowe
   });
 
   const url = `${PVGIS.endpoint}?${params.toString()}`;
-  const res = await fetchFn(url);
+  const res = await fetchWithRetry(url);
   if (!res.ok) throw new Error("PVGIS request failed.");
 
   const data = await res.json();
@@ -181,7 +221,7 @@ async function getPvgisMonthlyKWhForRoof({ lat, lon, tiltDeg, aspectDeg, peakPow
   });
 
   const url = `${PVGIS.endpoint}?${params.toString()}`;
-  const res = await fetchFn(url);
+  const res = await fetchWithRetry(url);
   if (!res.ok) throw new Error("PVGIS request failed.");
 
   const data = await res.json();
@@ -289,7 +329,7 @@ async function getPvgisHourlyKWhForRoof({ lat, lon, tiltDeg, aspectDeg, peakPowe
   });
 
   const url = `${PVGIS.seriesEndpoint}?${params.toString()}`;
-  const res = await fetchFn(url);
+  const res = await fetchWithRetry(url);
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
