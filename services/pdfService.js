@@ -1,25 +1,80 @@
+const crypto = require("crypto");
 const puppeteer = require("puppeteer");
 
-let latestPdfQuoteData = null;
+const pdfQuoteDataById = new Map();
+
+const PDF_DATA_TTL_MS = 10 * 60 * 1000;
 
 const FRONTEND_URL =
   process.env.FRONTEND_URL ||
   "http://localhost:3000";
-    //http://localhost:3000
-    //https://www.zeyzersolar.com
+// http://localhost:3000
+// https://www.zeyzersolar.com
+
+function cleanupExpiredPdfQuoteData() {
+  const now = Date.now();
+
+  for (const [pdfId, record] of pdfQuoteDataById.entries()) {
+    if (!record?.createdAt || now - record.createdAt > PDF_DATA_TTL_MS) {
+      pdfQuoteDataById.delete(pdfId);
+    }
+  }
+}
+
+function savePdfQuoteData({ quote, form, roofs }) {
+  cleanupExpiredPdfQuoteData();
+
+  const pdfId =
+    crypto.randomUUID?.() ||
+    `pdf-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+  pdfQuoteDataById.set(pdfId, {
+    createdAt: Date.now(),
+    quote,
+    form,
+    roofs: roofs || [],
+  });
+
+  return pdfId;
+}
+
+function getPdfQuoteDataById(pdfId) {
+  cleanupExpiredPdfQuoteData();
+
+  if (!pdfId) return null;
+
+  const record = pdfQuoteDataById.get(pdfId);
+
+  if (!record) return null;
+
+  return {
+    quote: record.quote,
+    form: record.form,
+    roofs: record.roofs || [],
+  };
+}
+
+function deletePdfQuoteDataById(pdfId) {
+  if (!pdfId) return;
+  pdfQuoteDataById.delete(pdfId);
+}
 
 async function generateQuotePdfBuffer({ quote, form, roofs }) {
   if (!quote || !form) {
     throw new Error("Missing quote or form data.");
   }
 
-  latestPdfQuoteData = {
+  const pdfId = savePdfQuoteData({
     quote,
     form,
     roofs: roofs || [],
-  };
+  });
 
-  console.log("Saved latest PDF quote data");
+  console.log("Saved PDF quote data:", {
+    pdfId,
+    storedPdfQuotes: pdfQuoteDataById.size,
+  });
+
   console.log("Launching Puppeteer...");
 
   const browser = await puppeteer.launch({
@@ -43,7 +98,7 @@ async function generateQuotePdfBuffer({ quote, form, roofs }) {
   try {
     const page = await browser.newPage();
 
-    const pdfUrl = `${FRONTEND_URL}/#/quote-pdf`;
+    const pdfUrl = `${FRONTEND_URL}/#/quote-pdf?id=${encodeURIComponent(pdfId)}`;
     console.log("Opening PDF page:", pdfUrl);
 
     await page.setViewport({
@@ -98,14 +153,17 @@ async function generateQuotePdfBuffer({ quote, form, roofs }) {
     return Buffer.from(pdfBytes);
   } finally {
     await browser.close();
-  }
-}
 
-function getLatestPdfQuoteData() {
-  return latestPdfQuoteData;
+    deletePdfQuoteDataById(pdfId);
+
+    console.log("Deleted PDF quote data:", {
+      pdfId,
+      storedPdfQuotes: pdfQuoteDataById.size,
+    });
+  }
 }
 
 module.exports = {
   generateQuotePdfBuffer,
-  getLatestPdfQuoteData,
+  getPdfQuoteDataById,
 };

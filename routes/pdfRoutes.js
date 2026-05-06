@@ -2,7 +2,7 @@ const express = require("express");
 
 const {
   generateQuotePdfBuffer,
-  getLatestPdfQuoteData,
+  getPdfQuoteDataById,
 } = require("../services/pdfService");
 
 const router = express.Router();
@@ -30,17 +30,25 @@ router.post("/pdf", async (req, res) => {
   }
 });
 
-// GET /api/quote/pdf-data
+// GET /api/quote/pdf-data?id=<pdfId>
 router.get("/pdf-data", (req, res) => {
-  const latestPdfQuoteData = getLatestPdfQuoteData();
+  const pdfId = String(req.query.id || "").trim();
 
-  if (!latestPdfQuoteData) {
-    return res.status(404).json({
-      error: "No PDF quote data found.",
+  if (!pdfId) {
+    return res.status(400).json({
+      error: "Missing PDF ID.",
     });
   }
 
-  res.json(latestPdfQuoteData);
+  const pdfQuoteData = getPdfQuoteDataById(pdfId);
+
+  if (!pdfQuoteData) {
+    return res.status(404).json({
+      error: "No PDF quote data found for this ID.",
+    });
+  }
+
+  res.json(pdfQuoteData);
 });
 
 module.exports = router;
