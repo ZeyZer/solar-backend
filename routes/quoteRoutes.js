@@ -54,6 +54,7 @@ const {
 } = require("../services/hourlyDebugService");
 
 const {
+  createLeadId,
   saveLeadLocally,
 } = require("../services/leadStorageService");
 
@@ -873,15 +874,24 @@ router.post("/", async (req, res) => {
       tariffAfter: input.tariffAfter || null,
     };
 
+    const leadId = createLeadId();
+
+    quote.leadId = leadId;
+
     const leadRecord = saveLeadLocally({
+      leadId,
       status: "new",
       source: "beta-calculator",
-      form: leadForm,
+      form: {
+        ...leadForm,
+        leadId,
+      },
       roofs: Array.isArray(input.roofs) ? input.roofs : [],
-      quote,
+      quote: {
+        ...quote,
+        leadId,
+      },
     });
-
-    quote.leadId = leadRecord.leadId;
 
     try {
       const supabaseResult = await saveLeadToSupabase(leadRecord);

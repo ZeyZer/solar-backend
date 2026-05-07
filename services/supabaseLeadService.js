@@ -181,8 +181,94 @@ async function getLeadFromSupabaseByLeadId(leadId) {
   return data;
 }
 
+function buildLeadActionUpdate(eventType) {
+  const now = new Date().toISOString();
+
+  const update = {
+    last_action_type: eventType,
+    last_action_at: now,
+    updated_at: now,
+  };
+
+  if (eventType === "call_requested") {
+    update.call_requested_at = now;
+  }
+
+  if (eventType === "pdf_email_requested") {
+    update.pdf_email_requested_at = now;
+  }
+
+  if (eventType === "pdf_downloaded") {
+    update.pdf_downloaded_at = now;
+  }
+
+  return update;
+}
+
+async function recordLeadEvent({
+  leadId,
+  eventType,
+  email = "",
+  phone = "",
+  metadata = {},
+}) {
+  if (!isSupabaseEnabled()) {
+    return {
+      skipped: true,
+      reason: "SUPABASE_ENABLED is not true.",
+    };
+  }
+
+  if (!leadId) {
+    return {
+      skipped: true,
+      reason: "Missing leadId.",
+    };
+  }
+
+  if (!eventType) {
+    throw new Error("Cannot record lead event without eventType.");
+  }
+
+  const supabase = getSupabaseClient();
+
+  const eventRow = {
+    lead_id: leadId,
+    event_type: eventType,
+    email: email || null,
+    phone: phone || null,
+    metadata: metadata || {},
+  };
+
+  const { error: insertError } = await supabase
+    .from("lead_events")
+    .insert(eventRow);
+
+  if (insertError) {
+    throw new Error(`Supabase lead event insert failed: ${insertError.message}`);
+  }
+
+  const leadUpdate = buildLeadActionUpdate(eventType);
+
+  const { error: updateError } = await supabase
+    .from("leads")
+    .update(leadUpdate)
+    .eq("lead_id", leadId);
+
+  if (updateError) {
+    throw new Error(`Supabase lead action update failed: ${updateError.message}`);
+  }
+
+  return {
+    skipped: false,
+    leadId,
+    eventType,
+  };
+}
+
 module.exports = {
   saveLeadToSupabase,
   getLeadFromSupabaseByLeadId,
   buildSupabaseLeadRow,
+  recordLeadEvent,
 };

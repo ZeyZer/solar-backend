@@ -5,17 +5,63 @@ const {
   getPdfQuoteDataById,
 } = require("../services/pdfService");
 
+const {
+  recordLeadEvent,
+} = require("../services/supabaseLeadService");
+
 const router = express.Router();
+
+
+// PDF DOWNLOAD ID TRACKER
+async function recordPdfDownloadSafely({ leadId, quote, form }) {
+  const actionLeadId =
+    leadId ||
+    quote?.leadId ||
+    form?.leadId ||
+    form?.quoteLeadId ||
+    "";
+
+  if (!actionLeadId) {
+    console.log("PDF download event skipped: missing leadId.");
+    return;
+  }
+
+  try {
+    const result = await recordLeadEvent({
+      leadId: actionLeadId,
+      eventType: "pdf_downloaded",
+      email: form?.email || "",
+      phone: form?.phone || "",
+      metadata: {
+        route: "/api/quote/pdf",
+      },
+    });
+
+    if (result?.skipped) {
+      console.log("PDF download event skipped:", result.reason);
+    } else {
+      console.log("PDF download event recorded:", actionLeadId);
+    }
+  } catch (err) {
+    console.error("PDF download event failed:", err.message);
+  }
+}
 
 // POST /api/quote/pdf
 router.post("/pdf", async (req, res) => {
   try {
-    const { quote, form, roofs } = req.body || {};
+    const { quote, form, roofs, leadId } = req.body || {};
 
     const pdf = await generateQuotePdfBuffer({
       quote,
       form,
       roofs: roofs || [],
+    });
+
+    await recordPdfDownloadSafely({
+      leadId,
+      quote,
+      form,
     });
 
     res.set({

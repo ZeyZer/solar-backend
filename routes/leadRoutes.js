@@ -14,15 +14,56 @@ const {
 } = require("../services/brevoService");
 
 const {
+  recordLeadEvent,
+} = require("../services/supabaseLeadService");
+
+const {
   generateQuotePdfBuffer,
 } = require("../services/pdfService");
 
 const router = express.Router();
 
+
+// LEAD REQUEST TRACKER
+function getLeadIdFromPayload({ leadId, quote, input }) {
+  return (
+    leadId ||
+    quote?.leadId ||
+    input?.leadId ||
+    input?.quoteLeadId ||
+    ""
+  );
+}
+
+async function recordLeadEventSafely({
+  leadId,
+  eventType,
+  contact,
+  metadata = {},
+}) {
+  try {
+    const result = await recordLeadEvent({
+      leadId,
+      eventType,
+      email: contact?.email || "",
+      phone: contact?.phone || "",
+      metadata,
+    });
+
+    if (result?.skipped) {
+      console.log(`Lead event skipped (${eventType}):`, result.reason);
+    } else {
+      console.log(`Lead event recorded (${eventType}):`, leadId);
+    }
+  } catch (err) {
+    console.error(`Lead event failed (${eventType}):`, err.message);
+  }
+}
+
 // POST /api/lead/email-quote
 router.post("/email-quote", async (req, res) => {
   try {
-    const { contact, quote, input, marketingConsent } = req.body || {};
+    const { contact, quote, input, marketingConsent, leadId } = req.body || {};
 
     console.log("✅ /api/lead/email-quote hit", req.body?.contact?.email);
 
@@ -72,7 +113,28 @@ router.post("/email-quote", async (req, res) => {
       BREVO_TEMPLATE_ID_QUOTE
     );
 
-    return res.json({ ok: true });
+    const actionLeadId = getLeadIdFromPayload({
+      leadId,
+      quote,
+      input: emailInput,
+    });
+
+    await recordLeadEventSafely({
+      leadId: actionLeadId,
+      eventType: "pdf_email_requested",
+      contact,
+      metadata: {
+        route: "/api/lead/email-quote",
+        marketingConsent: !!marketingConsent,
+        templateId: BREVO_TEMPLATE_ID_QUOTE || null,
+      },
+    });
+
+    return res.json({
+      ok: true,
+      leadId: actionLeadId || null,
+    });
+
   } catch (err) {
     console.error("Error in /api/lead/email-quote:", err);
 
@@ -86,7 +148,7 @@ router.post("/email-quote", async (req, res) => {
 // POST /api/lead/request-call
 router.post("/request-call", async (req, res) => {
   try {
-    const { contact, quote, input, marketingConsent } = req.body || {};
+    const { contact, quote, input, marketingConsent, leadId } = req.body || {};
 
     console.log("✅ /api/lead/request-call hit", req.body?.contact?.email);
 
@@ -143,7 +205,26 @@ router.post("/request-call", async (req, res) => {
       BREVO_TEMPLATE_ID_CALL
     );
 
+    const actionLeadId = getLeadIdFromPayload({
+      leadId,
+      quote,
+      input: callInput,
+    });
+
+    await recordLeadEventSafely({
+      leadId: actionLeadId,
+      eventType: "call_requested",
+      contact,
+      metadata: {
+        route: "/api/lead/request-call",
+        marketingConsent: !!marketingConsent,
+        templateId: BREVO_TEMPLATE_ID_CALL || null,
+        address: contact.address || "",
+      },
+    });
+
     console.log("Callback requested:", {
+      leadId: actionLeadId || null,
       name: contact.name,
       email: contact.email,
       phone: contact.phone,
@@ -151,7 +232,12 @@ router.post("/request-call", async (req, res) => {
       ts: new Date().toISOString(),
     });
 
-    return res.json({ ok: true });
+    return res.json({
+      ok: true,
+      leadId: actionLeadId || null,
+    });
+
+    
   } catch (err) {
     console.error("Error in /api/lead/request-call:", err);
 
