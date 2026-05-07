@@ -54,9 +54,12 @@ const {
 } = require("../services/hourlyDebugService");
 
 const {
-  readLeads,
-  saveLeads,
+  saveLeadLocally,
 } = require("../services/leadStorageService");
+
+const {
+  saveLeadToSupabase,
+} = require("../services/supabaseLeadService");
 
 const {
   estimateSelfConsumptionAndSavings,
@@ -833,45 +836,64 @@ router.post("/", async (req, res) => {
     // ------------------------------
     const { name, email, address, phone } = input;
 
-    const leads = readLeads();
+    const leadForm = {
+      name: input.name || "",
+      email: input.email || "",
+      phone: input.phone || "",
 
-    leads.push({
-      createdAt: new Date().toISOString(),
-      contact: { name, email, address, phone },
-      inputSummary: {
-        postcode: input.postcode,
-        annualKWh: input.annualKWh,
-        monthlyBill: input.monthlyBill,
-        roofSize: input.roofSize,
-        shading: input.shading,
-        occupancyProfile: input.occupancyProfile,
-        panelOption: input.panelOption,
-        batteryKWh: input.batteryKWh,
-        panelCount: input.panelCount,
-        roofs: input.roofs,
-        extras: input.extras,
-        tariffBefore: input.tariffBefore,
-        tariffAfter: input.tariffAfter,
-      },
-      quoteSummary: {
-        systemSizeKwp: quote.systemSizeKwp,
-        panelCount: quote.panelCount,
-        panelWatt: quote.panelWatt,
-        estAnnualGenerationKWh: quote.estAnnualGenerationKWh,
-        priceLow: quote.priceLow,
-        priceHigh: quote.priceHigh,
-        annualBillSavings: quote.annualBillSavings,
-        annualSegIncome: quote.annualSegIncome,
-        totalAnnualBenefit: quote.totalAnnualBenefit,
-        simplePaybackYears: quote.simplePaybackYears,
-        selfConsumptionModel: quote.selfConsumptionModel,
-        recommendedBatteryKWh:
-          quote.batteryRecommendations?.bestPayback?.batteryKWhUsable ?? null,
-      },
+      address:
+        input.address ||
+        `${input.houseNumber || ""} ${input.postcode || ""}`.trim(),
+
+      houseNumber: input.houseNumber || "",
+      postcode: input.postcode || "",
+      homeOwnership: input.homeOwnership || "",
+
+      annualKWh: input.annualKWh ?? "",
+      monthlyBill: input.monthlyBill ?? "",
+
+      roofSize: input.roofSize || "",
+      shading: input.shading || "",
+      occupancyProfile: input.occupancyProfile || "",
+
+      panelOption: input.panelOption || "",
+      batteryKWh: input.batteryKWh ?? 0,
+
+      birdProtection:
+        input.extras?.birdProtection ??
+        input.birdProtection ??
+        false,
+
+      evCharger:
+        input.extras?.evCharger ??
+        input.evCharger ??
+        false,
+
+      tariffBefore: input.tariffBefore || null,
+      tariffAfter: input.tariffAfter || null,
+    };
+
+    const leadRecord = saveLeadLocally({
+      status: "new",
+      source: "beta-calculator",
+      form: leadForm,
+      roofs: Array.isArray(input.roofs) ? input.roofs : [],
+      quote,
     });
 
-    // Keep only the latest 200 local quote records so this file cannot grow forever.
-    saveLeads(leads.slice(-200));
+    quote.leadId = leadRecord.leadId;
+
+    try {
+      const supabaseResult = await saveLeadToSupabase(leadRecord);
+
+      if (supabaseResult?.skipped) {
+        console.log("Supabase lead save skipped:", supabaseResult.reason);
+      } else {
+        console.log("Saved lead to Supabase:", supabaseResult.leadId);
+      }
+    } catch (err) {
+      console.error("Supabase lead save failed:", err.message);
+    }
 
     res.json(quote);
 
