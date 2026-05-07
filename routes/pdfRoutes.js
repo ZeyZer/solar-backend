@@ -7,9 +7,43 @@ const {
 
 const {
   recordLeadEvent,
+  getLeadFromSupabaseByLeadId,
 } = require("../services/supabaseLeadService");
 
 const router = express.Router();
+
+// PDF REGENERATION
+function buildPdfDataFromLeadRow(leadRow) {
+  if (!leadRow) {
+    return null;
+  }
+
+  const quote = leadRow.quote || leadRow.full_payload?.quote || null;
+  const form = leadRow.form || leadRow.full_payload?.form || null;
+  const roofs = Array.isArray(leadRow.roofs)
+    ? leadRow.roofs
+    : Array.isArray(leadRow.full_payload?.roofs)
+      ? leadRow.full_payload.roofs
+      : [];
+
+  if (!quote || !form) {
+    return null;
+  }
+
+  const leadId = leadRow.lead_id || quote.leadId || form.leadId || "";
+
+  return {
+    quote: {
+      ...quote,
+      leadId,
+    },
+    form: {
+      ...form,
+      leadId,
+    },
+    roofs,
+  };
+}
 
 
 // PDF DOWNLOAD ID TRACKER
@@ -75,6 +109,73 @@ router.post("/pdf", async (req, res) => {
     res.status(500).json({ error: "PDF generation failed." });
   }
 });
+
+
+// POST /api/quote/pdf/from-lead/:leadId
+router.post("/pdf/from-lead/:leadId", async (req, res) => {
+  const leadId = String(req.params.leadId || "").trim();
+
+  try {
+    if (!leadId) {
+      return res.status(400).json({
+        error: "Missing lead ID.",
+      });
+    }
+
+    const leadRow = await getLeadFromSupabaseByLeadId(leadId);
+
+    if (!leadRow) {
+      return res.status(404).json({
+        error: "Lead not found.",
+      });
+    }
+
+    const pdfData = buildPdfDataFromLeadRow(leadRow);
+
+    if (!pdfData) {
+      return res.status(400).json({
+        error: "Lead does not contain enough quote data to regenerate PDF.",
+      });
+    }
+
+    const pdf = await generateQuotePdfBuffer(pdfData);
+
+    try {
+      const result = await recordLeadEvent({
+        leadId,
+        eventType: "pdf_regenerated",
+        email: pdfData.form?.email || leadRow.email || "",
+        phone: pdfData.form?.phone || leadRow.phone || "",
+        metadata: {
+          route: "/api/quote/pdf/from-lead/:leadId",
+        },
+      });
+
+      if (result?.skipped) {
+        console.log("PDF regeneration event skipped:", result.reason);
+      } else {
+        console.log("PDF regeneration event recorded:", leadId);
+      }
+    } catch (eventErr) {
+      console.error("PDF regeneration event failed:", eventErr.message);
+    }
+
+    res.set({
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `attachment; filename="solar-quote-${leadId}.pdf"`,
+    });
+
+    return res.send(pdf);
+  } catch (err) {
+    console.error("PDF regeneration from lead failed:", err);
+
+    return res.status(500).json({
+      error: "PDF regeneration from lead failed.",
+    });
+  }
+});
+
+
 
 // GET /api/quote/pdf-data?id=<pdfId>
 router.get("/pdf-data", (req, res) => {
