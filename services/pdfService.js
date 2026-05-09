@@ -15,17 +15,15 @@ function getFrontendUrl() {
     .trim()
     .replace(/\/+$/, "");
 
-  if (!frontendUrl) {
-    return "http://localhost:3000";
-  }
-
-  return frontendUrl;
+  return frontendUrl || "http://localhost:3000";
 }
 
 function buildPdfRouteUrl(pdfId) {
   const frontendUrl = getFrontendUrl();
 
-  return `${frontendUrl}/#/quote-pdf?id=${encodeURIComponent(pdfId)}`;
+  // Use /index.html explicitly for Hostinger.
+  // The hash part is handled by React in the browser.
+  return `${frontendUrl}/index.html#/quote-pdf?id=${encodeURIComponent(pdfId)}`;
 }
 
 function cleanupExpiredPdfQuoteData() {
@@ -84,46 +82,45 @@ function wait(ms) {
 async function waitForPdfPageToSettle(page) {
   await page.emulateMediaType("print");
 
-  // Hostinger/React can trigger a late navigation after the first load.
-  // This should never fail the PDF generation.
-  await page
-    .waitForNavigation({
-      waitUntil: "networkidle0",
-      timeout: 10000,
-    })
-    .catch(() => null);
+  try {
+    await page.waitForFunction(
+      () =>
+        window.__QUOTE_PDF_READY__ === true ||
+        Boolean(window.__QUOTE_PDF_ERROR__),
+      {
+        timeout: 25000,
+      }
+    );
+  } catch (err) {
+    console.log("PDF ready flag wait timed out:", err.message);
+  }
 
-  await wait(3000);
+  const pdfStatus = await page.evaluate(() => ({
+    ready: window.__QUOTE_PDF_READY__ === true,
+    error: window.__QUOTE_PDF_ERROR__ || "",
+    hash: window.location.hash || "",
+    href: window.location.href || "",
+    bodyText: (document.body?.innerText || "").slice(0, 500),
+  }));
+
+  console.log("PDF route browser status:", pdfStatus);
+
+  if (pdfStatus.error) {
+    throw new Error(`PDF frontend reported error: ${pdfStatus.error}`);
+  }
+
+  if (!pdfStatus.ready) {
+    throw new Error("PDF frontend did not report ready.");
+  }
+
+  if (!String(pdfStatus.hash || "").startsWith("#/quote-pdf")) {
+    throw new Error(`PDF frontend navigated away from quote-pdf route: ${pdfStatus.href}`);
+  }
 
   try {
     await page.evaluateHandle("document.fonts.ready");
   } catch (err) {
     console.log("Font readiness check skipped:", err.message);
-  }
-
-  try {
-    await page.waitForFunction(
-      () => {
-        const bodyText = document.body?.innerText || "";
-
-        const hasLoadingText =
-          bodyText.includes("Loading") ||
-          bodyText.includes("loading") ||
-          bodyText.includes("Preparing");
-
-        const hasPdfErrorText =
-          bodyText.includes("Failed to load PDF") ||
-          bodyText.includes("No PDF quote data") ||
-          bodyText.includes("Missing PDF ID");
-
-        return document.body && !hasLoadingText && !hasPdfErrorText;
-      },
-      {
-        timeout: 20000,
-      }
-    );
-  } catch (err) {
-    console.log("PDF route settle check timed out:", err.message);
   }
 
   try {
@@ -140,7 +137,7 @@ async function waitForPdfPageToSettle(page) {
     console.log("Some images did not finish loading before PDF render");
   }
 
-  await wait(2500);
+  await wait(2000);
 
   try {
     const bodyHeight = await page.evaluate(() => {
@@ -194,6 +191,12 @@ async function generateQuotePdfBuffer({ quote, form, roofs }) {
   try {
     const page = await browser.newPage();
 
+    await page.setCacheEnabled(false);
+
+    await page.setUserAgent(
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    );
+
     page.on("framenavigated", (frame) => {
       if (frame === page.mainFrame()) {
         console.log("PDF page navigated:", frame.url());
@@ -232,8 +235,14 @@ async function generateQuotePdfBuffer({ quote, form, roofs }) {
       timeout: 80000,
     });
 
-    console.log("PDF page initial status:", response?.status?.() || "unknown");
+    const status = response?.status?.() || 0;
+
+    console.log("PDF page initial status:", status || "unknown");
     console.log("PDF page final URL after goto:", page.url());
+
+    if (status >= 400) {
+      throw new Error(`PDF frontend returned HTTP ${status} for ${pdfUrl}`);
+    }
 
     await waitForPdfPageToSettle(page);
 
