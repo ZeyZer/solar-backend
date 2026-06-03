@@ -6,7 +6,8 @@
     "start": "node server.js",
     "smoke": "node smoke-test.js",
     "regression": "node regression-test.js",
-    "postinstall": "npx puppeteer browsers install chrome"
+    "postinstall": "npx puppeteer browsers install chrome",
+    "test:quote": "npm run smoke && npm run regression"
   },
   "keywords": [],
   "author": "",

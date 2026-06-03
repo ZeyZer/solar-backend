@@ -1,3 +1,7 @@
+const {
+  attachQuoteEngineVersion,
+} = require("../config/calculationVersions");
+
 const express = require("express");
 
 const { CONFIG } = require("../config/quoteConfig");
@@ -407,7 +411,7 @@ router.post("/recalc", async (req, res) => {
       },
     };
 
-    return res.json(updated);
+    res.json(attachQuoteEngineVersion(updated));
   } catch (e) {
     console.error("recalc error:", e);
     return res.status(500).json({ error: e?.message || "Failed to recalculate." });

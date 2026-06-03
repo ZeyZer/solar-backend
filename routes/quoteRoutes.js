@@ -2,6 +2,10 @@
 // Main Quote Route
 //===================
 
+const {
+  attachQuoteEngineVersion,
+} = require("../config/calculationVersions");
+
 const express = require("express");
 
 const { CONFIG } = require("../config/quoteConfig");
@@ -260,7 +264,7 @@ router.post("/", async (req, res) => {
     });
 
     const savings = estimateSelfConsumptionAndSavings(input, baseQuote);
-    const quote = {
+    let quote = {
       ...baseQuote,
       ...savings,
 
@@ -876,7 +880,10 @@ router.post("/", async (req, res) => {
 
     const leadId = createLeadId();
 
-    quote.leadId = leadId;
+    const versionedQuote = attachQuoteEngineVersion({
+      ...quote,
+      leadId,
+    });
 
     const leadRecord = saveLeadLocally({
       leadId,
@@ -887,11 +894,10 @@ router.post("/", async (req, res) => {
         leadId,
       },
       roofs: Array.isArray(input.roofs) ? input.roofs : [],
-      quote: {
-        ...quote,
-        leadId,
-      },
+      quote: versionedQuote,
     });
+
+    quote = versionedQuote;
 
     try {
       const supabaseResult = await saveLeadToSupabase(leadRecord);
