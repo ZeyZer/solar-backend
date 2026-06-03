@@ -120,7 +120,7 @@ async function getLatLonFromUkPostcode(postcodeRaw) {
   if (!postcode) throw new Error("Missing postcode for PVGIS lookup.");
 
   const url = `https://api.postcodes.io/postcodes/${encodeURIComponent(postcode)}`;
-  const res = await fetch(url);
+  const res = await fetchWithRetry(url);
   if (!res.ok) throw new Error("Postcode lookup failed. Please check the postcode.");
 
   const data = await res.json();
