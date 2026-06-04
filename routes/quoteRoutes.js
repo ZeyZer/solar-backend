@@ -803,6 +803,10 @@ router.post("/", async (req, res) => {
           maxBatteryKWh: MAX_BAT,
           stepKWh: STEP,
           lifetimeYears: 25,
+          panelOption: input?.panelOption || "",
+          energyInflationRate: Number(CONFIG.energyInflationRate || 0.06),
+          batteryDegradationRate: Number(CONFIG.batteryDegradationRate || 0.02),
+          minBatteryCapacityFraction: Number(CONFIG.minBatteryCapacityFraction || 0.70),
         });
 
       }

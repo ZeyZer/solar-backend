@@ -312,6 +312,10 @@ router.post("/recalc", async (req, res) => {
       maxBatteryKWh: MAX_BAT,
       stepKWh: STEP,
       lifetimeYears: recommendationLifetimeYears,
+      panelOption: input?.panelOption || quote?.panelOption || "",
+      energyInflationRate: Number(CONFIG.energyInflationRate || 0.06),
+      batteryDegradationRate: Number(CONFIG.batteryDegradationRate || 0.02),
+      minBatteryCapacityFraction: Number(CONFIG.minBatteryCapacityFraction || 0.70),
     });
 
     // -----------------------

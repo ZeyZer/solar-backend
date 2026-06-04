@@ -2,10 +2,10 @@
 
 ## Current version
 
-Calculation version: `1.0.0-beta`  
-Assumptions version: `2026-beta-1`  
+Calculation version: `1.1.0-beta`  
+Assumptions version: `2026-beta-2`  
 Tariff model version: `1.0.0-beta`  
-Battery model version: `1.0.0-beta`
+Battery model version: `1.1.0-beta`
 
 ## Purpose
 
@@ -90,6 +90,19 @@ The current beta recommendation model is still abstract. It does not yet fully m
 - product-specific round-trip efficiency
 - degradation by product
 - warranty/cycle limits
+
+## Battery degradation
+
+Battery recommendation lifetime values now include a simple battery degradation assumption.
+
+Current beta assumptions:
+
+- battery degradation rate: `2%` per year
+- minimum usable capacity floor: `70%`
+
+This means the model assumes the battery-related part of the benefit reduces gradually over time, but does not fall below 70% of the original battery contribution.
+
+This is an abstract beta assumption. It is not yet tied to a specific battery product warranty, chemistry, cycle life or manufacturer datasheet. Product-specific degradation should be added later through the hardware database.
 
 ## Financial model
 

@@ -177,12 +177,120 @@ function makePaybackAndLifetimeSeries({
   };
 }
 
+function batteryDegradationMultiplier(
+  year,
+  {
+    batteryDegradationRate = 0.02,
+    minBatteryCapacityFraction = 0.70,
+  } = {}
+) {
+  if (year <= 1) return 1;
+
+  const rate = Number(batteryDegradationRate || 0);
+  const floor = Number(minBatteryCapacityFraction || 0.70);
+
+  const multiplier = Math.pow(1 - rate, year - 1);
+
+  return Math.max(floor, multiplier);
+}
+
+function makeBatteryAwarePaybackAndLifetimeSeries({
+  systemCostMid,
+  noBatteryAnnualBenefit = 0,
+  candidateAnnualBenefit = 0,
+  years = 25,
+  panelOption = "",
+  energyInflationRate = 0.06,
+  batteryDegradationRate = 0.02,
+  minBatteryCapacityFraction = 0.70,
+}) {
+  const labels = Array.from({ length: years + 1 }, (_, i) => `${i}`);
+  const cumulativeSavings = [];
+
+  const noBatteryBenefitY1 = Number(noBatteryAnnualBenefit || 0);
+  const candidateBenefitY1 = Number(candidateAnnualBenefit || 0);
+
+  // This is the extra value produced by the battery compared with the same system at 0 kWh battery.
+  const batteryIncrementY1 = candidateBenefitY1 - noBatteryBenefitY1;
+
+  let cumulative = 0;
+
+  for (let y = 0; y <= years; y++) {
+    if (y === 0) {
+      cumulativeSavings.push(0);
+      continue;
+    }
+
+    const inflationMultiplier = Math.pow(1 + energyInflationRate, y - 1);
+    const solarMultiplier = solarDegradationMultiplier(y, panelOption);
+    const batteryMultiplier = batteryDegradationMultiplier(y, {
+      batteryDegradationRate,
+      minBatteryCapacityFraction,
+    });
+
+    const noBatteryBenefitThisYear =
+      noBatteryBenefitY1 * inflationMultiplier * solarMultiplier;
+
+    const batteryIncrementThisYear =
+      batteryIncrementY1 * inflationMultiplier * solarMultiplier * batteryMultiplier;
+
+    const benefitThisYear =
+      noBatteryBenefitThisYear + batteryIncrementThisYear;
+
+    cumulative += benefitThisYear;
+    cumulativeSavings.push(round2(cumulative));
+  }
+
+  let paybackYear = null;
+  let paybackYearIndex = null;
+
+  for (let i = 1; i < cumulativeSavings.length; i++) {
+    const prev = cumulativeSavings[i - 1];
+    const cur = cumulativeSavings[i];
+
+    if (cur >= systemCostMid) {
+      const gap = cur - prev;
+      const needed = systemCostMid - prev;
+      const frac = gap > 0 ? needed / gap : 0;
+
+      paybackYear = Math.round(((i - 1) + frac) * 10) / 10;
+      paybackYearIndex = i;
+      break;
+    }
+  }
+
+  const lifetimeNetSavings = round2(
+    (cumulativeSavings[cumulativeSavings.length - 1] || 0) - systemCostMid
+  );
+
+  return {
+    labels,
+    cumulativeSavings,
+    systemCostMid: round2(systemCostMid),
+    paybackYear,
+    paybackYearIndex,
+    lifetimeSavings: lifetimeNetSavings,
+    assumptions: {
+      noBatteryAnnualBenefit: round2(noBatteryBenefitY1),
+      candidateAnnualBenefit: round2(candidateBenefitY1),
+      batteryIncrementAnnualBenefit: round2(batteryIncrementY1),
+      energyInflationRate,
+      panelOption,
+      firstYearPanelDegradation: 0.01,
+      ongoingPanelDegradationRate: getPanelDegradationRate(panelOption),
+      batteryDegradationRate,
+      minBatteryCapacityFraction,
+    },
+  };
+}
 
 module.exports = {
   MONTH_LABELS,
   round2,
   getPanelDegradationRate,
   solarDegradationMultiplier,
+  batteryDegradationMultiplier,
   makeMonthlyFinancialSeries,
   makePaybackAndLifetimeSeries,
+  makeBatteryAwarePaybackAndLifetimeSeries,
 };

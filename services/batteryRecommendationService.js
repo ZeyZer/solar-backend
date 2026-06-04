@@ -1,3 +1,7 @@
+const {
+  makeBatteryAwarePaybackAndLifetimeSeries,
+} = require("./financialService");
+
 function round1(n) {
   if (typeof n !== "number" || !Number.isFinite(n)) return null;
   return Math.round(n * 10) / 10;
@@ -72,7 +76,6 @@ function selectBestLifetimeSavingsCandidate(candidates) {
     }, viableLifetime[0]);
   }
 
-  // Do not recommend a lifetime option that loses money overall.
   if (bestLifetimeSavings && bestLifetimeSavings.lifetimeNetSavings <= 0) {
     bestLifetimeSavings = null;
   }
@@ -101,6 +104,63 @@ function findBatteryCandidate(curve, targetBatteryKWh) {
 
     return best;
   }, safeCurve[0]);
+}
+
+function applyBatteryDegradationToCurve({
+  curve,
+  lifetimeYears = 25,
+  panelOption = "",
+  energyInflationRate = 0.06,
+  batteryDegradationRate = 0.02,
+  minBatteryCapacityFraction = 0.70,
+}) {
+  const safeCurve = Array.isArray(curve) ? curve : [];
+
+  if (!safeCurve.length) return [];
+
+  const noBatteryCandidate = findBatteryCandidate(safeCurve, 0);
+  const noBatteryAnnualBenefit = Number(noBatteryCandidate?.annualBenefit || 0);
+
+  return safeCurve.map((candidate) => {
+    const candidateMidPrice = Number(candidate.candidateMidPrice || 0);
+    const candidateAnnualBenefit = Number(candidate.annualBenefit || 0);
+
+    if (!Number.isFinite(candidateMidPrice) || candidateMidPrice <= 0) {
+      return candidate;
+    }
+
+    const batteryAwareSeries = makeBatteryAwarePaybackAndLifetimeSeries({
+      systemCostMid: candidateMidPrice,
+      noBatteryAnnualBenefit,
+      candidateAnnualBenefit,
+      years: lifetimeYears,
+      panelOption,
+      energyInflationRate,
+      batteryDegradationRate,
+      minBatteryCapacityFraction,
+    });
+
+    const lifetimeNetSavings = Math.round(
+      Number(batteryAwareSeries.lifetimeSavings || 0)
+    );
+
+    const lifetimeGrossBenefit = Math.round(
+      lifetimeNetSavings + candidateMidPrice
+    );
+
+    return {
+      ...candidate,
+      paybackYears: batteryAwareSeries.paybackYear,
+      lifetimeYears,
+      lifetimeGrossBenefit,
+      lifetimeNetSavings,
+      degradationApplied: true,
+      batteryDegradationAssumptions: {
+        batteryDegradationRate,
+        minBatteryCapacityFraction,
+      },
+    };
+  });
 }
 
 function buildNoBatteryComparison({ curve, selectedBatteryKWh }) {
@@ -166,11 +226,7 @@ function buildNoBatteryComparison({ curve, selectedBatteryKWh }) {
       annualBenefit: roundMoney(incrementalAnnualBenefit),
       lifetimeNetSavings: roundMoney(incrementalLifetimeNetSavings),
       systemCost: roundMoney(incrementalSystemCost),
-
-      // Alias for frontend wording. This is currently an estimated system-cost
-      // difference, not a real product database battery price.
       estimatedBatteryCost: roundMoney(incrementalSystemCost),
-
       batteryPaybackYears: incrementalBatteryPaybackYears,
     },
 
@@ -181,7 +237,7 @@ function buildNoBatteryComparison({ curve, selectedBatteryKWh }) {
     },
 
     note:
-      "Compares the selected usable battery size against the same system with 0 kWh battery. Costs are based on the current abstract pricing model, not a real hardware database.",
+      "Compares the selected usable battery size against the same system with 0 kWh battery. Lifetime values include simple battery degradation assumptions. Costs are based on the current abstract pricing model, not a real hardware database.",
   };
 }
 
@@ -193,22 +249,35 @@ function buildBatteryRecommendations({
   stepKWh,
   lifetimeYears = 25,
   selectedBatteryKWh = 0,
+  panelOption = "",
+  energyInflationRate = 0.06,
+  batteryDegradationRate = 0.02,
+  minBatteryCapacityFraction = 0.70,
 }) {
   const safeCurve = Array.isArray(curve) ? curve : [];
 
+  const adjustedCurve = applyBatteryDegradationToCurve({
+    curve: safeCurve,
+    lifetimeYears,
+    panelOption,
+    energyInflationRate,
+    batteryDegradationRate,
+    minBatteryCapacityFraction,
+  });
+
   const minRecommended = Number(minRecommendedBatteryKWh || 0);
 
-  const candidates = safeCurve.filter(
+  const candidates = adjustedCurve.filter(
     (x) => Number(x.batteryKWhUsable || 0) >= minRecommended
   );
 
-  const bestPayback = selectBestPaybackCandidate(candidates, safeCurve);
+  const bestPayback = selectBestPaybackCandidate(candidates, adjustedCurve);
 
   const bestLifetimeSavings =
     selectBestLifetimeSavingsCandidate(candidates);
 
   const noBatteryComparison = buildNoBatteryComparison({
-    curve: safeCurve,
+    curve: adjustedCurve,
     selectedBatteryKWh,
   });
 
@@ -216,7 +285,7 @@ function buildBatteryRecommendations({
     bestPayback,
     bestLifetimeSavings,
     noBatteryComparison,
-    curve: safeCurve,
+    curve: adjustedCurve,
     assumptions: {
       batteryCostPerKWh,
       minRecommendedBatteryKWh,
@@ -224,8 +293,12 @@ function buildBatteryRecommendations({
       stepKWh,
       lifetimeYears,
       selectedBatteryKWh,
+      panelOption,
+      energyInflationRate,
+      batteryDegradationRate,
+      minBatteryCapacityFraction,
       note:
-        "Includes fastest payback, maximum lifetime net savings, and selected battery vs no-battery comparison.",
+        "Includes fastest payback, maximum lifetime net savings, selected battery vs no-battery comparison, and simple battery degradation.",
     },
   };
 }
@@ -234,6 +307,7 @@ module.exports = {
   buildBatteryRecommendations,
   buildNoBatteryComparison,
   findBatteryCandidate,
+  applyBatteryDegradationToCurve,
   selectBestPaybackCandidate,
   selectBestLifetimeSavingsCandidate,
 };

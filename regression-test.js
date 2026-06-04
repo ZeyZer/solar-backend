@@ -1,10 +1,10 @@
 const API_BASE = process.env.API_BASE || "http://localhost:4000";
 
 const EXPECTED_VERSIONS = {
-  calculationVersion: "1.0.0-beta",
-  assumptionsVersion: "2026-beta-1",
+  calculationVersion: "1.1.0-beta",
+  assumptionsVersion: "2026-beta-2",
   tariffModelVersion: "1.0.0-beta",
-  batteryModelVersion: "1.0.0-beta",
+  batteryModelVersion: "1.1.0-beta",
 };
 
 const DEFAULT_TARIFF_BEFORE = {
@@ -850,6 +850,16 @@ function checkQuoteShape(quote, expectations) {
     assert(
       isNumber(noBatteryComparison.incremental.annualBenefit),
       "Incremental annualBenefit must be a number."
+    );
+
+    assert(
+      quote.batteryRecommendations.assumptions?.batteryDegradationRate != null,
+      "Missing battery degradation rate in battery recommendation assumptions."
+    );
+
+    assert(
+      quote.batteryRecommendations.assumptions?.minBatteryCapacityFraction != null,
+      "Missing minimum battery capacity fraction in battery recommendation assumptions."
     );
   }
 }
