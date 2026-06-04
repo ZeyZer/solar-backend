@@ -16,6 +16,8 @@ const {
   round2,
   solarDegradationMultiplier,
   makePaybackAndLifetimeSeries,
+  makeBatteryAwarePaybackAndLifetimeSeries,
+  makeYearlyRowsFromPaybackSeries,
 } = require("../services/financialService");
 
 const {
@@ -318,6 +320,46 @@ router.post("/recalc", async (req, res) => {
       minBatteryCapacityFraction: Number(CONFIG.minBatteryCapacityFraction || 0.70),
     });
 
+    const noBatteryAnnualBenefitRaw =
+      batteryRecommendations?.noBatteryComparison?.noBattery?.annualBenefit;
+
+    const noBatteryAnnualBenefitForPayback = Number.isFinite(
+      Number(noBatteryAnnualBenefitRaw)
+    )
+      ? Number(noBatteryAnnualBenefitRaw)
+      : Number(totalAnnualBenefit || 0);
+
+    const batteryAwarePayback = makeBatteryAwarePaybackAndLifetimeSeries({
+      systemCostMid: midPrice,
+      noBatteryAnnualBenefit: noBatteryAnnualBenefitForPayback,
+      candidateAnnualBenefit: Number(totalAnnualBenefit || 0),
+      years: recommendationLifetimeYears,
+      panelOption: input?.panelOption || quote?.panelOption || "",
+      energyInflationRate: Number(CONFIG.energyInflationRate || 0.06),
+      batteryDegradationRate: Number(CONFIG.batteryDegradationRate || 0.02),
+      minBatteryCapacityFraction: Number(CONFIG.minBatteryCapacityFraction || 0.70),
+    });
+
+    const annualSolarGenForBatteryAwarePayback = Math.round(
+      (sim?.monthly?.generation || []).reduce(
+        (sum, value) => sum + Number(value || 0),
+        0
+      ) ||
+        Number(quote?.estAnnualGenerationKWh || 0) ||
+        0
+    );
+
+    batteryAwarePayback.yearly = makeYearlyRowsFromPaybackSeries({
+      paybackSeries: batteryAwarePayback,
+      annualBaselineY1: Number(billing?.annualBaseline || 0),
+      annualSolarGenerationKWh: annualSolarGenForBatteryAwarePayback,
+      panelOption: input?.panelOption || quote?.panelOption || "",
+      energyInflationRate: Number(CONFIG.energyInflationRate || 0.06),
+    });
+
+    const batteryAwareSimplePaybackYears =
+      batteryAwarePayback.paybackYear ?? simplePaybackYears;
+
     // -----------------------
     // 7) Return updated quote
     // -----------------------
@@ -331,7 +373,7 @@ router.post("/recalc", async (req, res) => {
       annualBillSavings,
       annualSegIncome,
       totalAnnualBenefit,
-      simplePaybackYears,
+      simplePaybackYears: batteryAwareSimplePaybackYears,
 
       financialSeries: {
         monthly: {
@@ -353,7 +395,7 @@ router.post("/recalc", async (req, res) => {
             Number(billing.annualAfterImportAndStanding || 0) - Number(billing.annualExportCredit || 0)
           ),
         },
-        payback,
+        payback: batteryAwarePayback,
       },
       
       batteryRecommendations,

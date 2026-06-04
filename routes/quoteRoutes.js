@@ -43,6 +43,8 @@ const {
   round2,
   solarDegradationMultiplier,
   makePaybackAndLifetimeSeries,
+  makeBatteryAwarePaybackAndLifetimeSeries,
+  makeYearlyRowsFromPaybackSeries,
 } = require("../services/financialService");
 
 const {
@@ -808,6 +810,51 @@ router.post("/", async (req, res) => {
           batteryDegradationRate: Number(CONFIG.batteryDegradationRate || 0.02),
           minBatteryCapacityFraction: Number(CONFIG.minBatteryCapacityFraction || 0.70),
         });
+
+        const noBatteryAnnualBenefitRaw =
+          quote.batteryRecommendations?.noBatteryComparison?.noBattery?.annualBenefit;
+
+        const noBatteryAnnualBenefitForPayback = Number.isFinite(
+          Number(noBatteryAnnualBenefitRaw)
+        )
+          ? Number(noBatteryAnnualBenefitRaw)
+          : Number(totalAnnualBenefit || 0);
+
+        const batteryAwarePayback = makeBatteryAwarePaybackAndLifetimeSeries({
+          systemCostMid: midPrice,
+          noBatteryAnnualBenefit: noBatteryAnnualBenefitForPayback,
+          candidateAnnualBenefit: Number(totalAnnualBenefit || 0),
+          years: 25,
+          panelOption: input?.panelOption || "",
+          energyInflationRate: Number(CONFIG.energyInflationRate || 0.06),
+          batteryDegradationRate: Number(CONFIG.batteryDegradationRate || 0.02),
+          minBatteryCapacityFraction: Number(CONFIG.minBatteryCapacityFraction || 0.70),
+        });
+
+        const annualSolarGenForBatteryAwarePayback = Math.round(
+          (quote?.hourlyModel?.monthlyGenerationKWh || []).reduce(
+            (sum, value) => sum + Number(value || 0),
+            0
+          ) ||
+            Number(quote?.estAnnualGenerationKWh || 0) ||
+            0
+        );
+
+        batteryAwarePayback.yearly = makeYearlyRowsFromPaybackSeries({
+          paybackSeries: batteryAwarePayback,
+          annualBaselineY1: Number(monthlyFinance?.annualBaseline || 0),
+          annualSolarGenerationKWh: annualSolarGenForBatteryAwarePayback,
+          panelOption: input?.panelOption || "",
+          energyInflationRate: Number(CONFIG.energyInflationRate || 0.06),
+        });
+
+        quote.financialSeries = {
+          ...quote.financialSeries,
+          payback: batteryAwarePayback,
+        };
+
+        quote.simplePaybackYears =
+          batteryAwarePayback.paybackYear ?? quote.simplePaybackYears;
 
       }
     } else {

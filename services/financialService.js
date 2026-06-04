@@ -284,6 +284,46 @@ function makeBatteryAwarePaybackAndLifetimeSeries({
   };
 }
 
+function makeYearlyRowsFromPaybackSeries({
+  paybackSeries,
+  annualBaselineY1 = 0,
+  annualSolarGenerationKWh = 0,
+  panelOption = "",
+  energyInflationRate = 0.06,
+}) {
+  const cumulativeSavings = Array.isArray(paybackSeries?.cumulativeSavings)
+    ? paybackSeries.cumulativeSavings
+    : [];
+
+  const years = Math.max(0, cumulativeSavings.length - 1);
+  const yearly = [];
+
+  for (let y = 1; y <= years; y++) {
+    const inflationMultiplier = Math.pow(1 + energyInflationRate, y - 1);
+    const solarMultiplier = solarDegradationMultiplier(y, panelOption);
+
+    const billBefore = Number(annualBaselineY1 || 0) * inflationMultiplier;
+
+    const previousCumulative = Number(cumulativeSavings[y - 1] || 0);
+    const currentCumulative = Number(cumulativeSavings[y] || 0);
+
+    const billSavings = currentCumulative - previousCumulative;
+    const billAfter = billBefore - billSavings;
+
+    yearly.push({
+      year: y,
+      solarGenerationKWh: Math.round(Number(annualSolarGenerationKWh || 0) * solarMultiplier),
+      billBefore: round2(billBefore),
+      billAfter: round2(billAfter),
+      billSavings: round2(billSavings),
+      cumulativeSavings: round2(currentCumulative),
+      netPosition: round2(currentCumulative - Number(paybackSeries?.systemCostMid || 0)),
+    });
+  }
+
+  return yearly;
+}
+
 module.exports = {
   MONTH_LABELS,
   round2,
@@ -293,4 +333,5 @@ module.exports = {
   makeMonthlyFinancialSeries,
   makePaybackAndLifetimeSeries,
   makeBatteryAwarePaybackAndLifetimeSeries,
+  makeYearlyRowsFromPaybackSeries,
 };
