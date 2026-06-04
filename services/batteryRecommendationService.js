@@ -1,3 +1,13 @@
+function round1(n) {
+  if (typeof n !== "number" || !Number.isFinite(n)) return null;
+  return Math.round(n * 10) / 10;
+}
+
+function roundMoney(n) {
+  if (typeof n !== "number" || !Number.isFinite(n)) return null;
+  return Math.round(n);
+}
+
 function selectBestPaybackCandidate(candidates, curve) {
   const viablePayback = candidates.filter(
     (x) =>
@@ -70,6 +80,111 @@ function selectBestLifetimeSavingsCandidate(candidates) {
   return bestLifetimeSavings;
 }
 
+function findBatteryCandidate(curve, targetBatteryKWh) {
+  const safeCurve = Array.isArray(curve) ? curve : [];
+
+  if (!safeCurve.length) return null;
+
+  const target = Number(targetBatteryKWh || 0);
+
+  const exact = safeCurve.find(
+    (x) => Number(x.batteryKWhUsable || 0) === target
+  );
+
+  if (exact) return exact;
+
+  return safeCurve.reduce((best, cur) => {
+    const bestDistance = Math.abs(Number(best.batteryKWhUsable || 0) - target);
+    const curDistance = Math.abs(Number(cur.batteryKWhUsable || 0) - target);
+
+    if (curDistance < bestDistance) return cur;
+
+    return best;
+  }, safeCurve[0]);
+}
+
+function buildNoBatteryComparison({ curve, selectedBatteryKWh }) {
+  const safeCurve = Array.isArray(curve) ? curve : [];
+
+  if (!safeCurve.length) {
+    return null;
+  }
+
+  const noBatteryCandidate = findBatteryCandidate(safeCurve, 0);
+  const selectedCandidate = findBatteryCandidate(safeCurve, selectedBatteryKWh);
+
+  if (!noBatteryCandidate || !selectedCandidate) {
+    return null;
+  }
+
+  const noBatteryAnnualBenefit = Number(noBatteryCandidate.annualBenefit || 0);
+  const selectedBatteryAnnualBenefit = Number(selectedCandidate.annualBenefit || 0);
+
+  const noBatterySystemCost = Number(noBatteryCandidate.candidateMidPrice || 0);
+  const selectedBatterySystemCost = Number(selectedCandidate.candidateMidPrice || 0);
+
+  const noBatteryLifetimeNetSavings = Number(noBatteryCandidate.lifetimeNetSavings || 0);
+  const selectedBatteryLifetimeNetSavings = Number(selectedCandidate.lifetimeNetSavings || 0);
+
+  const incrementalAnnualBenefit =
+    selectedBatteryAnnualBenefit - noBatteryAnnualBenefit;
+
+  const incrementalSystemCost =
+    selectedBatterySystemCost - noBatterySystemCost;
+
+  const incrementalLifetimeNetSavings =
+    selectedBatteryLifetimeNetSavings - noBatteryLifetimeNetSavings;
+
+  const incrementalBatteryPaybackYears =
+    incrementalAnnualBenefit > 0 && incrementalSystemCost > 0
+      ? round1(incrementalSystemCost / incrementalAnnualBenefit)
+      : null;
+
+  return {
+    noBattery: {
+      batteryKWhUsable: Number(noBatteryCandidate.batteryKWhUsable || 0),
+      annualBenefit: roundMoney(noBatteryAnnualBenefit),
+      lifetimeNetSavings: roundMoney(noBatteryLifetimeNetSavings),
+      candidateMidPrice: roundMoney(noBatterySystemCost),
+      annualImportedKWh: roundMoney(Number(noBatteryCandidate.annualImportedKWh || 0)),
+      annualExportedKWh: roundMoney(Number(noBatteryCandidate.annualExportedKWh || 0)),
+      annualSelfUsedKWh: roundMoney(Number(noBatteryCandidate.annualSelfUsedKWh || 0)),
+    },
+
+    selectedBattery: {
+      batteryKWhUsable: Number(selectedCandidate.batteryKWhUsable || 0),
+      requestedBatteryKWhUsable: Number(selectedBatteryKWh || 0),
+      annualBenefit: roundMoney(selectedBatteryAnnualBenefit),
+      lifetimeNetSavings: roundMoney(selectedBatteryLifetimeNetSavings),
+      candidateMidPrice: roundMoney(selectedBatterySystemCost),
+      annualImportedKWh: roundMoney(Number(selectedCandidate.annualImportedKWh || 0)),
+      annualExportedKWh: roundMoney(Number(selectedCandidate.annualExportedKWh || 0)),
+      annualSelfUsedKWh: roundMoney(Number(selectedCandidate.annualSelfUsedKWh || 0)),
+    },
+
+    incremental: {
+      annualBenefit: roundMoney(incrementalAnnualBenefit),
+      lifetimeNetSavings: roundMoney(incrementalLifetimeNetSavings),
+      systemCost: roundMoney(incrementalSystemCost),
+
+      // Alias for frontend wording. This is currently an estimated system-cost
+      // difference, not a real product database battery price.
+      estimatedBatteryCost: roundMoney(incrementalSystemCost),
+
+      batteryPaybackYears: incrementalBatteryPaybackYears,
+    },
+
+    verdict: {
+      batteryAddsAnnualValue: incrementalAnnualBenefit > 0,
+      batteryAddsLifetimeValue: incrementalLifetimeNetSavings > 0,
+      batteryHasPositivePayback: incrementalBatteryPaybackYears !== null,
+    },
+
+    note:
+      "Compares the selected usable battery size against the same system with 0 kWh battery. Costs are based on the current abstract pricing model, not a real hardware database.",
+  };
+}
+
 function buildBatteryRecommendations({
   curve,
   batteryCostPerKWh,
@@ -77,6 +192,7 @@ function buildBatteryRecommendations({
   maxBatteryKWh,
   stepKWh,
   lifetimeYears = 25,
+  selectedBatteryKWh = 0,
 }) {
   const safeCurve = Array.isArray(curve) ? curve : [];
 
@@ -91,9 +207,15 @@ function buildBatteryRecommendations({
   const bestLifetimeSavings =
     selectBestLifetimeSavingsCandidate(candidates);
 
+  const noBatteryComparison = buildNoBatteryComparison({
+    curve: safeCurve,
+    selectedBatteryKWh,
+  });
+
   return {
     bestPayback,
     bestLifetimeSavings,
+    noBatteryComparison,
     curve: safeCurve,
     assumptions: {
       batteryCostPerKWh,
@@ -101,14 +223,17 @@ function buildBatteryRecommendations({
       maxBatteryKWh,
       stepKWh,
       lifetimeYears,
+      selectedBatteryKWh,
       note:
-        "Includes recommendations for fastest payback and maximum lifetime net savings.",
+        "Includes fastest payback, maximum lifetime net savings, and selected battery vs no-battery comparison.",
     },
   };
 }
 
 module.exports = {
   buildBatteryRecommendations,
+  buildNoBatteryComparison,
+  findBatteryCandidate,
   selectBestPaybackCandidate,
   selectBestLifetimeSavingsCandidate,
 };

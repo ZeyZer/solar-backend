@@ -809,6 +809,48 @@ function checkQuoteShape(quote, expectations) {
       quote.batteryRecommendations.curve.length > 0,
       "batteryRecommendations.curve is empty."
     );
+
+    const noBatteryComparison = quote.batteryRecommendations.noBatteryComparison;
+
+    assert(
+      noBatteryComparison,
+      "Missing batteryRecommendations.noBatteryComparison."
+    );
+
+    assert(
+      noBatteryComparison.noBattery,
+      "Missing noBatteryComparison.noBattery."
+    );
+
+    assert(
+      noBatteryComparison.selectedBattery,
+      "Missing noBatteryComparison.selectedBattery."
+    );
+
+    assert(
+      noBatteryComparison.incremental,
+      "Missing noBatteryComparison.incremental."
+    );
+
+    assert(
+      noBatteryComparison.verdict,
+      "Missing noBatteryComparison.verdict."
+    );
+
+    assert(
+      isNumber(noBatteryComparison.noBattery.annualBenefit),
+      "No-battery annualBenefit must be a number."
+    );
+
+    assert(
+      isNumber(noBatteryComparison.selectedBattery.annualBenefit),
+      "Selected-battery annualBenefit must be a number."
+    );
+
+    assert(
+      isNumber(noBatteryComparison.incremental.annualBenefit),
+      "Incremental annualBenefit must be a number."
+    );
   }
 }
 

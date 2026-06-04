@@ -30,6 +30,10 @@ const {
   calculateQuote,
 } = require("../services/quoteBaseService");
 
+const {
+  buildBatteryRecommendations,
+} = require("../services/batteryRecommendationService");
+
 const router = express.Router();
 
 router.post("/recalc", async (req, res) => {
@@ -291,46 +295,24 @@ router.post("/recalc", async (req, res) => {
       });
     }
 
-    const candidates = curve.filter((x) => x.batteryKWhUsable >= MIN_RECOMMENDED_BAT);
-
-    const viablePayback = candidates.filter(
-      (x) => typeof x.paybackYears === "number" && Number.isFinite(x.paybackYears) && x.annualBenefit > 0
+    const selectedBatteryKWh = Number(
+      hm?._batteryKWh ??
+      input?.batteryKWh ??
+      quote?.batteryKWh ??
+      0
     );
 
-    let bestPayback = null;
-    if (viablePayback.length > 0) {
-      bestPayback = viablePayback.reduce((best, cur) => {
-        if (cur.paybackYears < best.paybackYears) return cur;
-        if (cur.paybackYears === best.paybackYears && cur.annualBenefit > best.annualBenefit) return cur;
-        return best;
-      }, viablePayback[0]);
-    } else if (candidates.length > 0) {
-      bestPayback = candidates.reduce((best, cur) => (cur.annualBenefit > best.annualBenefit ? cur : best), candidates[0]);
-    }
+    const batteryCostPerKWh = Number(CONFIG.batteryCostPerKwh || 0);
 
-    const finalBestPayback = bestPayback || candidates[0] || curve[0] || null;
-
-    const viableLifetime = candidates.filter(
-      (x) => typeof x.lifetimeNetSavings === "number" && Number.isFinite(x.lifetimeNetSavings)
-    );
-
-    let bestLifetimeSavings = null;
-    if (viableLifetime.length > 0) {
-      bestLifetimeSavings = viableLifetime.reduce((best, cur) => {
-        if (cur.lifetimeNetSavings > best.lifetimeNetSavings) return cur;
-        if (cur.lifetimeNetSavings === best.lifetimeNetSavings) {
-          const bestPay = typeof best.paybackYears === "number" ? best.paybackYears : Infinity;
-          const curPay = typeof cur.paybackYears === "number" ? cur.paybackYears : Infinity;
-          if (curPay < bestPay) return cur;
-          if (curPay === bestPay && cur.annualBenefit > best.annualBenefit) return cur;
-        }
-        return best;
-      }, viableLifetime[0]);
-    }
-
-    if (bestLifetimeSavings && bestLifetimeSavings.lifetimeNetSavings <= 0) {
-      bestLifetimeSavings = null;
-    }
+    const batteryRecommendations = buildBatteryRecommendations({
+      curve,
+      batteryCostPerKWh,
+      selectedBatteryKWh,
+      minRecommendedBatteryKWh: MIN_RECOMMENDED_BAT,
+      maxBatteryKWh: MAX_BAT,
+      stepKWh: STEP,
+      lifetimeYears: recommendationLifetimeYears,
+    });
 
     // -----------------------
     // 7) Return updated quote
@@ -369,20 +351,9 @@ router.post("/recalc", async (req, res) => {
         },
         payback,
       },
-
-      batteryRecommendations: {
-        bestPayback: finalBestPayback,
-        bestLifetimeSavings,
-        curve,
-        assumptions: {
-          minRecommendedBatteryKWh: MIN_RECOMMENDED_BAT,
-          maxBatteryKWh: MAX_BAT,
-          stepKWh: STEP,
-          lifetimeYears: recommendationLifetimeYears,
-          note: "Recalculated using quote hourly arrays + current tariff toggles (no PVGIS).",
-        },
-      },
-
+      
+      batteryRecommendations,
+      
       hourlyModel: {
         ...hm,
 

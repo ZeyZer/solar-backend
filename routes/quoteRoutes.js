@@ -798,6 +798,7 @@ router.post("/", async (req, res) => {
         quote.batteryRecommendations = buildBatteryRecommendations({
           curve,
           batteryCostPerKWh,
+          selectedBatteryKWh: selectedBatteryUsable,
           minRecommendedBatteryKWh: MIN_RECOMMENDED_BAT,
           maxBatteryKWh: MAX_BAT,
           stepKWh: STEP,
