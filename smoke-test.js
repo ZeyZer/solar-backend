@@ -5,6 +5,10 @@ const payload = {
   email: "test@example.com",
   phone: "07123456789",
 
+  _testMode: {
+    skipLeadStorage: true,
+  },
+
   homeOwnership: "owner",
   houseNumber: "10",
   postcode: "SW1A 1AA",

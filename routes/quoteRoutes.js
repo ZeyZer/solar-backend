@@ -73,6 +73,16 @@ const {
 
 const router = express.Router();
 
+function shouldSkipLeadStorageForTest(input) {
+  const isProduction = process.env.NODE_ENV === "production";
+
+  if (isProduction) {
+    return false;
+  }
+
+  return input?._testMode?.skipLeadStorage === true;
+}
+
 router.post("/", async (req, res) => {
   try {
     const input = req.body || {};
@@ -885,30 +895,34 @@ router.post("/", async (req, res) => {
       leadId,
     });
 
-    const leadRecord = saveLeadLocally({
-      leadId,
-      status: "new",
-      source: "beta-calculator",
-      form: {
-        ...leadForm,
-        leadId,
-      },
-      roofs: Array.isArray(input.roofs) ? input.roofs : [],
-      quote: versionedQuote,
-    });
-
     quote = versionedQuote;
 
-    try {
-      const supabaseResult = await saveLeadToSupabase(leadRecord);
+    if (shouldSkipLeadStorageForTest(input)) {
+      console.log("Lead storage skipped for local test run:", leadId);
+    } else {
+      const leadRecord = saveLeadLocally({
+        leadId,
+        status: "new",
+        source: "beta-calculator",
+        form: {
+          ...leadForm,
+          leadId,
+        },
+        roofs: Array.isArray(input.roofs) ? input.roofs : [],
+        quote: versionedQuote,
+      });
 
-      if (supabaseResult?.skipped) {
-        console.log("Supabase lead save skipped:", supabaseResult.reason);
-      } else {
-        console.log("Saved lead to Supabase:", supabaseResult.leadId);
+      try {
+        const supabaseResult = await saveLeadToSupabase(leadRecord);
+
+        if (supabaseResult?.skipped) {
+          console.log("Supabase lead save skipped:", supabaseResult.reason);
+        } else {
+          console.log("Saved lead to Supabase:", supabaseResult.leadId);
+        }
+      } catch (err) {
+        console.error("Supabase lead save failed:", err.message);
       }
-    } catch (err) {
-      console.error("Supabase lead save failed:", err.message);
     }
 
     res.json(quote);
