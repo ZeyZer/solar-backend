@@ -467,6 +467,73 @@ function checkRange(label, value, min, max) {
   console.log(`    ✓ ${label}: ${roundForLog(value)} within ${min ?? "—"}–${max ?? "—"}`);
 }
 
+function checkGreaterThan(label, actual, comparison, minimumDifference = 0) {
+  assert(
+    isNumber(actual),
+    `${label} actual value is missing or not a number: ${actual}`
+  );
+
+  assert(
+    isNumber(comparison),
+    `${label} comparison value is missing or not a number: ${comparison}`
+  );
+
+  const difference = actual - comparison;
+
+  assert(
+    difference > minimumDifference,
+    `${label} expected ${actual} to be greater than ${comparison} by more than ${minimumDifference}, difference was ${difference}`
+  );
+
+  console.log(
+    `    ✓ ${label}: ${roundForLog(actual)} > ${roundForLog(comparison)}`
+  );
+}
+
+function checkLessThan(label, actual, comparison, minimumDifference = 0) {
+  assert(
+    isNumber(actual),
+    `${label} actual value is missing or not a number: ${actual}`
+  );
+
+  assert(
+    isNumber(comparison),
+    `${label} comparison value is missing or not a number: ${comparison}`
+  );
+
+  const difference = comparison - actual;
+
+  assert(
+    difference > minimumDifference,
+    `${label} expected ${actual} to be less than ${comparison} by more than ${minimumDifference}, difference was ${difference}`
+  );
+
+  console.log(
+    `    ✓ ${label}: ${roundForLog(actual)} < ${roundForLog(comparison)}`
+  );
+}
+
+function checkGreaterThanOrNear(label, actual, comparison, tolerance = 0) {
+  assert(
+    isNumber(actual),
+    `${label} actual value is missing or not a number: ${actual}`
+  );
+
+  assert(
+    isNumber(comparison),
+    `${label} comparison value is missing or not a number: ${comparison}`
+  );
+
+  assert(
+    actual + tolerance >= comparison,
+    `${label} expected ${actual} to be at least near ${comparison} with tolerance ${tolerance}`
+  );
+
+  console.log(
+    `    ✓ ${label}: ${roundForLog(actual)} is near/above ${roundForLog(comparison)}`
+  );
+}
+
 function roundForLog(value) {
   if (!isNumber(value)) return value;
   return Math.round(value * 100) / 100;
@@ -774,17 +841,185 @@ async function runQuoteScenarioWithRetry(scenario, maxAttempts = 2) {
   throw lastError;
 }
 
+function checkScenarioComparisons(quotesByName) {
+  console.log("\n▶ Behaviour comparison checks");
+
+  const noBattery = quotesByName.get("Standard tariff, no battery");
+  const standardBattery = quotesByName.get("Standard tariff, 5 kWh battery");
+  const cheapOvernight = quotesByName.get("Cheap overnight tariff, 5 kWh battery");
+  const flux = quotesByName.get("Flux-style tariff, battery export enabled");
+  const eastWest = quotesByName.get("East/west multi-roof system");
+
+  assert(noBattery, "Missing no-battery quote for comparison checks.");
+  assert(standardBattery, "Missing standard battery quote for comparison checks.");
+  assert(cheapOvernight, "Missing cheap overnight quote for comparison checks.");
+  assert(flux, "Missing flux quote for comparison checks.");
+  assert(eastWest, "Missing east/west quote for comparison checks.");
+
+  const noBatteryImport = getAnnualMetric(
+    noBattery,
+    "annualImportedKWh",
+    "monthlyImportedKWh"
+  );
+
+  const standardBatteryImport = getAnnualMetric(
+    standardBattery,
+    "annualImportedKWh",
+    "monthlyImportedKWh"
+  );
+
+  const noBatteryExport = getAnnualMetric(
+    noBattery,
+    "annualExportedKWh",
+    "monthlyExportedKWh"
+  );
+
+  const standardBatteryExport = getAnnualMetric(
+    standardBattery,
+    "annualExportedKWh",
+    "monthlyExportedKWh"
+  );
+
+  const noBatterySelfUsed = getAnnualMetric(
+    noBattery,
+    "annualSelfUsedKWh",
+    "monthlySelfUsedKWh"
+  );
+
+  const standardBatterySelfUsed = getAnnualMetric(
+    standardBattery,
+    "annualSelfUsedKWh",
+    "monthlySelfUsedKWh"
+  );
+
+  const standardBatteryCharge = getAnnualBatteryChargeKWh(standardBattery);
+
+  checkLessThan(
+    "Battery reduces annual grid import",
+    standardBatteryImport,
+    noBatteryImport,
+    100
+  );
+
+  checkLessThan(
+    "Battery reduces annual export",
+    standardBatteryExport,
+    noBatteryExport,
+    100
+  );
+
+  checkGreaterThan(
+    "Battery increases annual self-used solar",
+    standardBatterySelfUsed,
+    noBatterySelfUsed,
+    100
+  );
+
+  checkGreaterThan(
+    "Battery charges from solar/grid during the year",
+    standardBatteryCharge,
+    0,
+    100
+  );
+
+  checkGreaterThan(
+    "Battery increases total annual benefit compared with no battery",
+    Number(standardBattery.totalAnnualBenefit || 0),
+    Number(noBattery.totalAnnualBenefit || 0),
+    25
+  );
+
+  checkGreaterThanOrNear(
+    "Cheap overnight tariff benefit is near or above standard battery benefit",
+    Number(cheapOvernight.totalAnnualBenefit || 0),
+    Number(standardBattery.totalAnnualBenefit || 0),
+    75
+  );
+
+  checkGreaterThanOrNear(
+    "Flux-style tariff benefit is near or above standard battery benefit",
+    Number(flux.totalAnnualBenefit || 0),
+    Number(standardBattery.totalAnnualBenefit || 0),
+    125
+  );
+
+  checkGreaterThan(
+    "East/west scenario has larger system size than 10-panel standard scenario",
+    Number(eastWest.systemSizeKwp || 0),
+    Number(standardBattery.systemSizeKwp || 0),
+    0.3
+  );
+
+  assert(
+    eastWest.panelCount === 12,
+    `East/west scenario expected 12 panels, got ${eastWest.panelCount}`
+  );
+
+  console.log("    ✓ East/west scenario panel count: 12");
+}
+
+function checkRecalcBehaviour(originalQuote, recalculatedQuote) {
+  console.log("\n▶ Recalc behaviour checks");
+
+  checkApproxEqual(
+    "Recalc preserves annual generation",
+    Number(recalculatedQuote.estAnnualGenerationKWh || 0),
+    Number(originalQuote.estAnnualGenerationKWh || 0),
+    1
+  );
+
+  checkApproxEqual(
+    "Recalc preserves system size",
+    Number(recalculatedQuote.systemSizeKwp || 0),
+    Number(originalQuote.systemSizeKwp || 0),
+    0.01
+  );
+
+  checkApproxEqual(
+    "Recalc preserves panel count",
+    Number(recalculatedQuote.panelCount || 0),
+    Number(originalQuote.panelCount || 0),
+    0
+  );
+
+  const originalSeg = Number(originalQuote.annualSegIncome || 0);
+  const recalculatedSeg = Number(recalculatedQuote.annualSegIncome || 0);
+
+  checkGreaterThan(
+    "Increasing SEG rate increases annual SEG income",
+    recalculatedSeg,
+    originalSeg,
+    10
+  );
+
+  checkApproxEqual(
+    "Recalc annualBillSavings + annualSegIncome = totalAnnualBenefit",
+    Number(recalculatedQuote.annualBillSavings || 0) +
+      Number(recalculatedQuote.annualSegIncome || 0),
+    Number(recalculatedQuote.totalAnnualBenefit || 0),
+    2
+  );
+}
+
 async function runRecalcCheck(originalQuote, originalInput) {
+  const changedTariffAfter = {
+    ...originalInput.tariffAfter,
+    segPrice: 0.15,
+  };
+
   const recalcPayload = {
     quote: originalQuote,
+
+    // Important: quoteRecalcRoutes expects these at top level,
+    // matching the real frontend recalculateQuote() call.
+    tariffBefore: originalInput.tariffBefore,
+    tariffAfter: changedTariffAfter,
+
     input: {
       ...originalInput,
       batteryKWh: 5,
       tariffBefore: originalInput.tariffBefore,
-      tariffAfter: {
-        ...originalInput.tariffAfter,
-        segPrice: 0.15,
-      },
+      tariffAfter: changedTariffAfter,
     },
   };
 
@@ -837,11 +1072,13 @@ async function main() {
   console.log(`Running regression tests against ${API_BASE}`);
 
   let passed = 0;
+  const quotesByName = new Map();
 
   for (const scenario of scenarios) {
     console.log(`\n▶ ${scenario.name}`);
 
     const quote = await runQuoteScenarioWithRetry(scenario);
+    quotesByName.set(scenario.name, quote);
 
     console.log("  Quote OK:", {
       calculationVersion: quote.calculationVersion,
@@ -868,6 +1105,7 @@ async function main() {
     passed += 1;
   }
 
+  checkScenarioComparisons(quotesByName);
   console.log("\n▶ Recalc check from standard battery scenario");
 
   const standardBatteryQuote = await runQuoteScenarioWithRetry(scenarios[1]);
@@ -875,6 +1113,8 @@ async function main() {
     standardBatteryQuote,
     scenarios[1].input
   );
+
+  checkRecalcBehaviour(standardBatteryQuote, recalculatedQuote);
 
   console.log("  Recalc OK:", {
     calculationVersion: recalculatedQuote.calculationVersion,
