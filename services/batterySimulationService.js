@@ -4,6 +4,10 @@ const {
   rateForHour,
 } = require("./tariffService");
 
+const {
+  getBatteryModelAssumptions,
+} = require("../config/batteryModelConfig");
+
 function simulateHourByHour({
   pvHourlyKWh,
   loadHourlyKWh,
@@ -15,9 +19,15 @@ function simulateHourByHour({
   allowGridCharge = false,
   exportFromBatteryEnabled = false,
   allowEnergyTrading = false,
-  gridChargeTargetPct = 80,
+  gridChargeTargetPct = null,
+  batteryModelAssumptions = null,
 }) {
   let hourOfDay = hourOfDayIn;
+
+  const batteryModel = getBatteryModelAssumptions({
+    ...(batteryModelAssumptions || {}),
+    ...(gridChargeTargetPct != null ? { gridChargeTargetPct } : {}),
+  });
 
   // ===============================
   // Debug controls
@@ -87,26 +97,26 @@ function simulateHourByHour({
   }
 
   // ===============================
-  // Realistic inverter power limits
+  // Abstract battery power limits
   // ===============================
-  // < 8 kWh battery → 3.7 kW
-  // ≥ 8 kWh battery → 6 kW
+  // These are centralised in config/batteryModelConfig.js so they can later
+  // be replaced by product-specific hardware assumptions.
 
   let maxChargeKW = 0;
   let maxDischargeKW = 0;
 
   if (capUsable > 0) {
-    if (capUsable < 8) {
-      maxChargeKW = 3.7;
-      maxDischargeKW = 3.7;
+    if (capUsable < batteryModel.smallBatteryThresholdKWh) {
+      maxChargeKW = batteryModel.smallBatteryMaxChargeKW;
+      maxDischargeKW = batteryModel.smallBatteryMaxDischargeKW;
     } else {
-      maxChargeKW = 5;
-      maxDischargeKW = 6;
+      maxChargeKW = batteryModel.largeBatteryMaxChargeKW;
+      maxDischargeKW = batteryModel.largeBatteryMaxDischargeKW;
     }
   }
 
   // Efficiency
-  const roundTripEff = 0.90;
+  const roundTripEff = batteryModel.roundTripEfficiency;
   const chargeEff = Math.sqrt(roundTripEff);
   const dischargeEff = Math.sqrt(roundTripEff);
 
@@ -333,7 +343,7 @@ function simulateHourByHour({
     if (allowGridCharge && capUsable > 0 && dispatchMode === "retail_rate" && tariff) {
 
       // 1) Base overnight target from the UI setting
-      const pctTargetSOC = socMax * (gridChargeTargetPct / 100);
+      const pctTargetSOC = socMax * (batteryModel.gridChargeTargetPct / 100);
 
       // 2) If energy trading is enabled, work out how much EXTRA spare capacity
       // could be used for profitable arbitrage later.
@@ -895,6 +905,7 @@ function simulateWithTariff({ pv, load, monthIdx, hourOfDay, batteryKWh, tariff 
     dispatchMode: retail ? "retail_rate" : "self_consumption",
     allowGridCharge,
     exportFromBatteryEnabled: !!t.exportFromBatteryEnabled,
+    batteryModelAssumptions: getBatteryModelAssumptions(),
   });
 }
 

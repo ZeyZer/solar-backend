@@ -1,7 +1,39 @@
 // ====== QUOTE CONFIG ======
 const CONFIG = {
   baseCostPerKwp: 800,
+
+  // Keep this top-level alias for existing pricing code.
   batteryCostPerKwh: 280,
+
+  // Centralised abstract battery model assumptions.
+  // These are NOT product-specific yet. They will later be replaced or extended
+  // by a real hardware database.
+  batteryModel: {
+    batteryCostPerKWh: 280,
+
+    // Hourly dispatch model
+    roundTripEfficiency: 0.90,
+
+    // Abstract inverter/battery power assumptions
+    smallBatteryThresholdKWh: 8,
+    smallBatteryMaxChargeKW: 3.7,
+    smallBatteryMaxDischargeKW: 3.7,
+    largeBatteryMaxChargeKW: 5,
+    largeBatteryMaxDischargeKW: 6,
+
+    // Retail tariff / grid-charge planning
+    gridChargeTargetPct: 80,
+
+    // Lifetime modelling
+    degradationRate: 0.02,
+    minCapacityFraction: 0.70,
+
+    // Recommendation search range
+    recommendationMinBatteryKWh: 2,
+    recommendationMaxBatteryKWh: 35,
+    recommendationStepKWh: 1,
+  },
+
   scaffolding: {
     firstRoof: 600,
     additionalRoof: 400,

@@ -11,6 +11,10 @@ const express = require("express");
 const { CONFIG } = require("../config/quoteConfig");
 
 const {
+  getBatteryModelAssumptions,
+} = require("../config/batteryModelConfig");
+
+const {
   validateAndNormalisePostcode,
 } = require("../utils/postcodeUtils");
 
@@ -88,6 +92,8 @@ function shouldSkipLeadStorageForTest(input) {
 router.post("/", async (req, res) => {
   try {
     const input = req.body || {};
+
+    const batteryModelAssumptions = getBatteryModelAssumptions();
 
     // ==============================
     // Tariffs: BEFORE vs AFTER (define ONCE, early)
@@ -670,12 +676,11 @@ router.post("/", async (req, res) => {
       //    Uses same PV/load hours already fetched; no extra PVGIS calls
       // ------------------------------
       if (hourlyYearData && Array.isArray(hourlyYearData) && hourlyYearData.length > 0) {
-        const MAX_BAT = 35;
-        const STEP = 1;
-        const MIN_RECOMMENDED_BAT = 2;
+        const MAX_BAT = batteryModelAssumptions.recommendationMaxBatteryKWh;
+        const STEP = batteryModelAssumptions.recommendationStepKWh;
+        const MIN_RECOMMENDED_BAT = batteryModelAssumptions.recommendationMinBatteryKWh;
 
-        // ✅ Make sure this exists in-scope
-        const batteryCostPerKWh = Number(CONFIG.batteryCostPerKwh || 0);
+        const batteryCostPerKWh = batteryModelAssumptions.batteryCostPerKWh;
 
         function simulateForBatterySizeUsable(batteryUsableKWh) {
           // 1) Run each PVGIS year with this battery, then average annual outputs
@@ -807,8 +812,9 @@ router.post("/", async (req, res) => {
           lifetimeYears: 25,
           panelOption: input?.panelOption || "",
           energyInflationRate: Number(CONFIG.energyInflationRate || 0.06),
-          batteryDegradationRate: Number(CONFIG.batteryDegradationRate || 0.02),
-          minBatteryCapacityFraction: Number(CONFIG.minBatteryCapacityFraction || 0.70),
+          batteryDegradationRate: batteryModelAssumptions.degradationRate,
+          minBatteryCapacityFraction: batteryModelAssumptions.minCapacityFraction,
+          batteryModelAssumptions,
         });
 
         const noBatteryAnnualBenefitRaw =
@@ -827,8 +833,8 @@ router.post("/", async (req, res) => {
           years: 25,
           panelOption: input?.panelOption || "",
           energyInflationRate: Number(CONFIG.energyInflationRate || 0.06),
-          batteryDegradationRate: Number(CONFIG.batteryDegradationRate || 0.02),
-          minBatteryCapacityFraction: Number(CONFIG.minBatteryCapacityFraction || 0.70),
+          batteryDegradationRate: batteryModelAssumptions.degradationRate,
+          minBatteryCapacityFraction: batteryModelAssumptions.minCapacityFraction,
         });
 
         const annualSolarGenForBatteryAwarePayback = Math.round(

@@ -91,6 +91,14 @@ The current beta recommendation model is still abstract. It does not yet fully m
 - degradation by product
 - warranty/cycle limits
 
+## Centralised battery model assumptions
+
+Current beta battery assumptions are stored in:
+
+'''txt
+backend/config/quoteConfig.js
+backend/config/batteryModelConfig.js
+
 ## Battery degradation
 
 Battery recommendation lifetime values now include a simple battery degradation assumption.

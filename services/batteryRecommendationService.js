@@ -253,6 +253,7 @@ function buildBatteryRecommendations({
   energyInflationRate = 0.06,
   batteryDegradationRate = 0.02,
   minBatteryCapacityFraction = 0.70,
+  batteryModelAssumptions = null,
 }) {
   const safeCurve = Array.isArray(curve) ? curve : [];
 
@@ -297,6 +298,7 @@ function buildBatteryRecommendations({
       energyInflationRate,
       batteryDegradationRate,
       minBatteryCapacityFraction,
+      batteryModel: batteryModelAssumptions,
       note:
         "Includes fastest payback, maximum lifetime net savings, selected battery vs no-battery comparison, and simple battery degradation.",
     },

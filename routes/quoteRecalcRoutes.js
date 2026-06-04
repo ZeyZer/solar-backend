@@ -7,6 +7,10 @@ const express = require("express");
 const { CONFIG } = require("../config/quoteConfig");
 
 const {
+  getBatteryModelAssumptions,
+} = require("../config/batteryModelConfig");
+
+const {
   normalizeTariff,
   isRetailRateTariff,
   computeHourlyBilling,
@@ -41,6 +45,7 @@ const router = express.Router();
 router.post("/recalc", async (req, res) => {
   try {
     const { quote, tariffBefore, tariffAfter, input, batteryRecommendationLifetimeYears } = req.body || {};
+    const batteryModelAssumptions = getBatteryModelAssumptions();
     if (!quote) return res.status(400).json({ error: "Missing quote." });
 
     const recommendationLifetimeYears =
@@ -93,6 +98,7 @@ router.post("/recalc", async (req, res) => {
       allowEnergyTrading: retail && !!ta.allowEnergyTrading,
 
       exportFromBatteryEnabled: !!ta.exportFromBatteryEnabled,
+      batteryModelAssumptions,
     });
 
     if (!sim?.hourly?.importKWh || !sim?.hourly?.exportKWh) {
@@ -214,9 +220,9 @@ router.post("/recalc", async (req, res) => {
     // 6) Battery recommendations (fast enough, no PVGIS)
     //    Uses the same single 8760 arrays on the quote.
     // -----------------------
-    const MAX_BAT = 35;
-    const STEP = 1;
-    const MIN_RECOMMENDED_BAT = 2;
+    const MAX_BAT = batteryModelAssumptions.recommendationMaxBatteryKWh;
+    const STEP = batteryModelAssumptions.recommendationStepKWh;
+    const MIN_RECOMMENDED_BAT = batteryModelAssumptions.recommendationMinBatteryKWh;
 
     const curve = [];
     for (let b = 0; b <= MAX_BAT; b += STEP) {
@@ -231,6 +237,7 @@ router.post("/recalc", async (req, res) => {
         allowGridCharge: retail && !!ta.allowGridCharging,
         allowEnergyTrading: retail && !!ta.allowEnergyTrading,
         exportFromBatteryEnabled: !!ta.exportFromBatteryEnabled,
+        batteryModelAssumptions,
       });
 
       const billingB = computeHourlyBilling({
@@ -304,7 +311,7 @@ router.post("/recalc", async (req, res) => {
       0
     );
 
-    const batteryCostPerKWh = Number(CONFIG.batteryCostPerKwh || 0);
+    const batteryCostPerKWh = batteryModelAssumptions.batteryCostPerKWh;
 
     const batteryRecommendations = buildBatteryRecommendations({
       curve,
@@ -316,8 +323,9 @@ router.post("/recalc", async (req, res) => {
       lifetimeYears: recommendationLifetimeYears,
       panelOption: input?.panelOption || quote?.panelOption || "",
       energyInflationRate: Number(CONFIG.energyInflationRate || 0.06),
-      batteryDegradationRate: Number(CONFIG.batteryDegradationRate || 0.02),
-      minBatteryCapacityFraction: Number(CONFIG.minBatteryCapacityFraction || 0.70),
+      batteryDegradationRate: batteryModelAssumptions.degradationRate,
+      minBatteryCapacityFraction: batteryModelAssumptions.minCapacityFraction,
+      batteryModelAssumptions,
     });
 
     const noBatteryAnnualBenefitRaw =
@@ -336,8 +344,8 @@ router.post("/recalc", async (req, res) => {
       years: recommendationLifetimeYears,
       panelOption: input?.panelOption || quote?.panelOption || "",
       energyInflationRate: Number(CONFIG.energyInflationRate || 0.06),
-      batteryDegradationRate: Number(CONFIG.batteryDegradationRate || 0.02),
-      minBatteryCapacityFraction: Number(CONFIG.minBatteryCapacityFraction || 0.70),
+      batteryDegradationRate: batteryModelAssumptions.degradationRate,
+      minBatteryCapacityFraction: batteryModelAssumptions.minCapacityFraction,
     });
 
     const annualSolarGenForBatteryAwarePayback = Math.round(

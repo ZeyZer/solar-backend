@@ -861,6 +861,43 @@ function checkQuoteShape(quote, expectations) {
       quote.batteryRecommendations.assumptions?.minBatteryCapacityFraction != null,
       "Missing minimum battery capacity fraction in battery recommendation assumptions."
     );
+
+    const batteryModel = quote.batteryRecommendations.assumptions?.batteryModel;
+
+    assert(
+      batteryModel && typeof batteryModel === "object",
+      "Missing battery model assumptions object."
+    );
+
+    assert(
+      isNumber(batteryModel.roundTripEfficiency),
+      "Missing battery model roundTripEfficiency."
+    );
+
+    assert(
+      isNumber(batteryModel.smallBatteryMaxChargeKW),
+      "Missing battery model smallBatteryMaxChargeKW."
+    );
+
+    assert(
+      isNumber(batteryModel.smallBatteryMaxDischargeKW),
+      "Missing battery model smallBatteryMaxDischargeKW."
+    );
+
+    assert(
+      isNumber(batteryModel.largeBatteryMaxChargeKW),
+      "Missing battery model largeBatteryMaxChargeKW."
+    );
+
+    assert(
+      isNumber(batteryModel.largeBatteryMaxDischargeKW),
+      "Missing battery model largeBatteryMaxDischargeKW."
+    );
+
+    assert(
+      isNumber(batteryModel.recommendationMaxBatteryKWh),
+      "Missing battery model recommendationMaxBatteryKWh."
+    );
   }
 }
 
