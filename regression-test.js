@@ -645,6 +645,32 @@ function checkQuoteVersions(quote) {
     quote.tariffModelAssumptions.presets.flux,
     "Missing flux tariff preset assumptions."
   );
+
+  assert(
+    quote.tariffWarnings &&
+      typeof quote.tariffWarnings === "object",
+    "Missing tariffWarnings object."
+  );
+
+  assert(
+    Array.isArray(quote.tariffWarnings.warnings),
+    "tariffWarnings.warnings must be an array."
+  );
+
+  assert(
+    quote.tariffWarnings.warnings.length > 0,
+    "tariffWarnings.warnings should contain at least one notice."
+  );
+
+  assert(
+    quote.tariffWarnings.timeResolution === "hourly",
+    `Unexpected tariffWarnings.timeResolution: ${quote.tariffWarnings.timeResolution}`
+  );
+
+  assert(
+    quote.tariffWarnings.warnings.some((warning) => warning.code === "HOURLY_TARIFF_MODEL"),
+    "Missing hourly tariff model warning."
+  );
 }
 
 function checkQuoteShape(quote, expectations) {

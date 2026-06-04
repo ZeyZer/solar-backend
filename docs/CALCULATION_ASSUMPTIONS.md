@@ -77,6 +77,19 @@ Current beta tariff assumptions are stored in:
 backend/config/tariffPresets.js
 backend/services/tariffService.js
 
+## Tariff warnings and notices
+
+Quote responses include a `tariffWarnings` object.
+
+This is used to explain important beta tariff limitations, including:
+
+- current tariff modelling is hourly, not half-hourly
+- tariff presets are assumptions, not guaranteed live supplier tariffs
+- grid charging depends on real tariff and hardware compatibility
+- battery export depends on tariff, product and installer configuration
+
+These notices are intended to be shown on the quote page and PDF so users understand the limits of the current tariff model.
+
 ## Battery model
 
 The calculator runs an hourly battery dispatch model where hourly PV/load data is available.

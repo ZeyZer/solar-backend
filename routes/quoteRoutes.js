@@ -19,6 +19,10 @@ const {
 } = require("../config/tariffPresets");
 
 const {
+  buildTariffWarnings,
+} = require("../services/tariffWarningService");
+
+const {
   validateAndNormalisePostcode,
 } = require("../utils/postcodeUtils");
 
@@ -953,10 +957,17 @@ router.post("/", async (req, res) => {
 
     const leadId = createLeadId();
 
+    const tariffWarnings = buildTariffWarnings({
+      tariffBefore: quote.tariffBefore || tariffBefore,
+      tariffAfter: quote.tariffAfter || tariffAfter,
+      tariffModelAssumptions,
+    });
+
     const versionedQuote = attachQuoteEngineVersion({
       ...quote,
       leadId,
       tariffModelAssumptions,
+      tariffWarnings,
     });
 
     quote = versionedQuote;

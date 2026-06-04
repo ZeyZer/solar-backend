@@ -15,6 +15,10 @@ const {
 } = require("../config/tariffPresets");
 
 const {
+  buildTariffWarnings,
+} = require("../services/tariffWarningService");
+
+const {
   normalizeTariff,
   isRetailRateTariff,
   computeHourlyBilling,
@@ -378,6 +382,12 @@ router.post("/recalc", async (req, res) => {
     // -----------------------
     // 7) Return updated quote
     // -----------------------
+    const tariffWarnings = buildTariffWarnings({
+      tariffBefore: tb,
+      tariffAfter: ta,
+      tariffModelAssumptions,
+    });
+
     const updated = {
       ...quote,
 
@@ -385,6 +395,7 @@ router.post("/recalc", async (req, res) => {
       tariffAfter: ta,
       tariff: ta,
       tariffModelAssumptions,
+      tariffWarnings,
 
       annualBillSavings,
       annualSegIncome,
