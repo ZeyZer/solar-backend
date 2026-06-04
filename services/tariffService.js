@@ -1,42 +1,35 @@
+const {
+  getDefaultTariff,
+} = require("../config/tariffPresets");
+
+function isHourInWindow(hod, startHour, endHour) {
+  const hour = Number(hod ?? 0);
+  const start = Number(startHour ?? 0);
+  const end = Number(endHour ?? 0);
+
+  if (start < end) {
+    return hour >= start && hour < end;
+  }
+
+  if (start > end) {
+    return hour >= start || hour < end;
+  }
+
+  return false;
+}
+
 function normalizeTariff(raw, kind /* "before" | "after" */) {
   const rawTariff = raw && typeof raw === "object" ? raw : {};
 
   // Defensive cleanup: ignore accidentally nested tariff buckets from old frontend state.
   const { before, after, tariff, ...t } = rawTariff;
 
-  // Defaults match your recalc defaults + your UI.
-  const base = {
-    tariffType: "standard",
+  const base = getDefaultTariff(kind);
 
-    // Flat defaults
-    importPrice: 0.28,
-    segPrice: 0.12,
-
-    standingChargePerDay: 0.60,
-
-    // Overnight
-    importNight: 0.08,
-    importDay: 0.20,
-    nightStartHour: 0,
-    nightEndHour: 7,
-
-    // Flux
-    importOffPeak: 0.15,
-    importPeak: 0.40,
-    exportOffPeak: 0.08,
-    exportPeak: 0.30,
-    offPeakStartHour: 0,
-    offPeakEndHour: 6,
-    peakStartHour: 16,
-    peakEndHour: 19,
-
-    // Toggles
-    exportFromBatteryEnabled: true,
-    allowGridCharging: false,
-    allowEnergyTrading: false,
+  const out = {
+    ...base,
+    ...t,
   };
-
-  const out = { ...base, ...t };
 
   const numKeys = [
     "importPrice",
@@ -60,10 +53,28 @@ function normalizeTariff(raw, kind /* "before" | "after" */) {
     if (out[k] != null) out[k] = Number(out[k]);
   }
 
-  out.tariffType = String(out.tariffType || "standard");
+  const validTariffTypes = ["standard", "overnight", "flux"];
+  out.tariffType = String(out.tariffType || "standard").toLowerCase();
+
+  if (!validTariffTypes.includes(out.tariffType)) {
+    out.tariffType = "standard";
+  }
+
   out.exportFromBatteryEnabled = !!out.exportFromBatteryEnabled;
   out.allowGridCharging = !!out.allowGridCharging;
   out.allowEnergyTrading = !!out.allowEnergyTrading;
+
+  if (!Number.isFinite(out.importPrice)) {
+    out.importPrice = base.importPrice;
+  }
+
+  if (!Number.isFinite(out.segPrice)) {
+    out.segPrice = base.segPrice;
+  }
+
+  if (!Number.isFinite(out.standingChargePerDay)) {
+    out.standingChargePerDay = base.standingChargePerDay;
+  }
 
   if (out.tariffType === "overnight") {
     if (!Number.isFinite(out.importNight)) out.importNight = base.importNight;
@@ -108,30 +119,37 @@ function rateForHour(tariff, hod, kind /* "import" | "export" */) {
     return kind === "import" ? importFlat : exportFlat;
   }
 
-  // Cheap overnight (e.g. EV style)
+  // Cheap overnight / EV-style tariff
   if (tt === "overnight") {
-    const nightStart = Number(tariff?.nightStartHour ?? 0);
-    const nightEnd = Number(tariff?.nightEndHour ?? 7);
-    const isNight = hod >= nightStart && hod < nightEnd;
+    const isNight = isHourInWindow(
+      hod,
+      tariff?.nightStartHour ?? 0,
+      tariff?.nightEndHour ?? 7
+    );
 
     const importNight = Number(tariff?.importNight ?? 0.08);
     const importDay = Number(tariff?.importDay ?? importFlat);
 
     if (kind === "import") return isNight ? importNight : importDay;
+
     return exportFlat;
   }
 
-  // Flux-style simplified (3-band)
+  // Simplified Flux-style tariff
   if (tt === "flux") {
-    const offPeakStart = Number(tariff?.offPeakStartHour ?? 0);
-    const offPeakEnd = Number(tariff?.offPeakEndHour ?? 6);
-    const peakStart = Number(tariff?.peakStartHour ?? 16);
-    const peakEnd = Number(tariff?.peakEndHour ?? 19);
+    const isOffPeak = isHourInWindow(
+      hod,
+      tariff?.offPeakStartHour ?? 0,
+      tariff?.offPeakEndHour ?? 6
+    );
 
-    const isOffPeak = hod >= offPeakStart && hod < offPeakEnd;
-    const isPeak = hod >= peakStart && hod < peakEnd;
+    const isPeak = isHourInWindow(
+      hod,
+      tariff?.peakStartHour ?? 16,
+      tariff?.peakEndHour ?? 19
+    );
 
-    const importOffPeak = Number(tariff?.importOffPeak ?? 0.17);
+    const importOffPeak = Number(tariff?.importOffPeak ?? 0.15);
     const importDay = Number(tariff?.importPrice ?? importFlat);
     const importPeak = Number(tariff?.importPeak ?? 0.40);
 
@@ -146,7 +164,6 @@ function rateForHour(tariff, hod, kind /* "import" | "export" */) {
     return isOffPeak ? exportOffPeak : isPeak ? exportPeak : exportDay;
   }
 
-  // Fallback
   return kind === "import" ? importFlat : exportFlat;
 }
 
@@ -155,11 +172,11 @@ function rateForHour(tariff, hod, kind /* "import" | "export" */) {
  * Assumes arrays aligned, hourOfDay and monthIdx aligned with n hours.
  */
 function computeHourlyBilling({
-  loadKWh,        // baseline demand (8760)
-  importKWh,      // after-solar grid import (8760)
-  exportKWh,      // after-solar export (8760)
-  hourOfDay,      // (8760) 0..23
-  monthIdx,       // (8760) 0..11
+  loadKWh,
+  importKWh,
+  exportKWh,
+  hourOfDay,
+  monthIdx,
   tariffBefore,
   tariffAfter,
 }) {
@@ -208,7 +225,6 @@ function computeHourlyBilling({
     monthlyExportIncome[m] += exp * afterExpRate;
   }
 
-  // standing charge allocation per month
   const daysInMonth = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 
   const standingBeforeMonthly = daysInMonth.map(
@@ -239,7 +255,6 @@ function computeHourlyBilling({
   const annualExportCredit = monthlyExportIncome.reduce((a, b) => a + b, 0);
   const annualAfterNet = monthlyAfterNet.reduce((a, b) => a + b, 0);
 
-  // 2dp stable
   const r2 = (x) => Math.round((x + Number.EPSILON) * 100) / 100;
 
   return {

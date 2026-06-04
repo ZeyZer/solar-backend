@@ -11,6 +11,10 @@ const {
 } = require("../config/batteryModelConfig");
 
 const {
+  getTariffModelAssumptions,
+} = require("../config/tariffPresets");
+
+const {
   normalizeTariff,
   isRetailRateTariff,
   computeHourlyBilling,
@@ -45,7 +49,10 @@ const router = express.Router();
 router.post("/recalc", async (req, res) => {
   try {
     const { quote, tariffBefore, tariffAfter, input, batteryRecommendationLifetimeYears } = req.body || {};
+
     const batteryModelAssumptions = getBatteryModelAssumptions();
+    const tariffModelAssumptions = getTariffModelAssumptions();
+
     if (!quote) return res.status(400).json({ error: "Missing quote." });
 
     const recommendationLifetimeYears =
@@ -376,7 +383,8 @@ router.post("/recalc", async (req, res) => {
 
       tariffBefore: tb,
       tariffAfter: ta,
-      tariff: ta, // backwards compat
+      tariff: ta,
+      tariffModelAssumptions,
 
       annualBillSavings,
       annualSegIncome,

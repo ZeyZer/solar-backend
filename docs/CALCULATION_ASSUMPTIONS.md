@@ -69,6 +69,14 @@ The current tariff model supports:
 
 Current tariff windows are hour-based. Half-hour tariff slots are not yet implemented.
 
+## Centralised tariff model assumptions
+
+Current beta tariff assumptions are stored in:
+
+'''txt
+backend/config/tariffPresets.js
+backend/services/tariffService.js
+
 ## Battery model
 
 The calculator runs an hourly battery dispatch model where hourly PV/load data is available.

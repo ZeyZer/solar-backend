@@ -608,6 +608,43 @@ function checkQuoteVersions(quote) {
       typeof quote.quoteEngineVersion === "object",
     "Missing quoteEngineVersion object."
   );
+
+  assert(
+    quote.tariffModelAssumptions &&
+      typeof quote.tariffModelAssumptions === "object",
+    "Missing tariffModelAssumptions object."
+  );
+
+  assert(
+    quote.tariffModelAssumptions.timeResolution === "hourly",
+    `Unexpected tariff timeResolution: ${quote.tariffModelAssumptions.timeResolution}`
+  );
+
+  assert(
+    quote.tariffModelAssumptions.supportsHalfHourly === false,
+    "Expected supportsHalfHourly to be false for current beta tariff model."
+  );
+
+  assert(
+    quote.tariffModelAssumptions.presets &&
+      quote.tariffModelAssumptions.presets.standard,
+    "Missing standard tariff preset assumptions."
+  );
+
+  assert(
+    isNumber(quote.tariffModelAssumptions.presets.standard.importPrice),
+    "Missing standard tariff importPrice assumption."
+  );
+
+  assert(
+    isNumber(quote.tariffModelAssumptions.presets.standard.segPrice),
+    "Missing standard tariff segPrice assumption."
+  );
+
+  assert(
+    quote.tariffModelAssumptions.presets.flux,
+    "Missing flux tariff preset assumptions."
+  );
 }
 
 function checkQuoteShape(quote, expectations) {

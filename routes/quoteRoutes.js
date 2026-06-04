@@ -15,6 +15,10 @@ const {
 } = require("../config/batteryModelConfig");
 
 const {
+  getTariffModelAssumptions,
+} = require("../config/tariffPresets");
+
+const {
   validateAndNormalisePostcode,
 } = require("../utils/postcodeUtils");
 
@@ -94,6 +98,7 @@ router.post("/", async (req, res) => {
     const input = req.body || {};
 
     const batteryModelAssumptions = getBatteryModelAssumptions();
+    const tariffModelAssumptions = getTariffModelAssumptions();
 
     // ==============================
     // Tariffs: BEFORE vs AFTER (define ONCE, early)
@@ -951,6 +956,7 @@ router.post("/", async (req, res) => {
     const versionedQuote = attachQuoteEngineVersion({
       ...quote,
       leadId,
+      tariffModelAssumptions,
     });
 
     quote = versionedQuote;
