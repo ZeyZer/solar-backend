@@ -6,6 +6,7 @@ Calculation version: `1.1.0-beta`
 Assumptions version: `2026-beta-2`  
 Tariff model version: `1.0.0-beta`  
 Battery model version: `1.1.0-beta`
+Hardware catalogue version: `2026-beta-1` 
 
 ## Purpose
 
@@ -132,6 +133,18 @@ Current beta assumptions:
 This means the model assumes the battery-related part of the benefit reduces gradually over time, but does not fall below 70% of the original battery contribution.
 
 This is an abstract beta assumption. It is not yet tied to a specific battery product warranty, chemistry, cycle life or manufacturer datasheet. Product-specific degradation should be added later through the hardware database.
+
+## Hardware catalogue
+
+The beta quote tool now includes a local hardware catalogue structure.
+
+Current files:
+
+'''txt
+backend/data/hardware/batteries.json
+backend/data/hardware/panels.json
+backend/data/hardware/inverters.json
+backend/services/hardwareCatalogService.js
 
 ## Financial model
 

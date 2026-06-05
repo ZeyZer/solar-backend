@@ -610,6 +610,54 @@ function checkQuoteVersions(quote) {
   );
 
   assert(
+    quote.hardwareCatalog &&
+      typeof quote.hardwareCatalog === "object",
+    "Missing hardwareCatalog object."
+  );
+
+  assert(
+    typeof quote.hardwareCatalog.version === "string" &&
+      quote.hardwareCatalog.version.length > 0,
+    "Missing hardware catalog version."
+  );
+
+  assert(
+    quote.hardwareCatalogVersion === quote.hardwareCatalog.version,
+    "hardwareCatalogVersion should match hardwareCatalog.version."
+  );
+
+  assert(
+    quote.hardwareCatalog.assumptions &&
+      typeof quote.hardwareCatalog.assumptions === "object",
+    "Missing hardware catalog assumptions."
+  );
+
+  assert(
+    quote.hardwareCatalog.assumptions.usedForPricing === false,
+    "Hardware catalogue should not yet be used for pricing."
+  );
+
+  assert(
+    quote.hardwareCatalog.assumptions.usedForBatteryRecommendations === false,
+    "Hardware catalogue should not yet be used for battery recommendations."
+  );
+
+  assert(
+    quote.hardwareCatalog.summary?.batteries?.active > 0,
+    "Hardware catalogue summary should include active batteries."
+  );
+
+  assert(
+    quote.hardwareCatalog.summary?.panels?.active > 0,
+    "Hardware catalogue summary should include active panels."
+  );
+
+  assert(
+    quote.hardwareCatalog.summary?.inverters?.active > 0,
+    "Hardware catalogue summary should include active inverters."
+  );
+
+  assert(
     quote.tariffModelAssumptions &&
       typeof quote.tariffModelAssumptions === "object",
     "Missing tariffModelAssumptions object."

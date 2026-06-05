@@ -6,6 +6,7 @@ const {
   findBatteryById,
   findClosestBatteryByUsableKWh,
   getHardwareCatalogSummary,
+  getHardwareCatalogForQuote,
 } = require("./services/hardwareCatalogService");
 
 function assert(condition, message) {
@@ -133,6 +134,43 @@ function runSummaryChecks() {
   console.log("  ✓ Summary OK:", summary);
 }
 
+function runQuoteMetadataChecks() {
+  console.log("\n▶ Hardware quote metadata checks");
+
+  const metadata = getHardwareCatalogForQuote();
+
+  assert(metadata.version, "Hardware quote metadata should include version.");
+  assert(metadata.assumptions, "Hardware quote metadata should include assumptions.");
+  assert(metadata.summary, "Hardware quote metadata should include summary.");
+
+  assert(
+    metadata.assumptions.usedForPricing === false,
+    "Hardware catalogue should not yet be marked as used for pricing."
+  );
+
+  assert(
+    metadata.assumptions.usedForBatteryRecommendations === false,
+    "Hardware catalogue should not yet be marked as used for battery recommendations."
+  );
+
+  assert(
+    metadata.summary.batteries.active > 0,
+    "Hardware quote metadata should include active battery count."
+  );
+
+  assert(
+    metadata.summary.panels.active > 0,
+    "Hardware quote metadata should include active panel count."
+  );
+
+  assert(
+    metadata.summary.inverters.active > 0,
+    "Hardware quote metadata should include active inverter count."
+  );
+
+  console.log("  ✓ Quote metadata OK:", metadata.version);
+}
+
 function main() {
   console.log("Running hardware catalogue tests");
 
@@ -141,6 +179,7 @@ function main() {
   runPanelChecks();
   runInverterChecks();
   runSummaryChecks();
+  runQuoteMetadataChecks();
 
   console.log("\n✅ Hardware catalogue tests passed");
 }

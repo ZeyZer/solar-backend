@@ -19,6 +19,10 @@ const {
 } = require("../services/tariffWarningService");
 
 const {
+  getHardwareCatalogForQuote,
+} = require("../services/hardwareCatalogService");
+
+const {
   normalizeTariff,
   isRetailRateTariff,
   computeHourlyBilling,
@@ -56,6 +60,7 @@ router.post("/recalc", async (req, res) => {
 
     const batteryModelAssumptions = getBatteryModelAssumptions();
     const tariffModelAssumptions = getTariffModelAssumptions();
+    const hardwareCatalog = quote?.hardwareCatalog || getHardwareCatalogForQuote();
 
     if (!quote) return res.status(400).json({ error: "Missing quote." });
 
@@ -396,6 +401,8 @@ router.post("/recalc", async (req, res) => {
       tariff: ta,
       tariffModelAssumptions,
       tariffWarnings,
+      hardwareCatalog,
+      hardwareCatalogVersion: hardwareCatalog.version,
 
       annualBillSavings,
       annualSegIncome,

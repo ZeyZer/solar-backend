@@ -23,6 +23,10 @@ const {
 } = require("../services/tariffWarningService");
 
 const {
+  getHardwareCatalogForQuote,
+} = require("../services/hardwareCatalogService");
+
+const {
   validateAndNormalisePostcode,
 } = require("../utils/postcodeUtils");
 
@@ -103,6 +107,7 @@ router.post("/", async (req, res) => {
 
     const batteryModelAssumptions = getBatteryModelAssumptions();
     const tariffModelAssumptions = getTariffModelAssumptions();
+    const hardwareCatalog = getHardwareCatalogForQuote();
 
     // ==============================
     // Tariffs: BEFORE vs AFTER (define ONCE, early)
@@ -968,6 +973,8 @@ router.post("/", async (req, res) => {
       leadId,
       tariffModelAssumptions,
       tariffWarnings,
+      hardwareCatalog,
+      hardwareCatalogVersion: hardwareCatalog.version,
     });
 
     quote = versionedQuote;

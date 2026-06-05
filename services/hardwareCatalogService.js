@@ -3,6 +3,19 @@ const path = require("path");
 
 const HARDWARE_DIR = path.join(__dirname, "..", "data", "hardware");
 
+const HARDWARE_CATALOG_VERSION = "2026-beta-1";
+
+const HARDWARE_CATALOG_ASSUMPTIONS = {
+  source: "local-json-beta-catalogue",
+  includesPlaceholderProducts: true,
+  usedForPricing: false,
+  usedForBatteryRecommendations: false,
+  usedForPanelSelection: false,
+  usedForInverterSelection: false,
+  notes:
+    "Hardware catalogue is available for structured product data, but quote pricing and recommendations still use the abstract beta model.",
+};
+
 const HARDWARE_FILES = {
   batteries: "batteries.json",
   panels: "panels.json",
@@ -131,9 +144,21 @@ function getHardwareCatalogSummary() {
   };
 }
 
+function getHardwareCatalogForQuote() {
+  return {
+    version: HARDWARE_CATALOG_VERSION,
+    assumptions: {
+      ...HARDWARE_CATALOG_ASSUMPTIONS,
+    },
+    summary: getHardwareCatalogSummary(),
+  };
+}
+
 module.exports = {
   HARDWARE_DIR,
   HARDWARE_FILES,
+  HARDWARE_CATALOG_VERSION,
+  HARDWARE_CATALOG_ASSUMPTIONS,
   loadHardwareCategory,
   getHardwareCatalog,
   listActiveItems,
@@ -146,4 +171,5 @@ module.exports = {
   findInverterById,
   findClosestBatteryByUsableKWh,
   getHardwareCatalogSummary,
+  getHardwareCatalogForQuote,
 };
