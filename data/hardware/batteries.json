@@ -1,0 +1,77 @@
+[
+  {
+    "id": "beta-battery-5kwh",
+    "brand": "Beta Catalogue",
+    "model": "Generic 5 kWh Battery",
+    "category": "battery",
+    "batteryType": "dc_or_hybrid",
+    "nominalCapacityKWh": 5.3,
+    "usableCapacityKWh": 5.0,
+    "maxChargeKW": 3.7,
+    "maxDischargeKW": 3.7,
+    "roundTripEfficiency": 0.9,
+    "warrantyYears": 10,
+    "degradationRatePerYear": 0.02,
+    "minCapacityFraction": 0.7,
+    "pricing": {
+      "currency": "GBP",
+      "materialCost": 1400,
+      "estimatedInstalledAdder": 1800,
+      "notes": "Beta placeholder price. Not product-specific."
+    },
+    "compatibleInverterTypes": ["hybrid", "ac_coupled"],
+    "isActive": true,
+    "isPlaceholder": true,
+    "notes": "Placeholder product used to test catalogue structure only."
+  },
+  {
+    "id": "beta-battery-10kwh",
+    "brand": "Beta Catalogue",
+    "model": "Generic 10 kWh Battery",
+    "category": "battery",
+    "batteryType": "dc_or_hybrid",
+    "nominalCapacityKWh": 10.6,
+    "usableCapacityKWh": 10.0,
+    "maxChargeKW": 5.0,
+    "maxDischargeKW": 6.0,
+    "roundTripEfficiency": 0.9,
+    "warrantyYears": 10,
+    "degradationRatePerYear": 0.02,
+    "minCapacityFraction": 0.7,
+    "pricing": {
+      "currency": "GBP",
+      "materialCost": 2800,
+      "estimatedInstalledAdder": 3300,
+      "notes": "Beta placeholder price. Not product-specific."
+    },
+    "compatibleInverterTypes": ["hybrid", "ac_coupled"],
+    "isActive": true,
+    "isPlaceholder": true,
+    "notes": "Placeholder product used to test catalogue structure only."
+  },
+  {
+    "id": "beta-battery-15kwh",
+    "brand": "Beta Catalogue",
+    "model": "Generic 15 kWh Battery",
+    "category": "battery",
+    "batteryType": "dc_or_hybrid",
+    "nominalCapacityKWh": 15.9,
+    "usableCapacityKWh": 15.0,
+    "maxChargeKW": 5.0,
+    "maxDischargeKW": 6.0,
+    "roundTripEfficiency": 0.9,
+    "warrantyYears": 10,
+    "degradationRatePerYear": 0.02,
+    "minCapacityFraction": 0.7,
+    "pricing": {
+      "currency": "GBP",
+      "materialCost": 4200,
+      "estimatedInstalledAdder": 4800,
+      "notes": "Beta placeholder price. Not product-specific."
+    },
+    "compatibleInverterTypes": ["hybrid", "ac_coupled"],
+    "isActive": true,
+    "isPlaceholder": true,
+    "notes": "Placeholder product used to test catalogue structure only."
+  }
+]

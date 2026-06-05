@@ -1,0 +1,65 @@
+[
+  {
+    "id": "beta-inverter-hybrid-5kw",
+    "brand": "Beta Catalogue",
+    "model": "Generic 5 kW Hybrid Inverter",
+    "category": "inverter",
+    "inverterType": "hybrid",
+    "phase": "single_phase",
+    "maxAcOutputKW": 5,
+    "maxPvInputKW": 7.5,
+    "batteryCompatible": true,
+    "backupCompatible": false,
+    "pricing": {
+      "currency": "GBP",
+      "materialCost": 900,
+      "estimatedInstalledAdder": 1300,
+      "notes": "Beta placeholder price. Not product-specific."
+    },
+    "isActive": true,
+    "isPlaceholder": true,
+    "notes": "Placeholder product used to test catalogue structure only."
+  },
+  {
+    "id": "beta-inverter-hybrid-10kw",
+    "brand": "Beta Catalogue",
+    "model": "Generic 10 kW Hybrid Inverter",
+    "category": "inverter",
+    "inverterType": "hybrid",
+    "phase": "single_phase",
+    "maxAcOutputKW": 10,
+    "maxPvInputKW": 15,
+    "batteryCompatible": true,
+    "backupCompatible": true,
+    "pricing": {
+      "currency": "GBP",
+      "materialCost": 1600,
+      "estimatedInstalledAdder": 2200,
+      "notes": "Beta placeholder price. Not product-specific."
+    },
+    "isActive": true,
+    "isPlaceholder": true,
+    "notes": "Placeholder product used to test catalogue structure only."
+  },
+  {
+    "id": "beta-inverter-ac-battery-5kw",
+    "brand": "Beta Catalogue",
+    "model": "Generic 5 kW AC Battery Inverter",
+    "category": "inverter",
+    "inverterType": "ac_coupled",
+    "phase": "single_phase",
+    "maxAcOutputKW": 5,
+    "maxPvInputKW": 0,
+    "batteryCompatible": true,
+    "backupCompatible": false,
+    "pricing": {
+      "currency": "GBP",
+      "materialCost": 850,
+      "estimatedInstalledAdder": 1250,
+      "notes": "Beta placeholder price. Not product-specific."
+    },
+    "isActive": true,
+    "isPlaceholder": true,
+    "notes": "Placeholder product used to test catalogue structure only."
+  }
+]

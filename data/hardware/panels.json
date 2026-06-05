@@ -1,0 +1,48 @@
+[
+  {
+    "id": "beta-panel-value-430w",
+    "brand": "Beta Catalogue",
+    "model": "Generic Value 430 W Panel",
+    "category": "panel",
+    "panelOption": "value",
+    "wattage": 430,
+    "technology": "mono",
+    "efficiency": null,
+    "productWarrantyYears": 15,
+    "performanceWarrantyYears": 25,
+    "firstYearDegradation": 0.01,
+    "annualDegradationRate": 0.004,
+    "pricing": {
+      "currency": "GBP",
+      "materialCost": 90,
+      "estimatedInstalledAdder": 150,
+      "notes": "Beta placeholder price. Not product-specific."
+    },
+    "isActive": true,
+    "isPlaceholder": true,
+    "notes": "Placeholder product used to test catalogue structure only."
+  },
+  {
+    "id": "beta-panel-premium-460w",
+    "brand": "Beta Catalogue",
+    "model": "Generic Premium 460 W Panel",
+    "category": "panel",
+    "panelOption": "premium",
+    "wattage": 460,
+    "technology": "n-type",
+    "efficiency": null,
+    "productWarrantyYears": 25,
+    "performanceWarrantyYears": 30,
+    "firstYearDegradation": 0.01,
+    "annualDegradationRate": 0.0035,
+    "pricing": {
+      "currency": "GBP",
+      "materialCost": 120,
+      "estimatedInstalledAdder": 180,
+      "notes": "Beta placeholder price. Not product-specific."
+    },
+    "isActive": true,
+    "isPlaceholder": true,
+    "notes": "Placeholder product used to test catalogue structure only."
+  }
+]

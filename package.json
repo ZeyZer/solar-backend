@@ -8,7 +8,8 @@
     "regression": "node regression-test.js",
     "postinstall": "npx puppeteer browsers install chrome",
     "test:tariff": "node tariff-model-test.js",
-    "test:quote": "npm run smoke && npm run regression"
+    "test:quote": "npm run smoke && npm run regression",
+    "test:hardware": "node hardware-catalog-test.js"
   },
   "keywords": [],
   "author": "",
