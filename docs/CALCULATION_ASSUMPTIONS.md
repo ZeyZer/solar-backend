@@ -207,6 +207,40 @@ The mapping method is currently:
 '''txt
 closest_active_usable_kwh
 
+## Design compatibility diagnostics
+
+The backend now includes a diagnostic-only design compatibility service.
+
+Current checks include:
+
+- number of roof arrays versus inverter MPPT count
+- total PV DC input versus inverter maximum PV input
+- DC/AC ratio warning checks
+- string cold-weather Voc versus inverter maximum DC voltage
+- string cold-weather Voc versus MPPT maximum voltage
+- string hot-weather Vmp versus MPPT minimum voltage
+- string operating voltage versus inverter startup voltage
+- string operating current versus MPPT input current
+- string short-circuit current versus MPPT short-circuit current
+- array DC power versus MPPT DC power assumption
+- battery/inverter type compatibility
+- battery/inverter brand alignment
+- battery full-charge time against a short tariff window
+- battery full-discharge time against a short tariff window
+- optimiser/microinverter review flags for shading, mixed orientations, mixed tilts, too many arrays or short strings
+
+This service is currently diagnostic only.
+
+It is not yet used to change:
+
+- customer quote pricing
+- PV generation
+- battery dispatch
+- battery recommendations
+- final product selection
+
+The long-term goal is for this service to become the design compatibility layer between user inputs, hardware catalogue products and supplier product databases.
+
 ## Financial model
 
 The financial model estimates:
