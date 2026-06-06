@@ -8,12 +8,19 @@ const HARDWARE_CATALOG_VERSION = "2026-beta-1";
 const HARDWARE_CATALOG_ASSUMPTIONS = {
   source: "local-json-beta-catalogue",
   includesPlaceholderProducts: true,
+
   usedForPricing: false,
+
+  // Calculations still use the abstract beta battery model.
   usedForBatteryRecommendations: false,
+
+  // Phase F1: catalogue products are attached as metadata/display matches only.
+  usedForBatteryRecommendationMetadata: true,
+
   usedForPanelSelection: false,
   usedForInverterSelection: false,
   notes:
-    "Hardware catalogue is available for structured product data, but quote pricing and recommendations still use the abstract beta model.",
+    "Hardware catalogue is available for structured product data. Battery products may be attached to recommendations as display metadata, but quote pricing and simulations still use the abstract beta model.",
 };
 
 const HARDWARE_FILES = {

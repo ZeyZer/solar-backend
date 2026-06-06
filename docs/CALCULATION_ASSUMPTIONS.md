@@ -146,6 +146,25 @@ backend/data/hardware/panels.json
 backend/data/hardware/inverters.json
 backend/services/hardwareCatalogService.js
 
+## Battery product mapping
+
+Battery recommendations now include closest-match battery product metadata from the local hardware catalogue.
+
+Current behaviour:
+
+- the existing abstract battery recommendation curve is still used for calculations
+- the closest active catalogue battery is attached for display/metadata
+- product metadata is not yet used for simulation
+- product metadata is not yet used for pricing
+- product metadata is not yet used for final battery selection
+
+This is Phase F1 of the hardware roadmap.
+
+The mapping method is currently:
+
+'''txt
+closest_active_usable_kwh
+
 ## Financial model
 
 The financial model estimates:

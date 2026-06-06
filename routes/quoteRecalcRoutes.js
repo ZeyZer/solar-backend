@@ -23,6 +23,10 @@ const {
 } = require("../services/hardwareCatalogService");
 
 const {
+  attachBatteryProductsToRecommendations,
+} = require("../services/batteryProductMappingService");
+
+const {
   normalizeTariff,
   isRetailRateTariff,
   computeHourlyBilling,
@@ -329,20 +333,22 @@ router.post("/recalc", async (req, res) => {
 
     const batteryCostPerKWh = batteryModelAssumptions.batteryCostPerKWh;
 
-    const batteryRecommendations = buildBatteryRecommendations({
-      curve,
-      batteryCostPerKWh,
-      selectedBatteryKWh,
-      minRecommendedBatteryKWh: MIN_RECOMMENDED_BAT,
-      maxBatteryKWh: MAX_BAT,
-      stepKWh: STEP,
-      lifetimeYears: recommendationLifetimeYears,
-      panelOption: input?.panelOption || quote?.panelOption || "",
-      energyInflationRate: Number(CONFIG.energyInflationRate || 0.06),
-      batteryDegradationRate: batteryModelAssumptions.degradationRate,
-      minBatteryCapacityFraction: batteryModelAssumptions.minCapacityFraction,
-      batteryModelAssumptions,
-    });
+    const batteryRecommendations = attachBatteryProductsToRecommendations(
+      buildBatteryRecommendations({
+        curve,
+        batteryCostPerKWh,
+        selectedBatteryKWh,
+        minRecommendedBatteryKWh: MIN_RECOMMENDED_BAT,
+        maxBatteryKWh: MAX_BAT,
+        stepKWh: STEP,
+        lifetimeYears: recommendationLifetimeYears,
+        panelOption: input?.panelOption || quote?.panelOption || "",
+        energyInflationRate: Number(CONFIG.energyInflationRate || 0.06),
+        batteryDegradationRate: batteryModelAssumptions.degradationRate,
+        minBatteryCapacityFraction: batteryModelAssumptions.minCapacityFraction,
+        batteryModelAssumptions,
+      })
+    );
 
     const noBatteryAnnualBenefitRaw =
       batteryRecommendations?.noBatteryComparison?.noBattery?.annualBenefit;

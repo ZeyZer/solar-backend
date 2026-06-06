@@ -1009,6 +1009,61 @@ function checkQuoteShape(quote, expectations) {
       isNumber(batteryModel.recommendationMaxBatteryKWh),
       "Missing battery model recommendationMaxBatteryKWh."
     );
+
+    const bestPaybackProduct =
+      quote.batteryRecommendations.bestPayback?.batteryProduct;
+
+    assert(
+      bestPaybackProduct && typeof bestPaybackProduct === "object",
+      "Missing battery product metadata on bestPayback recommendation."
+    );
+
+    assert(
+      typeof bestPaybackProduct.id === "string" && bestPaybackProduct.id.length > 0,
+      "Best payback battery product is missing an id."
+    );
+
+    assert(
+      isNumber(bestPaybackProduct.usableCapacityKWh),
+      "Best payback battery product is missing usableCapacityKWh."
+    );
+
+    assert(
+      bestPaybackProduct.mapping?.usedForCalculation === false,
+      "Best payback battery product mapping should not be used for calculation yet."
+    );
+
+    assert(
+      bestPaybackProduct.mapping?.usedForDisplayOnly === true,
+      "Best payback battery product mapping should be display-only."
+    );
+
+    const selectedBatteryProduct =
+      quote.batteryRecommendations.noBatteryComparison?.selectedBattery?.batteryProduct;
+
+    assert(
+      selectedBatteryProduct && typeof selectedBatteryProduct === "object",
+      "Missing battery product metadata on selected battery comparison."
+    );
+
+    assert(
+      typeof selectedBatteryProduct.id === "string" &&
+        selectedBatteryProduct.id.length > 0,
+      "Selected battery product is missing an id."
+    );
+
+    const hardwareProductMapping =
+      quote.batteryRecommendations.assumptions?.hardwareProductMapping;
+
+    assert(
+      hardwareProductMapping && hardwareProductMapping.enabled === true,
+      "Missing hardware product mapping assumptions."
+    );
+
+    assert(
+      hardwareProductMapping.usedForCalculation === false,
+      "Hardware product mapping should not be used for calculation yet."
+    );
   }
 }
 
