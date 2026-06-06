@@ -11,7 +11,8 @@
     "test:quote": "npm run smoke && npm run regression",
     "test:hardware": "node hardware-catalog-test.js",
     "test:design": "node design-compatibility-test.js",
-    "test:candidate": "node design-candidate-test.js"
+    "test:candidate": "node design-candidate-test.js",
+    "test:candidate-set": "node design-candidate-set-test.js"
   },
   "keywords": [],
   "author": "",

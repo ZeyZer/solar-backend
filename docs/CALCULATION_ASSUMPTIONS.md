@@ -317,6 +317,48 @@ Future optimiser outputs should include:
 - premium integrated candidate
 - shaded-roof optimised candidate
 
+## Design candidate set generation
+
+The backend now includes a design candidate set generator.
+
+This is the next layer above the single design candidate schema.
+
+Current behaviour:
+
+- creates multiple candidate combinations from catalogue products
+- combines panel products, inverter products and battery products
+- uses the current user roof inputs as the panel layout source
+- uses the existing design candidate schema for each generated candidate
+- sorts candidates diagnostically by compatibility status, diagnostic score and placeholder cost
+
+Current status:
+
+- `mode`: `candidate_set_foundation`
+- `usedForCalculation`: `false`
+- `usedForPricing`: `false`
+- `usedForRecommendation`: `false`
+
+This does not yet optimise the quote.
+
+It does not yet change:
+
+- customer quote price
+- PV generation
+- battery dispatch
+- savings
+- payback
+- selected products
+- frontend display
+
+Future work:
+
+- generate alternative roof layouts
+- generate multiple stringing plans
+- filter incompatible products
+- connect candidate-level cost model
+- connect candidate-level PV/battery simulation
+- score candidates by payback, lifetime savings and balanced recommendation
+
 ## Financial model
 
 The financial model estimates:

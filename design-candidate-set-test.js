@@ -1,0 +1,149 @@
+const {
+  buildCandidateSetFromInputs,
+} = require("./services/designCandidateSetService");
+
+function assert(condition, message) {
+  if (!condition) {
+    throw new Error(message);
+  }
+}
+
+function runStandardCandidateSetTest() {
+  console.log("\n▶ Standard design candidate set");
+
+  const candidateSet = buildCandidateSetFromInputs({
+    input: {
+      panelOption: "value",
+      batteryKWh: 5,
+      tariffAfter: {
+        tariffType: "standard",
+        allowGridCharging: false,
+        exportFromBatteryEnabled: true,
+      },
+      roofs: [
+        {
+          id: "roof-1",
+          orientation: "S",
+          tilt: 40,
+          shading: "none",
+          panels: 10,
+        },
+      ],
+    },
+  });
+
+  assert(candidateSet.version, "Candidate set missing version.");
+  assert(candidateSet.mode === "candidate_set_foundation", "Unexpected candidate set mode.");
+  assert(candidateSet.usedForCalculation === false, "Candidate set should not be used for calculation.");
+  assert(candidateSet.usedForPricing === false, "Candidate set should not be used for pricing.");
+  assert(candidateSet.usedForRecommendation === false, "Candidate set should not be used for recommendation.");
+
+  assert(candidateSet.productSearchSpace.panelCandidateCount > 0, "Expected panel candidates.");
+  assert(candidateSet.productSearchSpace.inverterCandidateCount > 0, "Expected inverter candidates.");
+  assert(candidateSet.productSearchSpace.batteryCandidateCount > 0, "Expected battery candidates.");
+  assert(candidateSet.productSearchSpace.candidateCount > 0, "Expected generated candidates.");
+
+  assert(Array.isArray(candidateSet.candidates), "Candidates should be an array.");
+  assert(candidateSet.candidates.length === candidateSet.productSearchSpace.candidateCount, "Candidate count mismatch.");
+
+  for (const candidate of candidateSet.candidates) {
+    assert(candidate.candidateId, "Candidate missing candidateId.");
+    assert(candidate.products.panel, `${candidate.candidateId} missing panel product.`);
+    assert(candidate.products.inverter, `${candidate.candidateId} missing inverter product.`);
+    assert(candidate.products.battery, `${candidate.candidateId} missing battery product.`);
+    assert(candidate.compatibility.summary.total > 0, `${candidate.candidateId} missing compatibility checks.`);
+    assert(candidate.candidateSetMetadata, `${candidate.candidateId} missing candidateSetMetadata.`);
+    assert(candidate.candidateSetMetadata.usedForCalculation === false, `${candidate.candidateId} should not be used for calculation.`);
+    assert(candidate.candidateSetMetadata.usedForRecommendation === false, `${candidate.candidateId} should not be used for recommendation.`);
+  }
+
+  console.log("  ✓ Standard candidate set OK:", {
+    candidates: candidateSet.productSearchSpace.candidateCount,
+    summary: candidateSet.summary,
+  });
+}
+
+function runNoBatteryCandidateSetTest() {
+  console.log("\n▶ No-battery design candidate set");
+
+  const candidateSet = buildCandidateSetFromInputs({
+    input: {
+      panelOption: "premium",
+      batteryKWh: 0,
+      roofs: [
+        {
+          id: "roof-1",
+          orientation: "S",
+          tilt: 40,
+          shading: "none",
+          panels: 10,
+        },
+      ],
+    },
+  });
+
+  assert(candidateSet.productSearchSpace.candidateCount > 0, "Expected no-battery candidates.");
+  assert(candidateSet.inputSummary.batteryKWh === 0, "Expected 0 kWh battery input.");
+
+  for (const candidate of candidateSet.candidates) {
+    assert(candidate.products.panel, `${candidate.candidateId} missing panel product.`);
+    assert(candidate.products.inverter, `${candidate.candidateId} missing inverter product.`);
+    assert(candidate.products.battery === null, `${candidate.candidateId} should not include a battery product.`);
+  }
+
+  console.log("  ✓ No-battery candidate set OK:", {
+    candidates: candidateSet.productSearchSpace.candidateCount,
+  });
+}
+
+function runMultiRoofCandidateSetTest() {
+  console.log("\n▶ Multi-roof design candidate set");
+
+  const candidateSet = buildCandidateSetFromInputs({
+    input: {
+      panelOption: "value",
+      batteryKWh: 10,
+      roofs: [
+        {
+          id: "roof-east",
+          orientation: "E",
+          tilt: 35,
+          shading: "none",
+          panels: 6,
+        },
+        {
+          id: "roof-west",
+          orientation: "W",
+          tilt: 35,
+          shading: "none",
+          panels: 6,
+        },
+      ],
+    },
+  });
+
+  assert(candidateSet.inputSummary.roofArrayCount === 2, "Expected two roof arrays.");
+  assert(candidateSet.productSearchSpace.candidateCount > 0, "Expected generated candidates.");
+
+  const first = candidateSet.candidates[0];
+
+  assert(first.panelLayout.arrays.length === 2, "Expected candidate with two panel arrays.");
+  assert(first.stringPlan.strings.length === 2, "Expected candidate with two strings.");
+
+  console.log("  ✓ Multi-roof candidate set OK:", {
+    candidates: candidateSet.productSearchSpace.candidateCount,
+    summary: candidateSet.summary,
+  });
+}
+
+function main() {
+  console.log("Running design candidate set tests");
+
+  runStandardCandidateSetTest();
+  runNoBatteryCandidateSetTest();
+  runMultiRoofCandidateSetTest();
+
+  console.log("\n✅ Design candidate set tests passed");
+}
+
+main();
