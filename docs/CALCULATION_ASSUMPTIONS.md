@@ -403,6 +403,79 @@ Current status:
 
 The future optimiser should compare viable candidates first and avoid recommending rejected candidates.
 
+## Multi-profile system type fit scoring
+
+The backend now includes diagnostic system type fit scoring for design candidates.
+
+Each candidate is scored against every supported system type profile.
+
+Current supported profiles:
+
+- `budget`
+- `balanced`
+- `premium_integrated`
+- `backup_ready`
+- `shaded_roof`
+- `monitoring_focused`
+- `warranty_focused`
+- `export_control_focused`
+- `aesthetics_focused`
+
+Each candidate now includes:
+
+- `systemTypeFits`
+- `selectedSystemTypeFit`
+- `bestFitSystemType`
+
+This means a single candidate can score well against multiple profiles.
+
+For example, one candidate may be:
+
+- high scoring for `budget`
+- good for `balanced`
+- weaker for `backup_ready`
+
+Another candidate may be:
+
+- weaker for `budget`
+- strong for `premium_integrated`
+- strong for `monitoring_focused`
+- strong for `backup_ready`
+
+Current scoring axes:
+
+- cost
+- compatibility
+- warranty
+- optimisation
+- backup
+- monitoring
+- export control
+- aesthetics
+
+Current status:
+
+- `usedForCalculation`: `false`
+- `usedForPricing`: `false`
+- `usedForRecommendation`: `false`
+
+This is diagnostic only.
+
+It does not yet change quote calculations, product selection, pricing, PV generation, battery dispatch, savings or recommendations.
+
+Future work should replace placeholder heuristics with catalogue-driven hardware capability fields such as:
+
+- backup compatibility
+- G100/export-control status
+- monitoring quality
+- optimiser/microinverter support
+- warranty terms
+- smart tariff control capability
+- forced charge/discharge support
+- manufacturer ecosystem score
+- installer supportability score
+- panel aesthetics score
+
 ## Financial model
 
 The financial model estimates:

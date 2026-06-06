@@ -46,13 +46,26 @@ function runStandardCandidateSetTest() {
   assert(Array.isArray(candidateSet.candidates), "Candidates should be an array.");
   assert(candidateSet.candidates.length === candidateSet.productSearchSpace.candidateCount, "Candidate count mismatch.");
 
+  assert(
+    candidateSet.summary.total === candidateSet.productSearchSpace.candidateCount,
+    "Candidate filtering summary count mismatch."
+  );
+
+  assert(
+    candidateSet.summary.viable +
+      candidateSet.summary.viable_with_warnings +
+      candidateSet.summary.rejected >
+      0,
+    "Candidate filtering summary should include classified candidates."
+  );
+
   for (const candidate of candidateSet.candidates) {
     assert(candidate.candidateId, "Candidate missing candidateId.");
     assert(candidate.products.panel, `${candidate.candidateId} missing panel product.`);
     assert(candidate.products.inverter, `${candidate.candidateId} missing inverter product.`);
     assert(candidate.products.battery, `${candidate.candidateId} missing battery product.`);
     assert(candidate.compatibility.summary.total > 0, `${candidate.candidateId} missing compatibility checks.`);
-    assert(candidate.candidateSetMetadata, `${candidate.candidateId} missing candidateSetMetadata.`);
+
     assert(candidate.filtering, `${candidate.candidateId} missing filtering.`);
     assert(candidate.filtering.status, `${candidate.candidateId} missing filtering status.`);
     assert(
@@ -63,8 +76,30 @@ function runStandardCandidateSetTest() {
       candidate.filtering.usedForRecommendation === false,
       `${candidate.candidateId} filtering should not be used for recommendation.`
     );
-    assert(candidate.candidateSetMetadata.usedForCalculation === false, `${candidate.candidateId} should not be used for calculation.`);
-    assert(candidate.candidateSetMetadata.usedForRecommendation === false, `${candidate.candidateId} should not be used for recommendation.`);
+
+    assert(candidate.systemTypeFits, `${candidate.candidateId} missing systemTypeFits.`);
+    assert(candidate.systemTypeFits.budget, `${candidate.candidateId} missing budget fit.`);
+    assert(candidate.systemTypeFits.balanced, `${candidate.candidateId} missing balanced fit.`);
+    assert(candidate.selectedSystemTypeFit, `${candidate.candidateId} missing selectedSystemTypeFit.`);
+    assert(candidate.bestFitSystemType, `${candidate.candidateId} missing bestFitSystemType.`);
+    assert(
+      candidate.selectedSystemTypeFit.usedForCalculation === false,
+      `${candidate.candidateId} selectedSystemTypeFit should not be used for calculation.`
+    );
+    assert(
+      candidate.selectedSystemTypeFit.usedForRecommendation === false,
+      `${candidate.candidateId} selectedSystemTypeFit should not be used for recommendation.`
+    );
+
+    assert(candidate.candidateSetMetadata, `${candidate.candidateId} missing candidateSetMetadata.`);
+    assert(
+      candidate.candidateSetMetadata.usedForCalculation === false,
+      `${candidate.candidateId} should not be used for calculation.`
+    );
+    assert(
+      candidate.candidateSetMetadata.usedForRecommendation === false,
+      `${candidate.candidateId} should not be used for recommendation.`
+    );
   }
 
   console.log("  ✓ Standard candidate set OK:", {

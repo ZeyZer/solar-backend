@@ -13,6 +13,10 @@ const {
   summarizeFilteredCandidates,
 } = require("./designCandidateFilterService");
 
+const {
+  attachSystemTypeFits,
+} = require("./systemTypeFitService");
+
 const DESIGN_CANDIDATE_SET_VERSION = "2026-beta-1";
 
 function numberOrZero(value) {
@@ -172,13 +176,22 @@ function buildCandidateSetFromInputs({
 
         const filteredCandidate = applyCandidateFiltering(candidate);
 
+        const systemTypeCandidate = attachSystemTypeFits(
+          filteredCandidate,
+          safeInput.systemType || "balanced"
+        );
+
         candidates.push({
-          ...filteredCandidate,
+          ...systemTypeCandidate,
 
           candidateSetMetadata: {
             generatedBy: "designCandidateSetService",
-            diagnosticSortScore: getCandidateSortScore(filteredCandidate),
-            compatibilityStatus: getCandidateCompatibilityStatus(filteredCandidate),
+            diagnosticSortScore: getCandidateSortScore(systemTypeCandidate),
+            compatibilityStatus: getCandidateCompatibilityStatus(systemTypeCandidate),
+            selectedSystemType: systemTypeCandidate.selectedSystemTypeFit?.systemType || "balanced",
+            selectedSystemTypeFitScore: systemTypeCandidate.selectedSystemTypeFit?.score ?? null,
+            bestFitSystemType: systemTypeCandidate.bestFitSystemType?.systemType || null,
+            bestFitSystemTypeScore: systemTypeCandidate.bestFitSystemType?.score ?? null,
             usedForCalculation: false,
             usedForRecommendation: false,
           },
@@ -222,6 +235,7 @@ function buildCandidateSetFromInputs({
     inputSummary: {
       batteryKWh: round2(batteryKWh),
       roofArrayCount: activeRoofs.length,
+      selectedSystemType: safeInput.systemType || "balanced",
       includeAlternativePanels,
       maxBatteryCandidates,
       maxCandidates,

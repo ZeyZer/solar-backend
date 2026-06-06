@@ -13,7 +13,8 @@
     "test:design": "node design-compatibility-test.js",
     "test:candidate": "node design-candidate-test.js",
     "test:candidate-set": "node design-candidate-set-test.js",
-    "test:candidate-filter": "node design-candidate-filter-test.js"
+    "test:candidate-filter": "node design-candidate-filter-test.js",
+    "test:system-type": "node system-type-fit-test.js"
   },
   "keywords": [],
   "author": "",
