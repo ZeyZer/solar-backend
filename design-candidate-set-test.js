@@ -53,6 +53,16 @@ function runStandardCandidateSetTest() {
     assert(candidate.products.battery, `${candidate.candidateId} missing battery product.`);
     assert(candidate.compatibility.summary.total > 0, `${candidate.candidateId} missing compatibility checks.`);
     assert(candidate.candidateSetMetadata, `${candidate.candidateId} missing candidateSetMetadata.`);
+    assert(candidate.filtering, `${candidate.candidateId} missing filtering.`);
+    assert(candidate.filtering.status, `${candidate.candidateId} missing filtering status.`);
+    assert(
+      candidate.filtering.usedForCalculation === false,
+      `${candidate.candidateId} filtering should not be used for calculation.`
+    );
+    assert(
+      candidate.filtering.usedForRecommendation === false,
+      `${candidate.candidateId} filtering should not be used for recommendation.`
+    );
     assert(candidate.candidateSetMetadata.usedForCalculation === false, `${candidate.candidateId} should not be used for calculation.`);
     assert(candidate.candidateSetMetadata.usedForRecommendation === false, `${candidate.candidateId} should not be used for recommendation.`);
   }
@@ -84,6 +94,11 @@ function runNoBatteryCandidateSetTest() {
 
   assert(candidateSet.productSearchSpace.candidateCount > 0, "Expected no-battery candidates.");
   assert(candidateSet.inputSummary.batteryKWh === 0, "Expected 0 kWh battery input.");
+  assert(candidateSet.summary.total === candidateSet.productSearchSpace.candidateCount, "Candidate filtering summary count mismatch.");
+  assert(
+    candidateSet.summary.viable + candidateSet.summary.viable_with_warnings + candidateSet.summary.rejected > 0,
+    "Candidate filtering summary should include classified candidates."
+  );
 
   for (const candidate of candidateSet.candidates) {
     assert(candidate.products.panel, `${candidate.candidateId} missing panel product.`);

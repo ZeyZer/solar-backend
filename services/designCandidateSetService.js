@@ -8,6 +8,11 @@ const {
   buildDesignCandidateFromInputs,
 } = require("./designCandidateService");
 
+const {
+  applyCandidateFiltering,
+  summarizeFilteredCandidates,
+} = require("./designCandidateFilterService");
+
 const DESIGN_CANDIDATE_SET_VERSION = "2026-beta-1";
 
 function numberOrZero(value) {
@@ -86,12 +91,7 @@ function getBatteryCandidates({
 }
 
 function getCandidateCompatibilityStatus(candidate) {
-  const summary = candidate?.compatibility?.summary || {};
-
-  if (numberOrZero(summary.fail) > 0) return "fail";
-  if (numberOrZero(summary.warn) > 0) return "warn";
-
-  return "pass";
+  return candidate?.filtering?.status || "unknown";
 }
 
 function getCandidateCost(candidate) {
@@ -100,39 +100,26 @@ function getCandidateCost(candidate) {
 
 function getCandidateSortScore(candidate) {
   const summary = candidate?.compatibility?.summary || {};
+  const filtering = candidate?.filtering || {};
+
   const fail = numberOrZero(summary.fail);
   const warn = numberOrZero(summary.warn);
   const pass = numberOrZero(summary.pass);
   const cost = getCandidateCost(candidate);
 
+  const rejectedPenalty = filtering.status === "rejected" ? 500 : 0;
+  const viableBonus = filtering.status === "viable" ? 100 : 0;
+
   // This is not a recommendation score yet.
   // It is just a stable diagnostic sort order.
   return round2(
-    1000 -
+    1000 +
+      viableBonus -
+      rejectedPenalty -
       fail * 200 -
       warn * 40 +
       pass * 2 -
       cost / 500
-  );
-}
-
-function summarizeCandidateSet(candidates) {
-  return candidates.reduce(
-    (summary, candidate) => {
-      summary.total += 1;
-
-      const status = getCandidateCompatibilityStatus(candidate);
-
-      summary[status] = (summary[status] || 0) + 1;
-
-      return summary;
-    },
-    {
-      total: 0,
-      pass: 0,
-      warn: 0,
-      fail: 0,
-    }
   );
 }
 
@@ -183,13 +170,15 @@ function buildCandidateSetFromInputs({
           batteryId: battery?.id || null,
         });
 
+        const filteredCandidate = applyCandidateFiltering(candidate);
+
         candidates.push({
-          ...candidate,
+          ...filteredCandidate,
 
           candidateSetMetadata: {
             generatedBy: "designCandidateSetService",
-            diagnosticSortScore: getCandidateSortScore(candidate),
-            compatibilityStatus: getCandidateCompatibilityStatus(candidate),
+            diagnosticSortScore: getCandidateSortScore(filteredCandidate),
+            compatibilityStatus: getCandidateCompatibilityStatus(filteredCandidate),
             usedForCalculation: false,
             usedForRecommendation: false,
           },
@@ -203,9 +192,10 @@ function buildCandidateSetFromInputs({
     const bStatus = getCandidateCompatibilityStatus(b);
 
     const statusRank = {
-      pass: 0,
-      warn: 1,
-      fail: 2,
+      viable: 0,
+      viable_with_warnings: 1,
+      rejected: 2,
+      unknown: 3,
     };
 
     if (statusRank[aStatus] !== statusRank[bStatus]) {
@@ -220,7 +210,7 @@ function buildCandidateSetFromInputs({
     return getCandidateCost(a) - getCandidateCost(b);
   });
 
-  const summary = summarizeCandidateSet(sortedCandidates);
+  const summary = summarizeFilteredCandidates(sortedCandidates);
 
   return {
     version: DESIGN_CANDIDATE_SET_VERSION,
@@ -258,8 +248,12 @@ function buildCandidateSetFromInputs({
     },
 
     assumptions: {
+      filteringEnabled: true,
+      usedForCalculation: false,
+      usedForPricing: false,
+      usedForRecommendation: false,
       note:
-        "Candidate set generation is backend-only and diagnostic. It does not yet change quote calculations, pricing, PV generation, battery dispatch or recommendations.",
+        "Candidate set generation and filtering are backend-only and diagnostic. They do not yet change quote calculations, pricing, PV generation, battery dispatch or recommendations.",
     },
   };
 }

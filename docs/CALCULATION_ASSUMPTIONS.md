@@ -359,6 +359,50 @@ Future work:
 - connect candidate-level PV/battery simulation
 - score candidates by payback, lifetime savings and balanced recommendation
 
+## Design candidate filtering
+
+The backend now classifies generated design candidates as:
+
+- `viable`
+- `viable_with_warnings`
+- `rejected`
+
+Rejected candidates include explicit rejection reasons.
+
+Current hard rejection checks include:
+
+- missing panel product
+- missing inverter product
+- roof arrays exceeding inverter MPPT count
+- total PV input exceeding inverter limit
+- excessive DC/AC ratio
+- missing MPPT assignment
+- cold string Voc exceeding inverter max DC voltage
+- cold string Voc exceeding panel max system voltage
+- cold string Voc exceeding MPPT max voltage
+- hot string Vmp below MPPT minimum voltage
+- string voltage below inverter startup voltage
+- string operating current exceeding MPPT input current
+- string short-circuit current exceeding MPPT short-circuit current
+- battery/inverter compatibility failure
+
+Current warning/review checks include:
+
+- array DC power above MPPT power assumption
+- battery and inverter brand mismatch
+- battery may not fully charge within a short tariff window
+- battery may not fully discharge within a short tariff window
+- shading, mixed orientation, mixed tilt, short-string and optimiser/microinverter review flags
+
+Current status:
+
+- filtering is diagnostic only
+- `usedForCalculation`: `false`
+- `usedForPricing`: `false`
+- `usedForRecommendation`: `false`
+
+The future optimiser should compare viable candidates first and avoid recommending rejected candidates.
+
 ## Financial model
 
 The financial model estimates:
