@@ -264,6 +264,59 @@ Current status:
 
 This means the diagnostics are attached to the backend quote response, but they do not yet change customer-facing calculations, price, PV generation, battery dispatch or final recommendations.
 
+## Design candidate schema foundation
+
+The backend now includes a design candidate schema foundation.
+
+A design candidate is the future optimisation unit for the quote engine.
+
+Long-term, each candidate may represent a full possible system design, including:
+
+- panel layout
+- roof arrays
+- string plan
+- panel product
+- inverter product
+- battery product
+- compatibility checks
+- installation cost assumptions
+- PV performance model
+- battery dispatch model
+- financial model
+- scoring model
+
+Current status:
+
+- `mode`: `candidate_schema_foundation`
+- `usedForCalculation`: `false`
+- `usedForPricing`: `false`
+- `usedForRecommendation`: `false`
+
+The current candidate service creates one candidate from the user’s existing quote inputs.
+
+It does not yet:
+
+- generate alternative panel layouts
+- optimise roof coverage
+- split arrays into multiple strings
+- combine strings onto MPPTs
+- choose final products
+- change quote pricing
+- change PV generation
+- change battery dispatch
+- change financial outputs
+
+The purpose is to create a stable internal structure for the future optimiser.
+
+Future optimiser outputs should include:
+
+- best payback candidate
+- best lifetime savings candidate
+- balanced candidate
+- lowest upfront cost candidate
+- premium integrated candidate
+- shaded-roof optimised candidate
+
 ## Financial model
 
 The financial model estimates:

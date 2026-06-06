@@ -10,7 +10,8 @@
     "test:tariff": "node tariff-model-test.js",
     "test:quote": "npm run smoke && npm run regression",
     "test:hardware": "node hardware-catalog-test.js",
-    "test:design": "node design-compatibility-test.js"
+    "test:design": "node design-compatibility-test.js",
+    "test:candidate": "node design-candidate-test.js"
   },
   "keywords": [],
   "author": "",
