@@ -5,21 +5,54 @@
     "model": "Generic 5 kWh Battery",
     "category": "battery",
     "batteryType": "dc_or_hybrid",
+
     "nominalCapacityKWh": 5.3,
     "usableCapacityKWh": 5.0,
     "maxChargeKW": 3.7,
     "maxDischargeKW": 3.7,
     "roundTripEfficiency": 0.9,
+
+    "electrical": {
+      "batteryVoltageType": "hv",
+      "nominalVoltageV": null,
+      "operatingVoltageRangeV": {
+        "min": null,
+        "max": null
+      },
+      "maxChargeCurrentA": null,
+      "maxDischargeCurrentA": null
+    },
+
+    "scalability": {
+      "isScalable": true,
+      "moduleUsableCapacityKWh": 5,
+      "minModules": 1,
+      "maxModules": 3
+    },
+
     "warrantyYears": 10,
     "degradationRatePerYear": 0.02,
     "minCapacityFraction": 0.7,
+
+    "compatibleInverterTypes": ["hybrid", "ac_coupled"],
+    "compatibleInverterIds": [],
+
     "pricing": {
       "currency": "GBP",
       "materialCost": 1400,
       "estimatedInstalledAdder": 1800,
       "notes": "Beta placeholder price. Not product-specific."
     },
-    "compatibleInverterTypes": ["hybrid", "ac_coupled"],
+
+    "supplierMetadata": {
+      "sourceType": "manual-placeholder",
+      "supplierSku": null,
+      "manufacturerSku": null,
+      "datasheetUrl": null,
+      "lastVerified": null,
+      "dataQuality": "placeholder"
+    },
+
     "isActive": true,
     "isPlaceholder": true,
     "notes": "Placeholder product used to test catalogue structure only."
@@ -30,21 +63,54 @@
     "model": "Generic 10 kWh Battery",
     "category": "battery",
     "batteryType": "dc_or_hybrid",
+
     "nominalCapacityKWh": 10.6,
     "usableCapacityKWh": 10.0,
     "maxChargeKW": 5.0,
     "maxDischargeKW": 6.0,
     "roundTripEfficiency": 0.9,
+
+    "electrical": {
+      "batteryVoltageType": "hv",
+      "nominalVoltageV": null,
+      "operatingVoltageRangeV": {
+        "min": null,
+        "max": null
+      },
+      "maxChargeCurrentA": null,
+      "maxDischargeCurrentA": null
+    },
+
+    "scalability": {
+      "isScalable": true,
+      "moduleUsableCapacityKWh": 5,
+      "minModules": 1,
+      "maxModules": 3
+    },
+
     "warrantyYears": 10,
     "degradationRatePerYear": 0.02,
     "minCapacityFraction": 0.7,
+
+    "compatibleInverterTypes": ["hybrid", "ac_coupled"],
+    "compatibleInverterIds": [],
+
     "pricing": {
       "currency": "GBP",
       "materialCost": 2800,
       "estimatedInstalledAdder": 3300,
       "notes": "Beta placeholder price. Not product-specific."
     },
-    "compatibleInverterTypes": ["hybrid", "ac_coupled"],
+
+    "supplierMetadata": {
+      "sourceType": "manual-placeholder",
+      "supplierSku": null,
+      "manufacturerSku": null,
+      "datasheetUrl": null,
+      "lastVerified": null,
+      "dataQuality": "placeholder"
+    },
+
     "isActive": true,
     "isPlaceholder": true,
     "notes": "Placeholder product used to test catalogue structure only."
@@ -55,21 +121,54 @@
     "model": "Generic 15 kWh Battery",
     "category": "battery",
     "batteryType": "dc_or_hybrid",
+
     "nominalCapacityKWh": 15.9,
     "usableCapacityKWh": 15.0,
     "maxChargeKW": 5.0,
     "maxDischargeKW": 6.0,
     "roundTripEfficiency": 0.9,
+
+    "electrical": {
+      "batteryVoltageType": "hv",
+      "nominalVoltageV": null,
+      "operatingVoltageRangeV": {
+        "min": null,
+        "max": null
+      },
+      "maxChargeCurrentA": null,
+      "maxDischargeCurrentA": null
+    },
+
+    "scalability": {
+      "isScalable": true,
+      "moduleUsableCapacityKWh": 5,
+      "minModules": 1,
+      "maxModules": 3
+    },
+
     "warrantyYears": 10,
     "degradationRatePerYear": 0.02,
     "minCapacityFraction": 0.7,
+
+    "compatibleInverterTypes": ["hybrid", "ac_coupled"],
+    "compatibleInverterIds": [],
+
     "pricing": {
       "currency": "GBP",
       "materialCost": 4200,
       "estimatedInstalledAdder": 4800,
       "notes": "Beta placeholder price. Not product-specific."
     },
-    "compatibleInverterTypes": ["hybrid", "ac_coupled"],
+
+    "supplierMetadata": {
+      "sourceType": "manual-placeholder",
+      "supplierSku": null,
+      "manufacturerSku": null,
+      "datasheetUrl": null,
+      "lastVerified": null,
+      "dataQuality": "placeholder"
+    },
+
     "isActive": true,
     "isPlaceholder": true,
     "notes": "Placeholder product used to test catalogue structure only."

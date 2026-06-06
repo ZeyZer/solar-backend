@@ -8,19 +8,52 @@
     "wattage": 430,
     "technology": "mono",
     "efficiency": null,
-    "productWarrantyYears": 15,
-    "performanceWarrantyYears": 25,
-    "firstYearDegradation": 0.01,
-    "annualDegradationRate": 0.004,
+
+    "electrical": {
+      "vocSTC": 38.5,
+      "vmpSTC": 32.5,
+      "iscSTC": 14.1,
+      "impSTC": 13.25,
+      "maxSystemVoltageV": 1000,
+      "tempCoeffVocPctPerC": -0.25,
+      "tempCoeffPmaxPctPerC": -0.35,
+      "nominalOperatingCellTempC": 45
+    },
+
+    "mechanical": {
+      "lengthMm": 1722,
+      "widthMm": 1134,
+      "depthMm": 30,
+      "weightKg": 21,
+      "connectorType": "MC4-compatible"
+    },
+
+    "warranty": {
+      "productWarrantyYears": 15,
+      "performanceWarrantyYears": 25,
+      "firstYearDegradation": 0.01,
+      "annualDegradationRate": 0.004
+    },
+
     "pricing": {
       "currency": "GBP",
       "materialCost": 90,
       "estimatedInstalledAdder": 150,
       "notes": "Beta placeholder price. Not product-specific."
     },
+
+    "supplierMetadata": {
+      "sourceType": "manual-placeholder",
+      "supplierSku": null,
+      "manufacturerSku": null,
+      "datasheetUrl": null,
+      "lastVerified": null,
+      "dataQuality": "placeholder"
+    },
+
     "isActive": true,
     "isPlaceholder": true,
-    "notes": "Placeholder product used to test catalogue structure only."
+    "notes": "Placeholder product used to test catalogue structure only. Electrical values are generic assumptions and must not be treated as product datasheet values."
   },
   {
     "id": "beta-panel-premium-460w",
@@ -31,18 +64,51 @@
     "wattage": 460,
     "technology": "n-type",
     "efficiency": null,
-    "productWarrantyYears": 25,
-    "performanceWarrantyYears": 30,
-    "firstYearDegradation": 0.01,
-    "annualDegradationRate": 0.0035,
+
+    "electrical": {
+      "vocSTC": 39.5,
+      "vmpSTC": 33.5,
+      "iscSTC": 14.6,
+      "impSTC": 13.75,
+      "maxSystemVoltageV": 1000,
+      "tempCoeffVocPctPerC": -0.24,
+      "tempCoeffPmaxPctPerC": -0.30,
+      "nominalOperatingCellTempC": 45
+    },
+
+    "mechanical": {
+      "lengthMm": 1762,
+      "widthMm": 1134,
+      "depthMm": 30,
+      "weightKg": 22,
+      "connectorType": "MC4-compatible"
+    },
+
+    "warranty": {
+      "productWarrantyYears": 25,
+      "performanceWarrantyYears": 30,
+      "firstYearDegradation": 0.01,
+      "annualDegradationRate": 0.0035
+    },
+
     "pricing": {
       "currency": "GBP",
       "materialCost": 120,
       "estimatedInstalledAdder": 180,
       "notes": "Beta placeholder price. Not product-specific."
     },
+
+    "supplierMetadata": {
+      "sourceType": "manual-placeholder",
+      "supplierSku": null,
+      "manufacturerSku": null,
+      "datasheetUrl": null,
+      "lastVerified": null,
+      "dataQuality": "placeholder"
+    },
+
     "isActive": true,
     "isPlaceholder": true,
-    "notes": "Placeholder product used to test catalogue structure only."
+    "notes": "Placeholder product used to test catalogue structure only. Electrical values are generic assumptions and must not be treated as product datasheet values."
   }
 ]

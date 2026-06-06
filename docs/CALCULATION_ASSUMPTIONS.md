@@ -146,6 +146,48 @@ backend/data/hardware/panels.json
 backend/data/hardware/inverters.json
 backend/services/hardwareCatalogService.js
 
+## Design-ready hardware catalogue fields
+
+The hardware catalogue now includes additional fields intended to support future design compatibility checks.
+
+For panels, this includes:
+
+- `Voc`
+- `Vmp`
+- `Isc`
+- `Imp`
+- maximum system voltage
+- voltage and power temperature coefficients
+- basic mechanical dimensions
+
+For inverters, this includes:
+
+- maximum DC voltage
+- startup voltage
+- MPPT voltage range
+- MPPT count
+- strings per MPPT
+- max input current
+- max short-circuit current
+- max DC power per MPPT
+- battery port compatibility fields
+
+For batteries, this includes:
+
+- usable and nominal capacity
+- max charge power
+- max discharge power
+- round-trip efficiency
+- voltage type
+- scalability fields
+- compatibility fields
+
+These fields are currently for backend validation and future design-readiness only.
+
+They are not yet used to change quote pricing, PV generation, battery dispatch or final system recommendations.
+
+The current beta products are placeholders. Their electrical values are generic assumptions and must not be treated as verified manufacturer datasheet values.
+
 ## Battery product mapping
 
 Battery recommendations now include closest-match battery product metadata from the local hardware catalogue.

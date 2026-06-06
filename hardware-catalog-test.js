@@ -19,11 +19,26 @@ function isNumber(value) {
   return typeof value === "number" && Number.isFinite(value);
 }
 
+function isNullableNumber(value) {
+  return value === null || isNumber(value);
+}
+
 function assertPriceObject(item, label) {
   assert(item.pricing, `${label} missing pricing object.`);
   assert(item.pricing.currency === "GBP", `${label} pricing currency should be GBP.`);
   assert(isNumber(item.pricing.materialCost), `${label} missing numeric materialCost.`);
   assert(isNumber(item.pricing.estimatedInstalledAdder), `${label} missing numeric estimatedInstalledAdder.`);
+}
+
+function assertSupplierMetadata(item, label) {
+  assert(item.supplierMetadata, `${label} missing supplierMetadata.`);
+  assert(item.supplierMetadata.sourceType, `${label} missing supplierMetadata.sourceType.`);
+  assert(item.supplierMetadata.dataQuality, `${label} missing supplierMetadata.dataQuality.`);
+}
+
+function assertPositiveNumber(value, label) {
+  assert(isNumber(value), `${label} must be a number.`);
+  assert(value > 0, `${label} must be positive.`);
 }
 
 function runCatalogueLoadChecks() {
@@ -55,16 +70,37 @@ function runBatteryChecks() {
     assert(battery.model, `${battery.id} missing model.`);
     assert(battery.category === "battery", `${battery.id} category should be battery.`);
 
-    assert(isNumber(battery.nominalCapacityKWh), `${battery.id} missing nominalCapacityKWh.`);
-    assert(isNumber(battery.usableCapacityKWh), `${battery.id} missing usableCapacityKWh.`);
+    assertPositiveNumber(battery.nominalCapacityKWh, `${battery.id} nominalCapacityKWh`);
+    assertPositiveNumber(battery.usableCapacityKWh, `${battery.id} usableCapacityKWh`);
     assert(battery.usableCapacityKWh <= battery.nominalCapacityKWh, `${battery.id} usable capacity exceeds nominal capacity.`);
 
-    assert(isNumber(battery.maxChargeKW), `${battery.id} missing maxChargeKW.`);
-    assert(isNumber(battery.maxDischargeKW), `${battery.id} missing maxDischargeKW.`);
-    assert(isNumber(battery.roundTripEfficiency), `${battery.id} missing roundTripEfficiency.`);
-    assert(isNumber(battery.warrantyYears), `${battery.id} missing warrantyYears.`);
+    assertPositiveNumber(battery.maxChargeKW, `${battery.id} maxChargeKW`);
+    assertPositiveNumber(battery.maxDischargeKW, `${battery.id} maxDischargeKW`);
+    assertPositiveNumber(battery.roundTripEfficiency, `${battery.id} roundTripEfficiency`);
+    assert(battery.roundTripEfficiency > 0 && battery.roundTripEfficiency <= 1, `${battery.id} roundTripEfficiency should be between 0 and 1.`);
+
+    assertPositiveNumber(battery.warrantyYears, `${battery.id} warrantyYears`);
+    assert(isNumber(battery.degradationRatePerYear), `${battery.id} missing degradationRatePerYear.`);
+    assert(isNumber(battery.minCapacityFraction), `${battery.id} missing minCapacityFraction.`);
+
+    assert(battery.electrical, `${battery.id} missing electrical object.`);
+    assert(battery.electrical.batteryVoltageType, `${battery.id} missing electrical.batteryVoltageType.`);
+    assert(battery.electrical.operatingVoltageRangeV, `${battery.id} missing operatingVoltageRangeV.`);
+    assert(isNullableNumber(battery.electrical.operatingVoltageRangeV.min), `${battery.id} operating voltage min must be number or null.`);
+    assert(isNullableNumber(battery.electrical.operatingVoltageRangeV.max), `${battery.id} operating voltage max must be number or null.`);
+
+    assert(battery.scalability, `${battery.id} missing scalability object.`);
+    assert(typeof battery.scalability.isScalable === "boolean", `${battery.id} scalability.isScalable must be boolean.`);
+    assertPositiveNumber(battery.scalability.moduleUsableCapacityKWh, `${battery.id} moduleUsableCapacityKWh`);
+    assertPositiveNumber(battery.scalability.minModules, `${battery.id} minModules`);
+    assertPositiveNumber(battery.scalability.maxModules, `${battery.id} maxModules`);
+    assert(battery.scalability.maxModules >= battery.scalability.minModules, `${battery.id} maxModules must be >= minModules.`);
+
+    assert(Array.isArray(battery.compatibleInverterTypes), `${battery.id} compatibleInverterTypes must be an array.`);
+    assert(Array.isArray(battery.compatibleInverterIds), `${battery.id} compatibleInverterIds must be an array.`);
 
     assertPriceObject(battery, battery.id);
+    assertSupplierMetadata(battery, battery.id);
   }
 
   const exact = findBatteryById("beta-battery-10kwh");
@@ -91,10 +127,30 @@ function runPanelChecks() {
     assert(panel.model, `${panel.id} missing model.`);
     assert(panel.category === "panel", `${panel.id} category should be panel.`);
 
-    assert(isNumber(panel.wattage), `${panel.id} missing wattage.`);
-    assert(panel.wattage > 0, `${panel.id} wattage should be positive.`);
+    assertPositiveNumber(panel.wattage, `${panel.id} wattage`);
+
+    assert(panel.electrical, `${panel.id} missing electrical object.`);
+    assertPositiveNumber(panel.electrical.vocSTC, `${panel.id} electrical.vocSTC`);
+    assertPositiveNumber(panel.electrical.vmpSTC, `${panel.id} electrical.vmpSTC`);
+    assertPositiveNumber(panel.electrical.iscSTC, `${panel.id} electrical.iscSTC`);
+    assertPositiveNumber(panel.electrical.impSTC, `${panel.id} electrical.impSTC`);
+    assertPositiveNumber(panel.electrical.maxSystemVoltageV, `${panel.id} electrical.maxSystemVoltageV`);
+    assert(isNumber(panel.electrical.tempCoeffVocPctPerC), `${panel.id} missing tempCoeffVocPctPerC.`);
+    assert(isNumber(panel.electrical.tempCoeffPmaxPctPerC), `${panel.id} missing tempCoeffPmaxPctPerC.`);
+
+    assert(panel.mechanical, `${panel.id} missing mechanical object.`);
+    assertPositiveNumber(panel.mechanical.lengthMm, `${panel.id} mechanical.lengthMm`);
+    assertPositiveNumber(panel.mechanical.widthMm, `${panel.id} mechanical.widthMm`);
+    assertPositiveNumber(panel.mechanical.weightKg, `${panel.id} mechanical.weightKg`);
+
+    assert(panel.warranty, `${panel.id} missing warranty object.`);
+    assertPositiveNumber(panel.warranty.productWarrantyYears, `${panel.id} productWarrantyYears`);
+    assertPositiveNumber(panel.warranty.performanceWarrantyYears, `${panel.id} performanceWarrantyYears`);
+    assert(isNumber(panel.warranty.firstYearDegradation), `${panel.id} missing firstYearDegradation.`);
+    assert(isNumber(panel.warranty.annualDegradationRate), `${panel.id} missing annualDegradationRate.`);
 
     assertPriceObject(panel, panel.id);
+    assertSupplierMetadata(panel, panel.id);
   }
 
   console.log("  ✓ Panel catalogue OK");
@@ -113,10 +169,39 @@ function runInverterChecks() {
     assert(inverter.model, `${inverter.id} missing model.`);
     assert(inverter.category === "inverter", `${inverter.id} category should be inverter.`);
 
-    assert(isNumber(inverter.maxAcOutputKW), `${inverter.id} missing maxAcOutputKW.`);
+    assertPositiveNumber(inverter.maxAcOutputKW, `${inverter.id} maxAcOutputKW`);
     assert(isNumber(inverter.maxPvInputKW), `${inverter.id} missing maxPvInputKW.`);
 
+    assert(inverter.dcInput, `${inverter.id} missing dcInput object.`);
+    assert(isNumber(inverter.dcInput.maxDcVoltageV), `${inverter.id} missing dcInput.maxDcVoltageV.`);
+    assert(isNumber(inverter.dcInput.startupVoltageV), `${inverter.id} missing dcInput.startupVoltageV.`);
+    assert(inverter.dcInput.mpptVoltageRangeV, `${inverter.id} missing dcInput.mpptVoltageRangeV.`);
+    assert(isNumber(inverter.dcInput.mpptVoltageRangeV.min), `${inverter.id} missing MPPT voltage min.`);
+    assert(isNumber(inverter.dcInput.mpptVoltageRangeV.max), `${inverter.id} missing MPPT voltage max.`);
+    assert(isNumber(inverter.dcInput.mpptCount), `${inverter.id} missing dcInput.mpptCount.`);
+    assert(Array.isArray(inverter.dcInput.mppts), `${inverter.id} dcInput.mppts must be an array.`);
+
+    if (inverter.maxPvInputKW > 0) {
+      assert(inverter.dcInput.mpptCount > 0, `${inverter.id} PV inverter should have MPPTs.`);
+      assert(inverter.dcInput.mppts.length === inverter.dcInput.mpptCount, `${inverter.id} MPPT count mismatch.`);
+
+      for (const mppt of inverter.dcInput.mppts) {
+        assert(mppt.id, `${inverter.id} MPPT missing id.`);
+        assertPositiveNumber(mppt.maxStrings, `${inverter.id} ${mppt.id} maxStrings`);
+        assertPositiveNumber(mppt.maxInputCurrentA, `${inverter.id} ${mppt.id} maxInputCurrentA`);
+        assertPositiveNumber(mppt.maxShortCircuitCurrentA, `${inverter.id} ${mppt.id} maxShortCircuitCurrentA`);
+        assertPositiveNumber(mppt.maxDcPowerKW, `${inverter.id} ${mppt.id} maxDcPowerKW`);
+      }
+    }
+
+    assert(inverter.batteryPort, `${inverter.id} missing batteryPort object.`);
+    assert(Array.isArray(inverter.batteryPort.supportedBatteryTypes), `${inverter.id} supportedBatteryTypes must be an array.`);
+    assert(isNumber(inverter.batteryPort.maxChargeKW), `${inverter.id} batteryPort.maxChargeKW must be numeric.`);
+    assert(isNumber(inverter.batteryPort.maxDischargeKW), `${inverter.id} batteryPort.maxDischargeKW must be numeric.`);
+    assert(Array.isArray(inverter.batteryPort.compatibleBatteryIds), `${inverter.id} compatibleBatteryIds must be an array.`);
+
     assertPriceObject(inverter, inverter.id);
+    assertSupplierMetadata(inverter, inverter.id);
   }
 
   console.log("  ✓ Inverter catalogue OK");
