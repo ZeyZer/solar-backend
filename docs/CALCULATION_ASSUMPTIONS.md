@@ -241,6 +241,29 @@ It is not yet used to change:
 
 The long-term goal is for this service to become the design compatibility layer between user inputs, hardware catalogue products and supplier product databases.
 
+### Quote response design diagnostics
+
+Quote responses now include a `designCompatibility` object.
+
+This object is diagnostic-only and includes:
+
+- selected catalogue panel, inverter and battery products
+- roof array count and panel count
+- MPPT count checks
+- inverter DC input checks
+- string voltage checks
+- string current checks
+- battery/inverter compatibility checks
+- battery charge/discharge window checks
+- optimisation flags for shading, mixed roofs, short strings or too many arrays
+
+Current status:
+
+- `mode`: `diagnostic_only`
+- `usedForCalculation`: `false`
+
+This means the diagnostics are attached to the backend quote response, but they do not yet change customer-facing calculations, price, PV generation, battery dispatch or final recommendations.
+
 ## Financial model
 
 The financial model estimates:

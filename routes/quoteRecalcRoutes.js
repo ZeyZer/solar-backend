@@ -15,6 +15,10 @@ const {
 } = require("../config/tariffPresets");
 
 const {
+  buildDesignCompatibilityPreview,
+} = require("../services/designCompatibilityService");
+
+const {
   buildTariffWarnings,
 } = require("../services/tariffWarningService");
 
@@ -399,6 +403,36 @@ router.post("/recalc", async (req, res) => {
       tariffModelAssumptions,
     });
 
+    const designCompatibility = buildDesignCompatibilityPreview({
+      quote: {
+        ...quote,
+
+        // Recalc does not change the PV system size or panel count.
+        systemSizeKwp: quote?.systemSizeKwp,
+        panelCount: quote?.panelCount,
+
+        hourlyModel: {
+          ...(quote?.hourlyModel || {}),
+          _batteryKWh: selectedBatteryKWh,
+        },
+
+        tariffAfter: ta,
+        tariff: ta,
+      },
+
+      input: {
+        ...(input || {}),
+        tariffAfter: ta,
+        batteryKWh: selectedBatteryKWh,
+      },
+
+      roofs: Array.isArray(input?.roofs)
+        ? input.roofs
+        : Array.isArray(quote?.roofs)
+          ? quote.roofs
+          : [],
+    });
+
     const updated = {
       ...quote,
 
@@ -409,6 +443,7 @@ router.post("/recalc", async (req, res) => {
       tariffWarnings,
       hardwareCatalog,
       hardwareCatalogVersion: hardwareCatalog.version,
+      designCompatibility,
 
       annualBillSavings,
       annualSegIncome,

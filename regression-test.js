@@ -1065,6 +1065,80 @@ function checkQuoteShape(quote, expectations) {
       "Hardware product mapping should not be used for calculation yet."
     );
   }
+
+  assert(
+    quote.designCompatibility &&
+      typeof quote.designCompatibility === "object",
+    "Missing designCompatibility object."
+  );
+
+  assert(
+    quote.designCompatibility.mode === "diagnostic_only",
+    `Unexpected designCompatibility.mode: ${quote.designCompatibility.mode}`
+  );
+
+  assert(
+    quote.designCompatibility.usedForCalculation === false,
+    "designCompatibility should not be used for calculation yet."
+  );
+
+  assert(
+    quote.designCompatibility.summary &&
+      typeof quote.designCompatibility.summary === "object",
+    "Missing designCompatibility.summary."
+  );
+
+  assert(
+    Array.isArray(quote.designCompatibility.checks),
+    "designCompatibility.checks must be an array."
+  );
+
+  assert(
+    quote.designCompatibility.checks.length > 0,
+    "designCompatibility.checks should not be empty."
+  );
+
+  assert(
+    quote.designCompatibility.selectedProducts &&
+      typeof quote.designCompatibility.selectedProducts === "object",
+    "Missing designCompatibility.selectedProducts."
+  );
+
+  assert(
+    quote.designCompatibility.selectedProducts.panel,
+    "Missing selected design panel product."
+  );
+
+  assert(
+    quote.designCompatibility.selectedProducts.inverter,
+    "Missing selected design inverter product."
+  );
+
+  assert(
+    Array.isArray(quote.designCompatibility.optimisationFlags),
+    "designCompatibility.optimisationFlags must be an array."
+  );
+
+  assert(
+    quote.designCompatibility.checks.some(
+      (check) => check.code === "MPPT_COUNT_VS_ARRAYS"
+    ),
+    "Missing MPPT count diagnostic check."
+  );
+
+  assert(
+    quote.designCompatibility.checks.some(
+      (check) => check.code === "INVERTER_MAX_PV_INPUT"
+    ),
+    "Missing inverter max PV input diagnostic check."
+  );
+
+  assert(
+    quote.designCompatibility.checks.some(
+      (check) => check.code === "DC_AC_RATIO"
+    ),
+    "Missing DC/AC ratio diagnostic check."
+  );
 }
 
 async function runQuoteScenario(scenario) {
@@ -1258,6 +1332,25 @@ function checkRecalcBehaviour(originalQuote, recalculatedQuote) {
     Number(recalculatedQuote.totalAnnualBenefit || 0),
     2
   );
+
+  assert(
+    recalculatedQuote.designCompatibility &&
+      typeof recalculatedQuote.designCompatibility === "object",
+    "Recalc response missing designCompatibility."
+  );
+
+  assert(
+    recalculatedQuote.designCompatibility.usedForCalculation === false,
+    "Recalc designCompatibility should not be used for calculation yet."
+  );
+
+  assert(
+    Array.isArray(recalculatedQuote.designCompatibility.checks) &&
+      recalculatedQuote.designCompatibility.checks.length > 0,
+    "Recalc designCompatibility checks should not be empty."
+  );
+
+  console.log("    ✓ Recalc includes diagnostic design compatibility checks");
 }
 
 async function runRecalcCheck(originalQuote, originalInput) {

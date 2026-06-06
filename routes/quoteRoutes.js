@@ -45,6 +45,10 @@ const {
 } = require("../utils/arrayUtils");
 
 const {
+  buildDesignCompatibilityPreview,
+} = require("../services/designCompatibilityService");
+
+const {
   runHourlyModelForYear,
   getTotalPvgisAnnualKWh,
 } = require("../services/pvgisService");
@@ -974,6 +978,12 @@ router.post("/", async (req, res) => {
       tariffModelAssumptions,
     });
 
+    const designCompatibility = buildDesignCompatibilityPreview({
+      quote,
+      input,
+      roofs: Array.isArray(input.roofs) ? input.roofs : [],
+    });
+
     const versionedQuote = attachQuoteEngineVersion({
       ...quote,
       leadId,
@@ -981,6 +991,7 @@ router.post("/", async (req, res) => {
       tariffWarnings,
       hardwareCatalog,
       hardwareCatalogVersion: hardwareCatalog.version,
+      designCompatibility,
     });
 
     quote = versionedQuote;
