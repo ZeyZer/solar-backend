@@ -565,6 +565,46 @@ This shortlist does not yet change quote calculations, product selection, pricin
 
 Its purpose is to identify which generated candidates are worth carrying forward into future candidate-level cost, performance and financial modelling.
 
+## Design candidate cost model
+
+The backend now includes a candidate-level beta cost model.
+
+The model currently estimates candidate-level installed cost using:
+
+- panel product material cost
+- inverter product material cost
+- battery product material cost
+- mounting allowance
+- scaffolding allowance
+- electrical/BOS allowance
+- labour allowance
+- complexity multiplier
+- overhead/margin allowance
+- cost confidence label
+
+Current status:
+
+- `mode`: `candidate_cost_model_beta`
+- `usedForCalculation`: `false`
+- `usedForPricing`: `false`
+- `usedForRecommendation`: `false`
+
+The cost model is diagnostic only.
+
+It does not yet replace the existing quote price calculation and does not change customer-facing pricing, savings, payback or recommendations.
+
+Known limitations:
+
+- supplier live pricing is not connected
+- roof covering and mounting system are not modelled
+- cable routes and electrical complexity are not modelled
+- consumer unit works are not modelled
+- access equipment is simplified into scaffolding allowance
+- installer labour and margin are beta assumptions
+- product costs are currently based on beta catalogue data
+
+The purpose is to prepare design candidates for future cost/performance/financial optimisation.
+
 ## Financial model
 
 The financial model estimates:

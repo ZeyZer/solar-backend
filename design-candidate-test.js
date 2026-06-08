@@ -54,6 +54,9 @@ function runStandardCandidateTest() {
   assert(candidate.compatibility.summary.total > 0, "Compatibility checks should not be empty.");
 
   assert(candidate.costModel, "Candidate missing costModel.");
+  assert(candidate.costModel.mode === "candidate_cost_model_beta", "Unexpected candidate cost model mode.");
+  assert(candidate.costModel.estimatedInstalledCost > 0, "Candidate cost model should include estimatedInstalledCost.");
+  assert(candidate.costModel.usedForPricing === false, "Candidate cost model should not be used for pricing.");
   assert(candidate.costModel.usedForPricing === false, "Cost model should not be used for pricing.");
 
   assert(candidate.performanceModel.usedForCalculation === false, "Performance model should not be active yet.");

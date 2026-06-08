@@ -11,6 +11,10 @@ const {
   buildDesignCompatibilityPreview,
 } = require("./designCompatibilityService");
 
+const {
+  buildDesignCandidateCostModel,
+} = require("./designCandidateCostService");
+
 const DESIGN_CANDIDATE_SCHEMA_VERSION = "2026-beta-1";
 
 function round2(value) {
@@ -190,40 +194,6 @@ function buildStringPlan({ arrays, inverter }) {
   };
 }
 
-function estimatePlaceholderCostModel({
-  panel,
-  inverter,
-  battery,
-  totalPanels,
-}) {
-  const panelAdder =
-    Number(panel?.pricing?.estimatedInstalledAdder || 0) * Number(totalPanels || 0);
-
-  const inverterAdder = Number(inverter?.pricing?.estimatedInstalledAdder || 0);
-  const batteryAdder = battery
-    ? Number(battery?.pricing?.estimatedInstalledAdder || 0)
-    : 0;
-
-  return {
-    mode: "placeholder_catalogue_adder",
-    usedForPricing: false,
-
-    estimatedHardwareAdder: Math.round(panelAdder + inverterAdder + batteryAdder),
-
-    breakdown: {
-      panels: Math.round(panelAdder),
-      inverter: Math.round(inverterAdder),
-      battery: Math.round(batteryAdder),
-    },
-
-    limitations: [
-      "This is not customer-facing pricing.",
-      "Labour, scaffolding, mounting, roof access, electrical works and margin are not modelled here.",
-      "Supplier stock, discounts and product-specific live pricing are not connected yet.",
-    ],
-  };
-}
-
 function buildEmptyPerformanceModel() {
   return {
     mode: "not_modelled_in_candidate_yet",
@@ -343,10 +313,18 @@ function buildDesignCandidateFromInputs({
     inverter,
   });
 
-  const costModel = estimatePlaceholderCostModel({
+  const costModel = buildDesignCandidateCostModel({
+    candidate: {
+      compatibility: {
+        summary: compatibility.summary,
+        optimisationFlags: compatibility.optimisationFlags,
+      },
+    },
     panel,
     inverter,
     battery,
+    arrays,
+    roofs: activeRoofs,
     totalPanels,
   });
 
