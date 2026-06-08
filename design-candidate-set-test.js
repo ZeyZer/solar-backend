@@ -46,6 +46,25 @@ function runStandardCandidateSetTest() {
   assert(Array.isArray(candidateSet.candidates), "Candidates should be an array.");
   assert(candidateSet.candidates.length === candidateSet.productSearchSpace.candidateCount, "Candidate count mismatch.");
 
+  assert(candidateSet.shortlist, "Candidate set missing shortlist.");
+  assert(candidateSet.shortlist.viabilitySummary, "Candidate shortlist missing viability summary.");
+  assert(
+    candidateSet.shortlist.viabilitySummary.total === candidateSet.candidates.length,
+    "Candidate shortlist total should match candidate count."
+  );
+  assert(
+    Array.isArray(candidateSet.shortlist.shortlistedCandidates),
+    "Candidate shortlist should include shortlistedCandidates array."
+  );
+  assert(
+    candidateSet.shortlist.usedForCalculation === false,
+    "Candidate shortlist should not be used for calculation."
+  );
+  assert(
+    candidateSet.shortlist.usedForRecommendation === false,
+    "Candidate shortlist should not be used for recommendation."
+  );
+
   assert(
     candidateSet.summary.total === candidateSet.productSearchSpace.candidateCount,
     "Candidate filtering summary count mismatch."

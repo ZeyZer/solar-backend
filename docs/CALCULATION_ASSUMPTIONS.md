@@ -524,6 +524,47 @@ These values are beta placeholders.
 
 The long-term plan is for supplier/manufacturer data, installer experience and verified product documentation to replace these placeholder capability scores.
 
+## Design candidate shortlist
+
+The backend now includes a diagnostic design candidate shortlist.
+
+The shortlist sits on top of candidate generation, candidate filtering and system type fit scoring.
+
+Current shortlist outputs include:
+
+- viability summary
+- common rejection reasons
+- common warning reasons
+- profile fit summary
+- shortlisted eligible candidates
+- rejected candidate examples
+- key candidate ids for future optimiser stages
+
+Current viability statuses:
+
+- `viable`
+- `viable_with_warnings`
+- `rejected`
+- `unknown`
+
+Current readiness labels:
+
+- `no_candidates_generated`
+- `no_viable_candidates`
+- `ready_for_future_cost_performance_modelling`
+- `warning_candidates_available_for_review`
+
+Current status:
+
+- `mode`: `candidate_shortlist_diagnostic`
+- `usedForCalculation`: `false`
+- `usedForPricing`: `false`
+- `usedForRecommendation`: `false`
+
+This shortlist does not yet change quote calculations, product selection, pricing, PV generation, battery dispatch, savings or customer recommendations.
+
+Its purpose is to identify which generated candidates are worth carrying forward into future candidate-level cost, performance and financial modelling.
+
 ## Financial model
 
 The financial model estimates:

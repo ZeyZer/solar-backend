@@ -9,6 +9,10 @@ const {
 } = require("./designCandidateService");
 
 const {
+  buildCandidateShortlist,
+} = require("./designCandidateShortlistService");
+
+const {
   applyCandidateFiltering,
   summarizeFilteredCandidates,
 } = require("./designCandidateFilterService");
@@ -225,6 +229,15 @@ function buildCandidateSetFromInputs({
 
   const summary = summarizeFilteredCandidates(sortedCandidates);
 
+  const selectedSystemType = safeInput.systemType || "balanced";
+
+  const shortlist = buildCandidateShortlist({
+    candidates: sortedCandidates,
+    selectedSystemType,
+    maxShortlist: 8,
+    maxRejectedExamples: 5,
+  });
+
   return {
     version: DESIGN_CANDIDATE_SET_VERSION,
     mode: "candidate_set_foundation",
@@ -235,7 +248,7 @@ function buildCandidateSetFromInputs({
     inputSummary: {
       batteryKWh: round2(batteryKWh),
       roofArrayCount: activeRoofs.length,
-      selectedSystemType: safeInput.systemType || "balanced",
+      selectedSystemType,
       includeAlternativePanels,
       maxBatteryCandidates,
       maxCandidates,
@@ -249,6 +262,7 @@ function buildCandidateSetFromInputs({
     },
 
     summary,
+    shortlist,
 
     candidates: sortedCandidates,
 
@@ -263,6 +277,7 @@ function buildCandidateSetFromInputs({
 
     assumptions: {
       filteringEnabled: true,
+      shortlistEnabled: true,
       usedForCalculation: false,
       usedForPricing: false,
       usedForRecommendation: false,
