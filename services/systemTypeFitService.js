@@ -27,6 +27,16 @@ function clamp(value, min = 0, max = 100) {
   return Math.max(min, Math.min(max, value));
 }
 
+function average(values = []) {
+  const usable = values
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value));
+
+  if (!usable.length) return 0;
+
+  return usable.reduce((sum, value) => sum + value, 0) / usable.length;
+}
+
 function getFullProducts(candidate) {
   const panelId = candidate?.products?.panel?.id;
   const inverterId = candidate?.products?.inverter?.id;
@@ -37,6 +47,12 @@ function getFullProducts(candidate) {
     inverter: inverterId ? findInverterById(inverterId) : null,
     battery: batteryId ? findBatteryById(batteryId) : null,
   };
+}
+
+function getCapabilities(product) {
+  return product?.capabilities && typeof product.capabilities === "object"
+    ? product.capabilities
+    : {};
 }
 
 function getCostScore(candidate) {
@@ -79,106 +95,116 @@ function getWarrantyScore(candidate) {
   if (!values.length) return 45;
 
   const weakest = Math.min(...values);
-  const average = values.reduce((sum, value) => sum + value, 0) / values.length;
+  const avg = average(values);
 
-  return clamp(weakest * 4 + average);
+  return clamp(weakest * 4 + avg);
 }
 
 function getOptimisationScore(candidate) {
-  const { inverter } = getFullProducts(candidate);
+  const { inverter, battery } = getFullProducts(candidate);
+  const inverterCaps = getCapabilities(inverter);
+  const batteryCaps = getCapabilities(battery);
 
   const flags = Array.isArray(candidate?.compatibility?.optimisationFlags)
     ? candidate.compatibility.optimisationFlags
     : [];
 
   const mpptCount = numberOrZero(candidate?.stringPlan?.mpptCount);
-  const inverterType = String(inverter?.inverterType || "").toLowerCase();
 
-  let score = 30;
+  let score = 25;
 
-  score += Math.min(mpptCount * 12, 36);
+  score += Math.min(mpptCount * 10, 30);
 
-  if (inverterType === "hybrid") score += 10;
-  if (inverter?.batteryCompatible === true) score += 8;
-  if (inverter?.backupCompatible === true) score += 6;
+  score += average([
+    inverterCaps.softwareOptimisationScore,
+    inverterCaps.ecosystemScore,
+    inverterCaps.smartTariffControlScore,
+    batteryCaps.tariffControlSupportScore,
+    batteryCaps.powerCapabilityScore,
+  ]) * 0.45;
 
-  // If the roof has optimisation flags, capability becomes more valuable.
+  if (inverterCaps.supportsOptimisers === true) score += 8;
+  if (inverterCaps.supportsMicroinverters === true) score += 10;
+
+  // If the roof has optimisation flags, optimisation capability becomes more important.
   if (flags.length > 0) score += 8;
-
-  // Future catalogue fields can replace this.
-  score += numberOrZero(inverter?.softwareOptimisationScore);
 
   return clamp(score);
 }
 
 function getBackupScore(candidate) {
   const { inverter, battery } = getFullProducts(candidate);
+  const inverterCaps = getCapabilities(inverter);
+  const batteryCaps = getCapabilities(battery);
 
   let score = 10;
 
-  if (inverter?.backupCompatible === true) score += 50;
-  if (battery) score += 20;
-  if (inverter?.batteryCompatible === true) score += 10;
+  score += numberOrZero(inverterCaps.backupCapabilityScore) * 0.6;
+  score += numberOrZero(batteryCaps.backupSupportScore) * 0.25;
 
-  // Placeholder until explicit backup capability fields exist.
-  if (String(inverter?.model || "").toLowerCase().includes("10 kw")) {
-    score += 10;
-  }
+  if (inverterCaps.supportsWholeHomeBackup === true) score += 12;
+  if (inverterCaps.supportsEssentialLoadBackup === true) score += 8;
+  if (battery) score += 8;
 
   return clamp(score);
 }
 
 function getMonitoringScore(candidate) {
-  const { inverter, battery } = getFullProducts(candidate);
+  const { inverter, battery, panel } = getFullProducts(candidate);
 
-  let score = 35;
+  const inverterCaps = getCapabilities(inverter);
+  const batteryCaps = getCapabilities(battery);
+  const panelCaps = getCapabilities(panel);
 
-  if (inverter) score += 15;
-  if (battery) score += 10;
+  let score = 25;
 
-  score += numberOrZero(inverter?.monitoringQualityScore);
-  score += numberOrZero(battery?.monitoringQualityScore);
+  score += average([
+    inverterCaps.monitoringQualityScore,
+    batteryCaps.monitoringQualityScore,
+    panelCaps.monitoringVisibilityScore,
+  ]) * 0.65;
 
-  // Placeholder until explicit monitoring fields exist.
-  if (String(inverter?.inverterType || "").toLowerCase() === "hybrid") {
-    score += 10;
-  }
+  if (inverterCaps.monitoringLevel === "enhanced") score += 8;
 
   return clamp(score);
 }
 
 function getExportControlScore(candidate) {
-  const { inverter } = getFullProducts(candidate);
+  const { inverter, battery } = getFullProducts(candidate);
 
-  let score = 35;
+  const inverterCaps = getCapabilities(inverter);
+  const batteryCaps = getCapabilities(battery);
 
-  if (inverter) score += 15;
-  if (inverter?.batteryCompatible === true) score += 10;
-  if (inverter?.backupCompatible === true) score += 5;
+  let score = 25;
 
-  score += numberOrZero(inverter?.exportControlScore);
-  score += numberOrZero(inverter?.g100Score);
+  score += average([
+    inverterCaps.exportControlScore,
+    inverterCaps.g100Score,
+    inverterCaps.smartTariffControlScore,
+    batteryCaps.tariffControlSupportScore,
+  ]) * 0.65;
 
-  // Placeholder until explicit G100/export limiting data exists.
-  if (String(inverter?.inverterType || "").toLowerCase() === "hybrid") {
-    score += 10;
-  }
+  if (inverterCaps.supportsExportLimiting === true) score += 8;
+  if (inverterCaps.supportsForcedChargeDischarge === true) score += 4;
+  if (batteryCaps.supportsForcedChargeDischarge === true) score += 4;
 
   return clamp(score);
 }
 
 function getAestheticsScore(candidate) {
   const { panel } = getFullProducts(candidate);
+  const panelCaps = getCapabilities(panel);
 
-  let score = 45;
+  let score = 30;
+
+  score += numberOrZero(panelCaps.aestheticsScore) * 0.55;
+  score += numberOrZero(panelCaps.premiumAppearanceScore) * 0.25;
 
   const option = String(panel?.panelOption || "").toLowerCase();
   const technology = String(panel?.technology || "").toLowerCase();
 
-  if (option === "premium") score += 25;
-  if (technology.includes("n-type")) score += 10;
-
-  score += numberOrZero(panel?.aestheticsScore);
+  if (option === "premium") score += 8;
+  if (technology.includes("n-type")) score += 4;
 
   return clamp(score);
 }
@@ -230,11 +256,19 @@ function scoreCandidateForProfile(candidate, profile) {
     axisScores,
     weights,
 
+    scoringSource: {
+      usesCatalogueCapabilities: true,
+      usesCompatibilityChecks: true,
+      usesPlaceholderPricing: true,
+      note:
+        "System type scores now use explicit catalogue capability fields where available, but remain diagnostic only.",
+    },
+
     limitations: [
       "System type fit is diagnostic only.",
       "It does not yet change quote pricing, PV generation, battery dispatch or recommendations.",
-      "Scores currently use placeholder catalogue data and simple heuristics.",
-      "Future hardware catalogue fields should replace these placeholder heuristics.",
+      "Scores currently use beta catalogue capability fields and simple heuristics.",
+      "Future supplier data should replace placeholder capability scores.",
     ],
   };
 }

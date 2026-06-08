@@ -476,6 +476,54 @@ Future work should replace placeholder heuristics with catalogue-driven hardware
 - installer supportability score
 - panel aesthetics score
 
+## Hardware capability fields
+
+The hardware catalogue now includes beta capability fields used for diagnostic system type fit scoring.
+
+Current panel capability fields include:
+
+- aesthetics score
+- complex roof suitability score
+- premium appearance score
+- monitoring visibility score
+
+Current inverter capability fields include:
+
+- software optimisation score
+- monitoring quality score
+- backup capability score
+- export control score
+- G100/export-control score
+- ecosystem score
+- smart tariff control score
+- forced charge/discharge score
+- export limiting support
+- smart tariff control support
+- forced charge/discharge support
+- optimiser/microinverter support placeholders
+
+Current battery capability fields include:
+
+- monitoring quality score
+- tariff control support score
+- backup support score
+- power capability score
+- scalability score
+- forced charge/discharge support
+- smart tariff control support
+- short tariff window suitability
+
+Current status:
+
+- capability fields are diagnostic only
+- `usedForCalculation`: `false`
+- `usedForPricing`: `false`
+- `usedForRecommendation`: `false`
+
+These values are beta placeholders.
+
+The long-term plan is for supplier/manufacturer data, installer experience and verified product documentation to replace these placeholder capability scores.
+
 ## Financial model
 
 The financial model estimates:

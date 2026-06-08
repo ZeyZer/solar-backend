@@ -6,12 +6,10 @@
     "category": "inverter",
     "inverterType": "hybrid",
     "phase": "single_phase",
-
     "maxAcOutputKW": 5,
     "maxPvInputKW": 7.5,
     "batteryCompatible": true,
     "backupCompatible": false,
-
     "dcInput": {
       "maxDcVoltageV": 600,
       "startupVoltageV": 120,
@@ -38,22 +36,21 @@
         }
       ]
     },
-
     "batteryPort": {
-      "supportedBatteryTypes": ["dc_or_hybrid"],
+      "supportedBatteryTypes": [
+        "dc_or_hybrid"
+      ],
       "maxChargeKW": 3.7,
       "maxDischargeKW": 3.7,
       "batteryVoltageType": "hv",
       "compatibleBatteryIds": []
     },
-
     "pricing": {
       "currency": "GBP",
       "materialCost": 900,
       "estimatedInstalledAdder": 1300,
       "notes": "Beta placeholder price. Not product-specific."
     },
-
     "supplierMetadata": {
       "sourceType": "manual-placeholder",
       "supplierSku": null,
@@ -62,10 +59,37 @@
       "lastVerified": null,
       "dataQuality": "placeholder"
     },
-
     "isActive": true,
     "isPlaceholder": true,
-    "notes": "Placeholder product used to test catalogue structure only. Electrical values are generic assumptions and must not be treated as product datasheet values."
+    "notes": "Placeholder product used to test catalogue structure only. Electrical values are generic assumptions and must not be treated as product datasheet values.",
+    "warrantyYears": 10,
+    "capabilities": {
+      "softwareOptimisationScore": 50,
+      "monitoringQualityScore": 55,
+      "backupCapabilityScore": 35,
+      "exportControlScore": 60,
+      "g100Score": 55,
+      "ecosystemScore": 50,
+      "smartTariffControlScore": 50,
+      "forcedChargeDischargeScore": 50,
+      "supportsWholeHomeBackup": false,
+      "supportsEssentialLoadBackup": false,
+      "supportsExportLimiting": true,
+      "supportsSmartTariffControl": true,
+      "supportsForcedChargeDischarge": true,
+      "supportsOptimisers": false,
+      "supportsMicroinverters": false,
+      "monitoringLevel": "standard",
+      "optimiserEcosystem": "none",
+      "backupMode": "none_or_external",
+      "g100ComplianceStatus": "placeholder_assumed_possible",
+      "notes": "Beta placeholder capability scores. Represents a lower-cost hybrid inverter with standard monitoring and export-control assumptions."
+    },
+    "scoringTags": [
+      "budget",
+      "balanced",
+      "export_control_focused"
+    ]
   },
   {
     "id": "beta-inverter-hybrid-10kw",
@@ -74,12 +98,10 @@
     "category": "inverter",
     "inverterType": "hybrid",
     "phase": "single_phase",
-
     "maxAcOutputKW": 10,
     "maxPvInputKW": 15,
     "batteryCompatible": true,
     "backupCompatible": true,
-
     "dcInput": {
       "maxDcVoltageV": 600,
       "startupVoltageV": 120,
@@ -113,22 +135,21 @@
         }
       ]
     },
-
     "batteryPort": {
-      "supportedBatteryTypes": ["dc_or_hybrid"],
+      "supportedBatteryTypes": [
+        "dc_or_hybrid"
+      ],
       "maxChargeKW": 5,
       "maxDischargeKW": 6,
       "batteryVoltageType": "hv",
       "compatibleBatteryIds": []
     },
-
     "pricing": {
       "currency": "GBP",
       "materialCost": 1600,
       "estimatedInstalledAdder": 2200,
       "notes": "Beta placeholder price. Not product-specific."
     },
-
     "supplierMetadata": {
       "sourceType": "manual-placeholder",
       "supplierSku": null,
@@ -137,10 +158,39 @@
       "lastVerified": null,
       "dataQuality": "placeholder"
     },
-
     "isActive": true,
     "isPlaceholder": true,
-    "notes": "Placeholder product used to test catalogue structure only. Electrical values are generic assumptions and must not be treated as product datasheet values."
+    "notes": "Placeholder product used to test catalogue structure only. Electrical values are generic assumptions and must not be treated as product datasheet values.",
+    "warrantyYears": 10,
+    "capabilities": {
+      "softwareOptimisationScore": 68,
+      "monitoringQualityScore": 70,
+      "backupCapabilityScore": 78,
+      "exportControlScore": 70,
+      "g100Score": 65,
+      "ecosystemScore": 65,
+      "smartTariffControlScore": 68,
+      "forcedChargeDischargeScore": 68,
+      "supportsWholeHomeBackup": true,
+      "supportsEssentialLoadBackup": true,
+      "supportsExportLimiting": true,
+      "supportsSmartTariffControl": true,
+      "supportsForcedChargeDischarge": true,
+      "supportsOptimisers": false,
+      "supportsMicroinverters": false,
+      "monitoringLevel": "enhanced",
+      "optimiserEcosystem": "none",
+      "backupMode": "whole_home_or_essential_load_placeholder",
+      "g100ComplianceStatus": "placeholder_assumed_possible",
+      "notes": "Beta placeholder capability scores. Represents a larger, more integrated hybrid inverter with stronger backup/control assumptions."
+    },
+    "scoringTags": [
+      "balanced",
+      "premium_integrated",
+      "backup_ready",
+      "monitoring_focused",
+      "export_control_focused"
+    ]
   },
   {
     "id": "beta-inverter-ac-battery-5kw",
@@ -149,12 +199,10 @@
     "category": "inverter",
     "inverterType": "ac_coupled",
     "phase": "single_phase",
-
     "maxAcOutputKW": 5,
     "maxPvInputKW": 0,
     "batteryCompatible": true,
     "backupCompatible": false,
-
     "dcInput": {
       "maxDcVoltageV": 0,
       "startupVoltageV": 0,
@@ -166,22 +214,21 @@
       "mpptCount": 0,
       "mppts": []
     },
-
     "batteryPort": {
-      "supportedBatteryTypes": ["ac_coupled"],
+      "supportedBatteryTypes": [
+        "ac_coupled"
+      ],
       "maxChargeKW": 3.7,
       "maxDischargeKW": 3.7,
       "batteryVoltageType": "ac",
       "compatibleBatteryIds": []
     },
-
     "pricing": {
       "currency": "GBP",
       "materialCost": 850,
       "estimatedInstalledAdder": 1250,
       "notes": "Beta placeholder price. Not product-specific."
     },
-
     "supplierMetadata": {
       "sourceType": "manual-placeholder",
       "supplierSku": null,
@@ -190,9 +237,36 @@
       "lastVerified": null,
       "dataQuality": "placeholder"
     },
-
     "isActive": true,
     "isPlaceholder": true,
-    "notes": "Placeholder product used to test catalogue structure only. Electrical values are generic assumptions and must not be treated as product datasheet values."
+    "notes": "Placeholder product used to test catalogue structure only. Electrical values are generic assumptions and must not be treated as product datasheet values.",
+    "warrantyYears": 10,
+    "capabilities": {
+      "softwareOptimisationScore": 45,
+      "monitoringQualityScore": 52,
+      "backupCapabilityScore": 30,
+      "exportControlScore": 50,
+      "g100Score": 50,
+      "ecosystemScore": 45,
+      "smartTariffControlScore": 55,
+      "forcedChargeDischargeScore": 55,
+      "supportsWholeHomeBackup": false,
+      "supportsEssentialLoadBackup": false,
+      "supportsExportLimiting": true,
+      "supportsSmartTariffControl": true,
+      "supportsForcedChargeDischarge": true,
+      "supportsOptimisers": false,
+      "supportsMicroinverters": false,
+      "monitoringLevel": "standard",
+      "optimiserEcosystem": "none",
+      "backupMode": "none_or_external",
+      "g100ComplianceStatus": "placeholder_assumed_possible",
+      "notes": "Beta placeholder capability scores. Represents an AC-coupled battery inverter, not a PV string inverter."
+    },
+    "scoringTags": [
+      "budget",
+      "balanced",
+      "export_control_focused"
+    ]
   }
 ]
