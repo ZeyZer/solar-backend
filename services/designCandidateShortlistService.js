@@ -223,6 +223,33 @@ function summarizeCandidate(candidate, selectedSystemType = "balanced") {
         candidate?.dispatchModel?.confidence?.level || null,
     },
 
+    financial: {
+      mode: candidate?.financialModel?.mode || null,
+      source: candidate?.financialModel?.source || null,
+      annualBaselineBill:
+        candidate?.financialModel?.annual?.baselineBill ?? null,
+      annualAfterNetBill:
+        candidate?.financialModel?.annual?.afterNetBill ?? null,
+      annualBillSavings:
+        candidate?.financialModel?.annual?.billSavings ?? null,
+      annualSegIncome:
+        candidate?.financialModel?.annual?.segIncome ?? null,
+      totalAnnualBenefit:
+        candidate?.financialModel?.annual?.totalAnnualBenefit ?? null,
+      estimatedInstalledCost:
+        candidate?.financialModel?.systemCost?.estimatedInstalledCost ?? null,
+      simplePaybackYears:
+        candidate?.financialModel?.payback?.simplePaybackYears ?? null,
+      lifetimeSavings:
+        candidate?.financialModel?.payback?.lifetimeSavings ?? null,
+      batteryControlStrategyId:
+        candidate?.financialModel?.batteryControlStrategy?.strategyId ?? null,
+      batteryControlStrategyLabel:
+        candidate?.financialModel?.batteryControlStrategy?.label ?? null,
+      confidence:
+        candidate?.financialModel?.confidence?.level || null,
+    },
+
     selectedSystemTypeFit: getSelectedSystemTypeFit(
       candidate,
       selectedSystemType

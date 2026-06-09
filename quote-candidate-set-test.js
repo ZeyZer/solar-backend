@@ -199,6 +199,51 @@ async function main() {
     "Candidate annual gross generation should be positive."
   );
 
+  
+  const financial = pvgisCandidate.financialModel;
+
+  assert(financial, "Candidate missing financial model.");
+
+  assert(
+    financial.mode === "candidate_hourly_financial_model_beta",
+    `Unexpected candidate financial model mode: ${financial.mode}`
+  );
+
+  assert(
+    financial.usedForCalculation === false,
+    "Candidate financial model should not be used for calculation."
+  );
+
+  assert(
+    financial.usedForPricing === false,
+    "Candidate financial model should not be used for pricing."
+  );
+
+  assert(
+    financial.usedForRecommendation === false,
+    "Candidate financial model should not be used for recommendation."
+  );
+
+  assert(
+    isNumber(financial.annual?.totalAnnualBenefit),
+    "Candidate financial model missing total annual benefit."
+  );
+
+  assert(
+    financial.systemCost?.estimatedInstalledCost > 0,
+    "Candidate financial model missing installed cost."
+  );
+
+  assert(
+    financial.batteryControlStrategy,
+    "Candidate financial model missing battery control strategy."
+  );
+
+  assert(
+    financial.batteryControlStrategy.strategyId,
+    "Candidate financial model missing battery control strategy ID."
+  );
+
   console.log("✅ Quote candidate set test passed.");
   console.log({
     quoteAnnualGeneration: quote.estAnnualGenerationKWh,
@@ -209,6 +254,12 @@ async function main() {
     candidatePerformanceSource: performance.source,
     candidateAnnualGrossGeneration:
       performance.generation.annualGrossGenerationKWh,
+    candidateAnnualBenefit:
+      financial.annual.totalAnnualBenefit,
+    candidateInstalledCost:
+      financial.systemCost.estimatedInstalledCost,
+    candidateBatteryControlStrategy:
+      financial.batteryControlStrategy.strategyId,
   });
 }
 

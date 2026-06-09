@@ -1,7 +1,7 @@
 const {
-  normalizeTariff,
-  isRetailRateTariff,
-} = require("./tariffService");
+  resolveCandidateBatteryControlStrategy,
+  summarizeCandidateBatteryControlStrategy,
+} = require("./candidateBatteryControlStrategyService");
 
 const {
   simulateHourByHour,
@@ -179,21 +179,20 @@ function buildDesignCandidateDispatchModel({
     });
   }
 
-  const tariffAfter =
-    safeInput.tariffAfter ||
-    safeInput.tariff ||
-    safeQuote.tariffAfter ||
-    safeQuote.tariff ||
-    {};
-
-  const ta = normalizeTariff(tariffAfter, "after");
-  const retail = isRetailRateTariff(ta);
-
   const batteryKWh = getBatteryKWh({
     battery,
     input: safeInput,
     quote: safeQuote,
   });
+
+  const controlStrategy = resolveCandidateBatteryControlStrategy({
+    input: safeInput,
+    quote: safeQuote,
+    battery,
+    batteryKWh,
+  });
+
+  const ta = controlStrategy.tariff.normalized;
 
   const sim = simulateHourByHour({
     pvHourlyKWh,
@@ -204,11 +203,11 @@ function buildDesignCandidateDispatchModel({
     batteryKWh,
 
     tariff: ta,
-    dispatchMode: retail ? "retail_rate" : "self_consumption",
+    dispatchMode: controlStrategy.dispatch.dispatchMode,
 
-    allowGridCharge: retail && !!ta.allowGridCharging,
-    allowEnergyTrading: retail && !!ta.allowEnergyTrading,
-    exportFromBatteryEnabled: retail && !!ta.exportFromBatteryEnabled,
+    allowGridCharge: controlStrategy.dispatch.allowGridCharge,
+    allowEnergyTrading: controlStrategy.dispatch.allowEnergyTrading,
+    exportFromBatteryEnabled: controlStrategy.dispatch.exportFromBatteryEnabled,
   });
 
   if (!sim || !sim.monthly || !sim.hourly) {
@@ -252,11 +251,15 @@ function buildDesignCandidateDispatchModel({
 
     tariff: {
       tariffType: ta.tariffType || "standard",
-      retailRateMode: retail,
-      allowGridCharging: !!ta.allowGridCharging,
-      allowEnergyTrading: !!ta.allowEnergyTrading,
-      exportFromBatteryEnabled: !!ta.exportFromBatteryEnabled,
+      retailRateMode: !!controlStrategy.tariff.retailRateMode,
+      allowGridCharging: !!controlStrategy.dispatch.allowGridCharge,
+      allowEnergyTrading: !!controlStrategy.dispatch.allowEnergyTrading,
+      exportFromBatteryEnabled:
+        !!controlStrategy.dispatch.exportFromBatteryEnabled,
     },
+
+    batteryControlStrategy:
+      summarizeCandidateBatteryControlStrategy(controlStrategy),
 
     annual,
 

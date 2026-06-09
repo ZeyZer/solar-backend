@@ -67,6 +67,9 @@ function runStandardShortlistTest() {
 
     assert(candidate.dispatch, `${candidate.candidateId} missing dispatch summary.`);
     assert(candidate.dispatch.mode, `${candidate.candidateId} missing dispatch mode.`);
+
+    assert(candidate.financial, `${candidate.candidateId} missing financial summary.`);
+    assert(candidate.financial.mode, `${candidate.candidateId} missing financial mode.`);
   }
 
   console.log("  ✓ Standard shortlist OK:", {

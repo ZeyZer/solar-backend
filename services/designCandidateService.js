@@ -24,6 +24,10 @@ const {
   buildDesignCandidateDispatchModel,
 } = require("./designCandidateDispatchService");
 
+const {
+  buildDesignCandidateFinancialModel,
+} = require("./designCandidateFinancialService");
+
 const DESIGN_CANDIDATE_SCHEMA_VERSION = "2026-beta-1";
 
 function round2(value) {
@@ -350,6 +354,16 @@ function buildDesignCandidateFromInputs({
     performanceModelForDispatch
   );
 
+  const financialModel = buildDesignCandidateFinancialModel({
+    quote: safeQuote,
+    input: safeInput,
+    performanceModel: performanceModelForDispatch,
+    dispatchModel,
+    costModel,
+    battery,
+    panelOption: safeInput.panelOption || safeQuote.panelOption || "value",
+  });
+
   return {
     version: DESIGN_CANDIDATE_SCHEMA_VERSION,
     mode: "candidate_schema_foundation",
@@ -399,7 +413,7 @@ function buildDesignCandidateFromInputs({
     costModel,
     performanceModel,
     dispatchModel,
-    financialModel: buildEmptyFinancialModel(),
+    financialModel,
     scoring: buildScoringPlaceholder(),
 
     roadmap: {

@@ -762,6 +762,87 @@ Known limitations:
 
 The next development step is to use this dispatch output to build candidate-level financial modelling.
 
+## Candidate selected-tariff battery control strategy
+
+The backend now resolves a battery control strategy for candidate modelling.
+
+This is used by candidate-level dispatch and financial modelling.
+
+Current selected-tariff strategy logic:
+
+- standard tariff: self-consumption
+- overnight/time-of-use tariff: timed grid charging
+- flux/import-export tariff: smart import/export
+- no battery: no battery control
+
+Current output includes:
+
+- strategy ID
+- strategy label
+- tariff type
+- dispatch mode
+- grid charging enabled/disabled
+- energy trading enabled/disabled
+- export from battery enabled/disabled
+- explanatory reason
+
+Current status:
+
+- one strategy is resolved for the currently selected tariff
+- this is diagnostic only
+- it does not change the customer-facing quote calculation
+
+Future scenario optimisation will test multiple tariff/control combinations per shortlisted candidate.
+
+## Candidate hourly financial model
+
+The backend now includes a candidate-level hourly financial model.
+
+The model uses:
+
+- candidate PVGIS-backed hourly generation
+- candidate inverter-clipped PV profile
+- quote hourly household load profile
+- candidate battery size
+- selected after-solar tariff
+- resolved battery control strategy
+- before-solar tariff
+- the existing hour-by-hour battery dispatch engine
+- the existing hourly billing engine
+- candidate-level beta installed cost
+
+Current output includes:
+
+- baseline annual bill
+- after-solar import and standing charge cost
+- export credit
+- after-solar net bill
+- annual bill savings
+- annual SEG/export income
+- total annual benefit
+- estimated installed candidate cost
+- simple payback
+- 25-year payback/lifetime series
+- battery control strategy
+- confidence label
+
+Current status:
+
+- `mode`: `candidate_hourly_financial_model_beta`
+- `usedForCalculation`: `false`
+- `usedForPricing`: `false`
+- `usedForRecommendation`: `false`
+
+If candidate PVGIS hourly data or quote load data is unavailable, the model returns:
+
+- `mode`: `candidate_financial_model_unavailable`
+
+This model is diagnostic only.
+
+It does not yet change customer-facing quote calculations, pricing, savings, payback, PDF output, frontend display or recommendations.
+
+The next development step is candidate ranking/optimiser outputs using the candidate financial model.
+
 ## Financial model
 
 The financial model estimates:

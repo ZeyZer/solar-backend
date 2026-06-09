@@ -59,6 +59,8 @@ function runStandardCandidateTest() {
   assert(candidate.costModel.usedForPricing === false, "Candidate cost model should not be used for pricing.");
   assert(candidate.costModel.usedForPricing === false, "Cost model should not be used for pricing.");
 
+
+  //PERFORMANCE MODEL
   assert(candidate.performanceModel, "Candidate missing performanceModel.");
 
   assert(
@@ -96,7 +98,25 @@ function runStandardCandidateTest() {
     "Candidate dispatch model should not be used for recommendation."
   );
   
-  assert(candidate.financialModel.usedForCalculation === false, "Financial model should not be active yet.");
+  //FINANCIAL MODEL
+  assert(candidate.financialModel, "Candidate missing financialModel.");
+  assert(
+    candidate.financialModel.usedForCalculation === false,
+    "Candidate financial model should not be used for calculation."
+  );
+  assert(
+    candidate.financialModel.usedForPricing === false,
+    "Candidate financial model should not be used for pricing."
+  );
+  assert(
+    candidate.financialModel.usedForRecommendation === false,
+    "Candidate financial model should not be used for recommendation."
+  );
+  assert(
+    candidate.financialModel.annual,
+    "Candidate financial model should include annual section."
+  );
+
   assert(candidate.scoring.usedForRecommendation === false, "Scoring should not be active yet.");
 
   console.log("  ✓ Standard candidate OK:", {
