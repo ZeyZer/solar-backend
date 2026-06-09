@@ -644,6 +644,42 @@ This model does not yet replace the customer-facing quote calculation.
 
 The next development step should expose true roof-array PVGIS profiles from the main quote engine so multi-roof candidates can be assessed using per-roof hourly irradiance data rather than the aggregate quote PV profile.
 
+## Roof-array PVGIS profiles
+
+The main quote engine now exposes roof-array PVGIS hourly profiles.
+
+Previously, the quote engine stored only the aggregate PVGIS hourly array:
+
+- `hourlyModel._pvHourlyKWh`
+
+The quote engine now also stores:
+
+- `hourlyModel._pvgisRoofProfiles`
+
+Each roof profile includes:
+
+- roof id
+- roof index
+- orientation
+- tilt
+- shading derate
+- base system size in kWp
+- 3-year averaged hourly PVGIS generation
+- month index array
+- hour-of-day array
+- annual generation for that roof profile
+
+Current status:
+
+- roof profiles are based on PVGIS hourly generation
+- 2021, 2022 and 2023 are averaged into one representative roof profile
+- shading derate is applied per hour per roof before aggregation
+- profiles are used by the candidate PVGIS performance bridge where available
+
+This is still not a roof irradiance map or per-panel-position shading model.
+
+It is the intermediate bridge between the current roof-input quote engine and the future roof-map optimiser.
+
 ## Financial model
 
 The financial model estimates:

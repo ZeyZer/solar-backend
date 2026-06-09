@@ -384,7 +384,11 @@ async function getTotalPvgisHourlyKWh({ postcode, roofs, panelWatt, year = 2023 
   let monthIdx = null;
   let hourOfDay = null;
 
-  for (const roof of roofs) {
+  const roofProfiles = [];
+
+  for (let roofIndex = 0; roofIndex < roofs.length; roofIndex++) {
+    const roof = roofs[roofIndex];
+
     const panels = Number(roof?.panels || 0);
     if (panels <= 0) continue;
 
@@ -415,18 +419,57 @@ async function getTotalPvgisHourlyKWh({ postcode, roofs, panelWatt, year = 2023 
     const shadingKey = String(roof?.shading || "none");
     const derate = PVGIS.shadingDerate[shadingKey] ?? 1.0;
 
-    // Apply shading PER HOUR PER ROOF (as you requested)
-    for (let i = 0; i < roofHourly.length; i++) {
-      totalHourly[i] += roofHourly[i] * derate;
+    const deratedRoofHourly = roofHourly.map((value) =>
+      Math.max(0, Math.round(Number(value || 0) * derate * 100) / 100)
+    );
+
+    for (let i = 0; i < deratedRoofHourly.length; i++) {
+      totalHourly[i] += deratedRoofHourly[i];
     }
+
+    roofProfiles.push({
+      id: `${roof?.id || `roof-${roofIndex + 1}`}-pvgis-${year}`,
+      roofId: roof?.id || `roof-${roofIndex + 1}`,
+      index: roofIndex,
+      year,
+
+      source: "pvgis_hourly_roof_array",
+      postcode,
+      latitude: lat,
+      longitude: lon,
+
+      orientation: roof?.orientation || null,
+      tilt,
+      aspectDeg: aspect,
+      shading: shadingKey,
+      shadingDerate: derate,
+
+      panelWatt: watt,
+      panelCount: panels,
+      baseSystemSizeKwp: Math.round(peakPowerKwp * 100) / 100,
+
+      hourlyGenerationKWh: deratedRoofHourly,
+      monthIdx: roofRes.monthIdx,
+      hourOfDay: roofRes.hourOfDay,
+
+      annualGenerationKWh: Math.round(
+        deratedRoofHourly.reduce((sum, value) => sum + Number(value || 0), 0)
+      ),
+    });
   }
 
   if (!totalHourly) return null;
 
-  // Keep a little precision; you can round for display later
-  const pvHourly = totalHourly.map((v) => Math.max(0, Math.round(v * 100) / 100));
+  const pvHourly = totalHourly.map((v) =>
+    Math.max(0, Math.round(v * 100) / 100)
+  );
 
-  return { pvHourly, monthIdx, hourOfDay };
+  return {
+    pvHourly,
+    monthIdx,
+    hourOfDay,
+    roofProfiles,
+  };
 }
 
 async function runHourlyModelForYear({ input, panelWatt, year, includeHourlyArrays = false }) {
@@ -516,11 +559,15 @@ async function runHourlyModelForYear({ input, panelWatt, year, includeHourlyArra
     annualImportedKWh: sum12(sim.monthly.imported),
   };
 
-  if (includeHourlyArrays) {
+    if (includeHourlyArrays) {
     result._pvHourlyKWh = pvHourly;
     result._loadHourlyKWh = loadHourly;
     result._monthIdx = monthIdx;
     result._hourOfDay = hourOfDay;
+
+    result._pvgisRoofProfiles = Array.isArray(pvRes.roofProfiles)
+      ? pvRes.roofProfiles
+      : [];
 
     // NEW: battery + grid flow hourly arrays
     result._importHourlyKWh = sim.hourly.importKWh;

@@ -99,6 +99,77 @@ const {
 
 const router = express.Router();
 
+function numberOrZero(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function averagePvgisRoofProfiles(results = []) {
+  const yearlyProfileSets = results
+    .map((result) => result._pvgisRoofProfiles)
+    .filter((profiles) => Array.isArray(profiles) && profiles.length > 0);
+
+  if (!yearlyProfileSets.length) {
+    return [];
+  }
+
+  const baseProfiles = yearlyProfileSets[0];
+
+  return baseProfiles.map((baseProfile, index) => {
+    const matchingProfiles = yearlyProfileSets
+      .map((profiles) => {
+        return (
+          profiles.find(
+            (profile) =>
+              String(profile.roofId || "") === String(baseProfile.roofId || "") &&
+              Number(profile.index) === Number(baseProfile.index)
+          ) ||
+          profiles.find(
+            (profile) =>
+              String(profile.roofId || "") === String(baseProfile.roofId || "")
+          ) ||
+          profiles[index] ||
+          null
+        );
+      })
+      .filter(Boolean);
+
+    const hourlyArrays = matchingProfiles
+      .map((profile) => profile.hourlyGenerationKWh)
+      .filter((hourly) => Array.isArray(hourly) && hourly.length > 0);
+
+    const avgHourly =
+      hourlyArrays.length > 0 ? averageHourlyArrays(hourlyArrays) : [];
+
+    const avgAnnual = avgHourly.reduce(
+      (sum, value) => sum + numberOrZero(value),
+      0
+    );
+
+    const years = matchingProfiles
+      .map((profile) => profile.year)
+      .filter((year) => year !== undefined && year !== null);
+
+    return {
+      ...baseProfile,
+
+      id: `${baseProfile.roofId || `roof-${index + 1}`}-pvgis-avg-2021-2023`,
+      year: "avg_2021_2023",
+      years,
+
+      source: "pvgis_hourly_3yr_avg_roof_array",
+
+      hourlyGenerationKWh: avgHourly,
+      monthIdx: baseProfile.monthIdx,
+      hourOfDay: baseProfile.hourOfDay,
+
+      annualGenerationKWh: Math.round(avgAnnual),
+
+      sourceProfileCount: matchingProfiles.length,
+    };
+  });
+}
+
 function shouldSkipLeadStorageForTest(input) {
   const isProduction = process.env.NODE_ENV === "production";
 
@@ -220,6 +291,7 @@ router.post("/", async (req, res) => {
         const load8760  = base._loadHourlyKWh;
         const monthIdx8760 = base._monthIdx;
         const hod8760 = base._hourOfDay || (Array.isArray(avgPv8760) ? avgPv8760.map((_, i) => i % 24) : null);
+        const avgPvgisRoofProfiles = averagePvgisRoofProfiles(results);
 
         // Defensive checks (prevents silent weird graphs)
         if (!Array.isArray(avgPv8760) || avgPv8760.length !== 8760) throw new Error("avgPv8760 missing/invalid");
@@ -262,6 +334,7 @@ router.post("/", async (req, res) => {
           _loadHourlyKWh: load8760,
           _monthIdx: monthIdx8760,
           _hourOfDay: hod8760,
+          _pvgisRoofProfiles: avgPvgisRoofProfiles,
           _batteryKWh: Number(input.batteryKWh || 0),
         };
 
@@ -410,6 +483,7 @@ router.post("/", async (req, res) => {
         _loadHourlyKWh: load8760,
         _monthIdx: mIdx8760,
         _hourOfDay: hod8760,
+        _pvgisRoofProfiles: hourlyModel._pvgisRoofProfiles || [],
         _batteryKWh: Number(input.batteryKWh || 0),
       };
 

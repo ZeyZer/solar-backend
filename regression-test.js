@@ -823,6 +823,32 @@ function checkQuoteShape(quote, expectations) {
       "hourlyModel.monthlyExportedKWh must be 12 months."
     );
 
+    assert(
+      Array.isArray(quote.hourlyModel._pvgisRoofProfiles),
+      "hourlyModel._pvgisRoofProfiles must be an array."
+    );
+
+    assert(
+      quote.hourlyModel._pvgisRoofProfiles.length > 0,
+      "Expected at least one PVGIS roof profile."
+    );
+
+    for (const profile of quote.hourlyModel._pvgisRoofProfiles) {
+      assert(profile.roofId, "PVGIS roof profile missing roofId.");
+      assert(
+        Array.isArray(profile.hourlyGenerationKWh),
+        `${profile.roofId} missing hourlyGenerationKWh.`
+      );
+      assert(
+        profile.hourlyGenerationKWh.length === 8760,
+        `${profile.roofId} hourlyGenerationKWh should contain 8760 values.`
+      );
+      assert(
+        profile.source === "pvgis_hourly_3yr_avg_roof_array",
+        `${profile.roofId} has unexpected PVGIS roof profile source.`
+      );
+    }
+
     checkRange(
       "annualImportedKWh",
       getAnnualMetric(quote, "annualImportedKWh", "monthlyImportedKWh"),
