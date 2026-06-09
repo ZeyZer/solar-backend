@@ -17,7 +17,12 @@ const {
 
 const {
   buildDesignCandidatePvgisPerformanceModel,
+  stripCandidatePerformanceHourlySeries,
 } = require("./designCandidatePvgisPerformanceService");
+
+const {
+  buildDesignCandidateDispatchModel,
+} = require("./designCandidateDispatchService");
 
 const DESIGN_CANDIDATE_SCHEMA_VERSION = "2026-beta-1";
 
@@ -323,6 +328,28 @@ function buildDesignCandidateFromInputs({
     totalPanels,
   });
 
+  const performanceModelForDispatch = buildDesignCandidatePvgisPerformanceModel({
+    quote: safeQuote,
+    panel,
+    inverter,
+    battery,
+    arrays,
+    totalPanels,
+    fallbackSystemSizeKwp: safeQuote.systemSizeKwp,
+    includeHourlySeries: true,
+  });
+
+  const dispatchModel = buildDesignCandidateDispatchModel({
+    quote: safeQuote,
+    input: safeInput,
+    performanceModel: performanceModelForDispatch,
+    battery,
+  });
+
+  const performanceModel = stripCandidatePerformanceHourlySeries(
+    performanceModelForDispatch
+  );
+
   return {
     version: DESIGN_CANDIDATE_SCHEMA_VERSION,
     mode: "candidate_schema_foundation",
@@ -370,16 +397,8 @@ function buildDesignCandidateFromInputs({
     },
 
     costModel,
-    performanceModel: buildDesignCandidatePvgisPerformanceModel({
-      quote: safeQuote,
-      panel,
-      inverter,
-      battery,
-      arrays,
-      totalPanels,
-      fallbackSystemSizeKwp: safeQuote.systemSizeKwp,
-      includeHourlySeries: false,
-    }),
+    performanceModel,
+    dispatchModel,
     financialModel: buildEmptyFinancialModel(),
     scoring: buildScoringPlaceholder(),
 

@@ -712,6 +712,56 @@ It does not yet change the customer-facing quote price, generation, battery disp
 
 The next stage is to use the PVGIS-backed candidate performance data to run candidate-specific battery dispatch and financial modelling.
 
+## Candidate hourly dispatch model
+
+The backend now includes a candidate-level hourly dispatch model.
+
+The model uses:
+
+- candidate PVGIS-backed hourly PV generation
+- candidate inverter-clipped PV profile
+- quote hourly household load profile
+- candidate battery capacity
+- after-solar tariff settings
+- the existing hour-by-hour battery dispatch engine
+
+Current output includes:
+
+- annual generation
+- annual self-used solar
+- annual export
+- annual import
+- annual battery charge/discharge
+- monthly generation/self-use/export/import
+- monthly battery charge/discharge
+- tariff dispatch metadata
+- battery dispatch metadata
+- confidence label
+
+Current status:
+
+- `mode`: `candidate_hourly_dispatch_model_beta`
+- `usedForCalculation`: `false`
+- `usedForPricing`: `false`
+- `usedForRecommendation`: `false`
+
+If PVGIS hourly data or quote load data is unavailable, the model returns:
+
+- `mode`: `candidate_dispatch_model_unavailable`
+
+This model is diagnostic only.
+
+It does not yet change customer-facing quote calculations, price, savings, payback, PDF output or frontend recommendations.
+
+Known limitations:
+
+- product-specific battery max charge/discharge limits are not yet enforced inside the dispatch engine
+- manufacturer-specific battery controls are not yet modelled
+- customer-facing quote calculations still use the existing quote-level hourly model
+- candidate-level financial calculations are not yet attached
+
+The next development step is to use this dispatch output to build candidate-level financial modelling.
+
 ## Financial model
 
 The financial model estimates:

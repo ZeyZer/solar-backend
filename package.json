@@ -20,7 +20,8 @@
     "test:candidate-cost": "node design-candidate-cost-test.js",
     "test:candidate-pvgis-performance": "node design-candidate-pvgis-performance-test.js",
     "test:pvgis-roof-profiles": "node pvgis-roof-profile-test.js",
-    "test:quote-candidates": "node quote-candidate-set-test.js"
+    "test:quote-candidates": "node quote-candidate-set-test.js",
+    "test:candidate-dispatch": "node design-candidate-dispatch-test.js"
   },
   "keywords": [],
   "author": "",

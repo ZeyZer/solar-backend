@@ -646,7 +646,33 @@ function buildDesignCandidatePvgisPerformanceModel({
   });
 }
 
+function stripCandidatePerformanceHourlySeries(performanceModel = {}) {
+  if (!performanceModel || typeof performanceModel !== "object") {
+    return performanceModel;
+  }
+
+  const generation = performanceModel.generation || {};
+
+  return {
+    ...performanceModel,
+    generation: {
+      ...generation,
+
+      hourlySeries: {
+        ...(generation.hourlySeries || {}),
+        included: false,
+      },
+
+      hourlyGrossGenerationKWh: undefined,
+      hourlyAfterClippingKWh: undefined,
+      monthIdx: undefined,
+      hourOfDay: undefined,
+    },
+  };
+}
+
 module.exports = {
   DESIGN_CANDIDATE_PVGIS_PERFORMANCE_VERSION,
   buildDesignCandidatePvgisPerformanceModel,
+  stripCandidatePerformanceHourlySeries,
 };

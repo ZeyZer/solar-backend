@@ -85,6 +85,16 @@ function runStandardCandidateTest() {
     candidate.performanceModel.pvgis,
     "Candidate performance model should include PVGIS metadata."
   );
+
+  assert(candidate.dispatchModel, "Candidate missing dispatchModel.");
+  assert(
+    candidate.dispatchModel.usedForCalculation === false,
+    "Candidate dispatch model should not be used for calculation."
+  );
+  assert(
+    candidate.dispatchModel.usedForRecommendation === false,
+    "Candidate dispatch model should not be used for recommendation."
+  );
   
   assert(candidate.financialModel.usedForCalculation === false, "Financial model should not be active yet.");
   assert(candidate.scoring.usedForRecommendation === false, "Scoring should not be active yet.");

@@ -60,6 +60,13 @@ function runStandardShortlistTest() {
     assert(candidate.usedForRecommendation === false, `${candidate.candidateId} should not be used for recommendation.`);
     assert(candidate.selectedSystemTypeFit, `${candidate.candidateId} missing selectedSystemTypeFit.`);
     assert(candidate.bestFitSystemType, `${candidate.candidateId} missing bestFitSystemType.`);
+
+    assert(candidate.performance, `${candidate.candidateId} missing performance summary.`);
+    assert(candidate.performance.mode, `${candidate.candidateId} missing performance mode.`);
+    assert(candidate.performance.source, `${candidate.candidateId} missing performance source.`);
+
+    assert(candidate.dispatch, `${candidate.candidateId} missing dispatch summary.`);
+    assert(candidate.dispatch.mode, `${candidate.candidateId} missing dispatch mode.`);
   }
 
   console.log("  ✓ Standard shortlist OK:", {

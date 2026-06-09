@@ -187,6 +187,42 @@ function summarizeCandidate(candidate, selectedSystemType = "balanced") {
         : 0,
     },
 
+    performance: {
+      mode: candidate?.performanceModel?.mode || null,
+      source: candidate?.performanceModel?.source || null,
+      annualGrossGenerationKWh:
+        candidate?.performanceModel?.generation?.annualGrossGenerationKWh ?? null,
+      annualAfterClippingKWh:
+        candidate?.performanceModel?.generation?.annualAfterClippingKWh ?? null,
+      annualClippedKWh:
+        candidate?.performanceModel?.generation?.annualClippedKWh ?? null,
+      clippingRisk:
+        candidate?.performanceModel?.inverter?.clippingRisk || null,
+      confidence:
+        candidate?.performanceModel?.confidence?.level || null,
+    },
+
+    dispatch: {
+      mode: candidate?.dispatchModel?.mode || null,
+      source: candidate?.dispatchModel?.source || null,
+      generationSource:
+        candidate?.dispatchModel?.generationSource || null,
+      annualGenerationKWh:
+        candidate?.dispatchModel?.annual?.generationKWh ?? null,
+      annualSelfUsedKWh:
+        candidate?.dispatchModel?.annual?.selfUsedKWh ?? null,
+      annualExportedKWh:
+        candidate?.dispatchModel?.annual?.exportedKWh ?? null,
+      annualImportedKWh:
+        candidate?.dispatchModel?.annual?.importedKWh ?? null,
+      annualBatteryChargeKWh:
+        candidate?.dispatchModel?.annual?.batteryChargeKWh ?? null,
+      annualBatteryDischargeKWh:
+        candidate?.dispatchModel?.annual?.batteryDischargeKWh ?? null,
+      confidence:
+        candidate?.dispatchModel?.confidence?.level || null,
+    },
+
     selectedSystemTypeFit: getSelectedSystemTypeFit(
       candidate,
       selectedSystemType
