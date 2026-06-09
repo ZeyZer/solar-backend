@@ -59,7 +59,33 @@ function runStandardCandidateTest() {
   assert(candidate.costModel.usedForPricing === false, "Candidate cost model should not be used for pricing.");
   assert(candidate.costModel.usedForPricing === false, "Cost model should not be used for pricing.");
 
-  assert(candidate.performanceModel.usedForCalculation === false, "Performance model should not be active yet.");
+  assert(candidate.performanceModel, "Candidate missing performanceModel.");
+
+  assert(
+    candidate.performanceModel.mode === "candidate_pvgis_performance_model_beta",
+    "Unexpected candidate performance model mode."
+  );
+
+  assert(
+    candidate.performanceModel.usedForCalculation === false,
+    "Candidate performance model should not be used for calculation."
+  );
+
+  assert(
+    candidate.performanceModel.usedForRecommendation === false,
+    "Candidate performance model should not be used for recommendation."
+  );
+
+  assert(
+    candidate.performanceModel.generation,
+    "Candidate performance model should include generation section."
+  );
+
+  assert(
+    candidate.performanceModel.pvgis,
+    "Candidate performance model should include PVGIS metadata."
+  );
+  
   assert(candidate.financialModel.usedForCalculation === false, "Financial model should not be active yet.");
   assert(candidate.scoring.usedForRecommendation === false, "Scoring should not be active yet.");
 

@@ -15,6 +15,10 @@ const {
   buildDesignCandidateCostModel,
 } = require("./designCandidateCostService");
 
+const {
+  buildDesignCandidatePvgisPerformanceModel,
+} = require("./designCandidatePvgisPerformanceService");
+
 const DESIGN_CANDIDATE_SCHEMA_VERSION = "2026-beta-1";
 
 function round2(value) {
@@ -194,15 +198,6 @@ function buildStringPlan({ arrays, inverter }) {
   };
 }
 
-function buildEmptyPerformanceModel() {
-  return {
-    mode: "not_modelled_in_candidate_yet",
-    usedForCalculation: false,
-    note:
-      "Candidate-specific PV generation, clipping, battery dispatch and tariff performance are not yet modelled here. The existing quote engine still provides performance calculations.",
-  };
-}
-
 function buildEmptyFinancialModel() {
   return {
     mode: "not_modelled_in_candidate_yet",
@@ -375,7 +370,16 @@ function buildDesignCandidateFromInputs({
     },
 
     costModel,
-    performanceModel: buildEmptyPerformanceModel(),
+    performanceModel: buildDesignCandidatePvgisPerformanceModel({
+      quote: safeQuote,
+      panel,
+      inverter,
+      battery,
+      arrays,
+      totalPanels,
+      fallbackSystemSizeKwp: safeQuote.systemSizeKwp,
+      includeHourlySeries: false,
+    }),
     financialModel: buildEmptyFinancialModel(),
     scoring: buildScoringPlaceholder(),
 

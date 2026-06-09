@@ -605,6 +605,45 @@ Known limitations:
 
 The purpose is to prepare design candidates for future cost/performance/financial optimisation.
 
+## Candidate PVGIS performance bridge
+
+The backend now includes a candidate-level PVGIS performance bridge.
+
+This replaces the earlier empty candidate performance placeholder.
+
+Current behaviour:
+
+- uses PVGIS roof-array hourly profiles when available
+- falls back to the existing aggregate quote PVGIS hourly profile when roof-array profiles are not yet available
+- scales PVGIS hourly generation by candidate panel capacity
+- estimates simple inverter clipping from the candidate inverter AC output limit
+- does not invent candidate generation from arbitrary orientation/tilt constants
+- marks performance as unavailable when no PVGIS hourly data exists
+
+Current output includes:
+
+- candidate system size
+- annual gross generation
+- annual after-clipping generation
+- monthly gross generation
+- monthly after-clipping generation
+- PVGIS source metadata
+- roof-array match metadata
+- clipping risk
+- battery power/capacity summary
+- confidence label
+
+Current status:
+
+- `mode`: `candidate_pvgis_performance_model_beta`
+- `usedForCalculation`: `false`
+- `usedForPricing`: `false`
+- `usedForRecommendation`: `false`
+
+This model does not yet replace the customer-facing quote calculation.
+
+The next development step should expose true roof-array PVGIS profiles from the main quote engine so multi-roof candidates can be assessed using per-roof hourly irradiance data rather than the aggregate quote PV profile.
+
 ## Financial model
 
 The financial model estimates:

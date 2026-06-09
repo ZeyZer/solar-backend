@@ -17,7 +17,8 @@
     "test:system-type": "node system-type-fit-test.js",
     "test:capabilities": "node hardware-capability-test.js",
     "test:candidate-shortlist": "node design-candidate-shortlist-test.js",
-    "test:candidate-cost": "node design-candidate-cost-test.js"
+    "test:candidate-cost": "node design-candidate-cost-test.js",
+    "test:candidate-pvgis-performance": "node design-candidate-pvgis-performance-test.js"
   },
   "keywords": [],
   "author": "",
