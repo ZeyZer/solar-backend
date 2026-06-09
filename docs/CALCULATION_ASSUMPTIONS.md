@@ -680,6 +680,38 @@ This is still not a roof irradiance map or per-panel-position shading model.
 
 It is the intermediate bridge between the current roof-input quote engine and the future roof-map optimiser.
 
+## Quote-level design candidate diagnostics
+
+The quote response now includes diagnostic design candidate data.
+
+Current quote response field:
+
+- `designCandidateSet`
+
+The candidate set is generated after the main quote has been calculated, so it can access:
+
+- quote inputs
+- selected roofs
+- hardware catalogue
+- roof-array PVGIS profiles
+- candidate cost model
+- candidate PVGIS performance model
+- compatibility filtering
+- system type fit scoring
+- candidate shortlist
+
+Current status:
+
+- `usedForCalculation`: `false`
+- `usedForPricing`: `false`
+- `usedForRecommendation`: `false`
+
+This means the design candidate set is attached for diagnostics and future optimisation only.
+
+It does not yet change the customer-facing quote price, generation, battery dispatch, savings, payback, PDF or frontend recommendations.
+
+The next stage is to use the PVGIS-backed candidate performance data to run candidate-specific battery dispatch and financial modelling.
+
 ## Financial model
 
 The financial model estimates:

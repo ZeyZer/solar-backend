@@ -883,6 +883,53 @@ function checkQuoteShape(quote, expectations) {
     }
   }
 
+  if (expectations.requireHourlyModel) {
+    assert(
+      quote.designCandidateSet,
+      "Missing designCandidateSet."
+    );
+
+    assert(
+      quote.designCandidateSet.mode === "candidate_set_foundation",
+      `Unexpected designCandidateSet mode: ${quote.designCandidateSet.mode}`
+    );
+
+    assert(
+      quote.designCandidateSet.usedForCalculation === false,
+      "designCandidateSet should not be used for calculation."
+    );
+
+    assert(
+      quote.designCandidateSet.usedForPricing === false,
+      "designCandidateSet should not be used for pricing."
+    );
+
+    assert(
+      quote.designCandidateSet.usedForRecommendation === false,
+      "designCandidateSet should not be used for recommendation."
+    );
+
+    assert(
+      quote.designCandidateSet.productSearchSpace?.candidateCount > 0,
+      "Expected at least one design candidate."
+    );
+
+    assert(
+      Array.isArray(quote.designCandidateSet.candidates),
+      "designCandidateSet.candidates should be an array."
+    );
+
+    assert(
+      quote.designCandidateSet.shortlist,
+      "designCandidateSet missing shortlist."
+    );
+
+    assert(
+      quote.designCandidateSet.shortlist.viabilitySummary,
+      "designCandidateSet shortlist missing viability summary."
+    );
+  }
+
   if (expectations.requireFinancialSeries) {
     assert(quote.financialSeries, "Missing financialSeries.");
     assert(quote.financialSeries.monthly, "Missing financialSeries.monthly.");

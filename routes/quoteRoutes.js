@@ -49,6 +49,10 @@ const {
 } = require("../services/designCompatibilityService");
 
 const {
+  buildCandidateSetFromInputs,
+} = require("../services/designCandidateSetService");
+
+const {
   runHourlyModelForYear,
   getTotalPvgisAnnualKWh,
 } = require("../services/pvgisService");
@@ -1058,6 +1062,34 @@ router.post("/", async (req, res) => {
       roofs: Array.isArray(input.roofs) ? input.roofs : [],
     });
 
+    let designCandidateSet = null;
+
+    try {
+      designCandidateSet = buildCandidateSetFromInputs({
+        quote,
+        input,
+        roofs: Array.isArray(input.roofs) ? input.roofs : [],
+        includeAlternativePanels: true,
+        maxBatteryCandidates: 5,
+        maxCandidates: 50,
+      });
+    } catch (candidateErr) {
+      console.warn("Design candidate set generation failed:", candidateErr.message);
+
+      designCandidateSet = {
+        version: null,
+        mode: "candidate_set_unavailable",
+        usedForCalculation: false,
+        usedForPricing: false,
+        usedForRecommendation: false,
+        error: "candidate_set_generation_failed",
+        message:
+          process.env.NODE_ENV === "production"
+            ? "Candidate diagnostics unavailable."
+            : candidateErr.message,
+      };
+    }
+
     const versionedQuote = attachQuoteEngineVersion({
       ...quote,
       leadId,
@@ -1066,6 +1098,7 @@ router.post("/", async (req, res) => {
       hardwareCatalog,
       hardwareCatalogVersion: hardwareCatalog.version,
       designCompatibility,
+      designCandidateSet,
     });
 
     quote = versionedQuote;
