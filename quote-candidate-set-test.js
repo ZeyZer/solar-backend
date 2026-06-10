@@ -204,6 +204,38 @@ async function main() {
     "Expected quote-level balanced ranking."
   );
 
+  assert(
+    quote.designCandidateSet.scenarioSet,
+    "designCandidateSet missing scenarioSet."
+  );
+
+  assert(
+    quote.designCandidateSet.scenarioSet.mode ===
+      "candidate_scenario_set_selected_tariff_beta",
+    `Unexpected scenarioSet mode: ${quote.designCandidateSet.scenarioSet.mode}`
+  );
+
+  assert(
+    quote.designCandidateSet.scenarioSet.usedForCalculation === false,
+    "scenarioSet should not be used for calculation."
+  );
+
+  assert(
+    quote.designCandidateSet.scenarioSet.usedForRecommendation === false,
+    "scenarioSet should not be used for recommendation."
+  );
+
+  assert(
+    quote.designCandidateSet.scenarioSet.summary.totalScenarios ===
+      quote.designCandidateSet.candidates.length,
+    "Quote scenario count should match candidate count."
+  );
+
+  assert(
+    quote.designCandidateSet.scenarioSet.summary.activeFinancialScenarios > 0,
+    "Expected active financial scenarios in quote-level scenario set."
+  );
+
   const pvgisCandidate = findCandidateWithPvgisPerformance(
     quote.designCandidateSet.candidates
   );
@@ -302,6 +334,12 @@ async function main() {
       quote.designCandidateSet.optimiserResults.keyCandidateIds.bestPayback,
     balancedCandidate:
       quote.designCandidateSet.optimiserResults.keyCandidateIds.balanced,
+    scenarioReadiness:
+      quote.designCandidateSet.scenarioSet.readiness,
+    scenarios:
+      quote.designCandidateSet.scenarioSet.summary.totalScenarios,
+    activeFinancialScenarios:
+      quote.designCandidateSet.scenarioSet.summary.activeFinancialScenarios,
   });
 }
 

@@ -887,6 +887,48 @@ Future scenario optimisation will rank:
 
 rather than candidate alone.
 
+## Candidate scenario engine foundation
+
+The backend now includes a candidate scenario set.
+
+A scenario represents:
+
+- candidate
+- selected tariff
+- resolved battery control strategy
+- candidate performance model
+- candidate dispatch model
+- candidate financial model
+
+Current status:
+
+- one scenario is created per candidate
+- only the currently selected tariff is used
+- only one resolved battery control strategy is used per candidate
+- scenario outputs are diagnostic only
+
+Current scenario set field:
+
+- `designCandidateSet.scenarioSet`
+
+Current mode:
+
+- `candidate_scenario_set_selected_tariff_beta`
+
+Current status flags:
+
+- `usedForCalculation`: `false`
+- `usedForPricing`: `false`
+- `usedForRecommendation`: `false`
+
+This phase does not yet test multiple tariffs or multiple battery control strategies.
+
+The purpose is to introduce the scenario structure before later expanding to:
+
+- candidate + tariff + control strategy
+
+as the true optimisation unit.
+
 ## Financial model
 
 The financial model estimates:

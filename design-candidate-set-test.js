@@ -96,6 +96,24 @@ function runStandardCandidateSetTest() {
     "optimiserResults total candidate count mismatch."
   );
 
+  assert(candidateSet.scenarioSet, "Candidate set missing scenarioSet.");
+  assert(
+    candidateSet.scenarioSet.mode === "candidate_scenario_set_selected_tariff_beta",
+    "Unexpected scenarioSet mode."
+  );
+  assert(
+    candidateSet.scenarioSet.usedForCalculation === false,
+    "scenarioSet should not be used for calculation."
+  );
+  assert(
+    candidateSet.scenarioSet.usedForRecommendation === false,
+    "scenarioSet should not be used for recommendation."
+  );
+  assert(
+    candidateSet.scenarioSet.summary.totalScenarios === candidateSet.candidates.length,
+    "scenarioSet total scenario count mismatch."
+  );
+
   for (const candidate of candidateSet.candidates) {
     assert(candidate.candidateId, "Candidate missing candidateId.");
     assert(candidate.products.panel, `${candidate.candidateId} missing panel product.`);

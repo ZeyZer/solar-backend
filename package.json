@@ -24,7 +24,8 @@
     "test:candidate-dispatch": "node design-candidate-dispatch-test.js",
     "test:candidate-control": "node candidate-battery-control-strategy-test.js",
     "test:candidate-financial": "node design-candidate-financial-test.js",
-    "test:candidate-ranking": "node design-candidate-ranking-test.js"
+    "test:candidate-ranking": "node design-candidate-ranking-test.js",
+    "test:candidate-scenarios": "node design-candidate-scenario-test.js"
   },
   "keywords": [],
   "author": "",

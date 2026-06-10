@@ -22,6 +22,10 @@ const {
 } = require("./designCandidateRankingService");
 
 const {
+  buildCandidateScenarioSet,
+} = require("./designCandidateScenarioService");
+
+const {
   attachSystemTypeFits,
 } = require("./systemTypeFitService");
 
@@ -240,6 +244,11 @@ function buildCandidateSetFromInputs({
     selectedSystemType,
   });
 
+  const scenarioSet = buildCandidateScenarioSet({
+    candidates: sortedCandidates,
+    selectedSystemType,
+  });
+
   const shortlist = buildCandidateShortlist({
     candidates: sortedCandidates,
     selectedSystemType,
@@ -276,6 +285,7 @@ function buildCandidateSetFromInputs({
     candidates: sortedCandidates,
 
     optimiserResults,
+    scenarioSet,
 
     placeholders: {
       bestPaybackCandidate: optimiserResults.keyCandidateIds.bestPayback,
