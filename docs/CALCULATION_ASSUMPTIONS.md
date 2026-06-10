@@ -843,6 +843,50 @@ It does not yet change customer-facing quote calculations, pricing, savings, pay
 
 The next development step is candidate ranking/optimiser outputs using the candidate financial model.
 
+## Candidate ranking for selected tariff
+
+The backend now includes diagnostic candidate ranking.
+
+The ranking model uses:
+
+- candidate technical filtering status
+- candidate financial model
+- candidate installed cost estimate
+- candidate simple payback
+- candidate lifetime savings
+- candidate annual benefit
+- candidate self-consumption
+- selected system type fit score
+- candidate battery control strategy already resolved for the selected tariff
+
+Current ranking outputs include:
+
+- best payback
+- best lifetime savings
+- lowest upfront cost
+- best annual benefit
+- best selected system type fit
+- balanced candidate
+
+Current status:
+
+- `mode`: `candidate_ranking_selected_tariff_beta`
+- `usedForCalculation`: `false`
+- `usedForPricing`: `false`
+- `usedForRecommendation`: `false`
+
+This ranking is diagnostic only.
+
+It does not yet change customer-facing quote calculations, pricing, savings, payback, PDF output, frontend display or recommendations.
+
+The current ranking uses the selected tariff only.
+
+Future scenario optimisation will rank:
+
+- candidate + tariff + battery control strategy
+
+rather than candidate alone.
+
 ## Financial model
 
 The financial model estimates:

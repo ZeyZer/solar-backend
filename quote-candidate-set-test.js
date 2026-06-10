@@ -168,6 +168,42 @@ async function main() {
     "Shortlist viability total should match candidate count."
   );
 
+  assert(
+    quote.designCandidateSet.optimiserResults,
+    "designCandidateSet missing optimiserResults."
+  );
+
+  assert(
+    quote.designCandidateSet.optimiserResults.mode ===
+      "candidate_ranking_selected_tariff_beta",
+    `Unexpected optimiserResults mode: ${quote.designCandidateSet.optimiserResults.mode}`
+  );
+
+  assert(
+    quote.designCandidateSet.optimiserResults.usedForCalculation === false,
+    "optimiserResults should not be used for calculation."
+  );
+
+  assert(
+    quote.designCandidateSet.optimiserResults.usedForRecommendation === false,
+    "optimiserResults should not be used for recommendation."
+  );
+
+  assert(
+    quote.designCandidateSet.optimiserResults.counts.activeFinancialCandidates > 0,
+    "Expected active financial candidates in quote-level optimiser results."
+  );
+
+  assert(
+    quote.designCandidateSet.optimiserResults.rankings.bestPayback,
+    "Expected quote-level bestPayback ranking."
+  );
+
+  assert(
+    quote.designCandidateSet.optimiserResults.rankings.balanced,
+    "Expected quote-level balanced ranking."
+  );
+
   const pvgisCandidate = findCandidateWithPvgisPerformance(
     quote.designCandidateSet.candidates
   );
@@ -260,6 +296,12 @@ async function main() {
       financial.systemCost.estimatedInstalledCost,
     candidateBatteryControlStrategy:
       financial.batteryControlStrategy.strategyId,
+    optimiserReadiness:
+      quote.designCandidateSet.optimiserResults.readiness,
+    bestPaybackCandidate:
+      quote.designCandidateSet.optimiserResults.keyCandidateIds.bestPayback,
+    balancedCandidate:
+      quote.designCandidateSet.optimiserResults.keyCandidateIds.balanced,
   });
 }
 

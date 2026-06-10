@@ -23,7 +23,8 @@
     "test:quote-candidates": "node quote-candidate-set-test.js",
     "test:candidate-dispatch": "node design-candidate-dispatch-test.js",
     "test:candidate-control": "node candidate-battery-control-strategy-test.js",
-    "test:candidate-financial": "node design-candidate-financial-test.js"
+    "test:candidate-financial": "node design-candidate-financial-test.js",
+    "test:candidate-ranking": "node design-candidate-ranking-test.js"
   },
   "keywords": [],
   "author": "",

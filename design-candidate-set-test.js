@@ -78,6 +78,24 @@ function runStandardCandidateSetTest() {
     "Candidate filtering summary should include classified candidates."
   );
 
+  assert(candidateSet.optimiserResults, "Candidate set missing optimiserResults.");
+  assert(
+    candidateSet.optimiserResults.mode === "candidate_ranking_selected_tariff_beta",
+    "Unexpected optimiserResults mode."
+  );
+  assert(
+    candidateSet.optimiserResults.usedForCalculation === false,
+    "optimiserResults should not be used for calculation."
+  );
+  assert(
+    candidateSet.optimiserResults.usedForRecommendation === false,
+    "optimiserResults should not be used for recommendation."
+  );
+  assert(
+    candidateSet.optimiserResults.counts.totalCandidates === candidateSet.candidates.length,
+    "optimiserResults total candidate count mismatch."
+  );
+
   for (const candidate of candidateSet.candidates) {
     assert(candidate.candidateId, "Candidate missing candidateId.");
     assert(candidate.products.panel, `${candidate.candidateId} missing panel product.`);

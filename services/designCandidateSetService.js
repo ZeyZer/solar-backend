@@ -18,6 +18,10 @@ const {
 } = require("./designCandidateFilterService");
 
 const {
+  buildDesignCandidateRankingResults,
+} = require("./designCandidateRankingService");
+
+const {
   attachSystemTypeFits,
 } = require("./systemTypeFitService");
 
@@ -231,6 +235,11 @@ function buildCandidateSetFromInputs({
 
   const selectedSystemType = safeInput.systemType || "balanced";
 
+  const optimiserResults = buildDesignCandidateRankingResults({
+    candidates: sortedCandidates,
+    selectedSystemType,
+  });
+
   const shortlist = buildCandidateShortlist({
     candidates: sortedCandidates,
     selectedSystemType,
@@ -266,11 +275,19 @@ function buildCandidateSetFromInputs({
 
     candidates: sortedCandidates,
 
+    optimiserResults,
+
     placeholders: {
-      bestPaybackCandidate: null,
-      bestLifetimeSavingsCandidate: null,
-      balancedCandidate: null,
-      lowestUpfrontCostCandidate: null,
+      bestPaybackCandidate: optimiserResults.keyCandidateIds.bestPayback,
+      bestLifetimeSavingsCandidate:
+        optimiserResults.keyCandidateIds.bestLifetimeSavings,
+      balancedCandidate: optimiserResults.keyCandidateIds.balanced,
+      lowestUpfrontCostCandidate:
+        optimiserResults.keyCandidateIds.lowestUpfrontCost,
+      bestAnnualBenefitCandidate:
+        optimiserResults.keyCandidateIds.bestAnnualBenefit,
+      bestSelectedSystemTypeFitCandidate:
+        optimiserResults.keyCandidateIds.bestSelectedSystemTypeFit,
       premiumIntegratedCandidate: null,
       shadedRoofOptimisedCandidate: null,
     },
@@ -282,7 +299,7 @@ function buildCandidateSetFromInputs({
       usedForPricing: false,
       usedForRecommendation: false,
       note:
-        "Candidate set generation and filtering are backend-only and diagnostic. They do not yet change quote calculations, pricing, PV generation, battery dispatch or recommendations.",
+        "Candidate set generation, filtering and ranking are backend-only and diagnostic. They do not yet change quote calculations, pricing, PV generation, battery dispatch, PDF output or customer-facing recommendations.",
     },
   };
 }
