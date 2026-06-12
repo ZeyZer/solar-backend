@@ -929,6 +929,55 @@ The purpose is to introduce the scenario structure before later expanding to:
 
 as the true optimisation unit.
 
+## Candidate selected-tariff scenario runner
+
+The backend now includes a selected-tariff scenario runner.
+
+A scenario run represents one candidate tested against:
+
+- the currently selected after-solar tariff
+- the resolved battery control strategy for that tariff
+- candidate PVGIS-backed performance
+- candidate hourly dispatch
+- candidate hourly financial modelling
+
+Current output field:
+
+- `candidate.selectedTariffScenarioRun`
+
+The candidate scenario set also summarises these runs.
+
+Current mode:
+
+- `candidate_scenario_run_selected_tariff_beta`
+
+Current status flags:
+
+- `usedForCalculation`: `false`
+- `usedForPricing`: `false`
+- `usedForRecommendation`: `false`
+
+Current behaviour:
+
+- one selected-tariff scenario run is created per candidate
+- the run creates the candidate dispatch model
+- the run creates the candidate financial model
+- the run stores the battery control strategy used
+- the run stores diagnostic annual outputs
+
+This is still diagnostic only.
+
+It does not change customer-facing quote calculations, pricing, savings, payback, PDF output, frontend display or recommendations.
+
+The purpose is to make the scenario runner the future optimisation unit.
+
+Future phases will allow the same runner to test:
+
+- candidate + standard tariff + self-consumption
+- candidate + overnight tariff + timed grid charging
+- candidate + flux tariff + smart import/export
+- other valid tariff/control combinations
+
 ## Financial model
 
 The financial model estimates:

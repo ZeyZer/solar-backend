@@ -28,6 +28,11 @@ const {
   buildDesignCandidateFinancialModel,
 } = require("./designCandidateFinancialService");
 
+const {
+  buildSelectedTariffScenarioRun,
+  summarizeScenarioRun,
+} = require("./designCandidateScenarioRunnerService");
+
 const DESIGN_CANDIDATE_SCHEMA_VERSION = "2026-beta-1";
 
 function round2(value) {
@@ -343,26 +348,29 @@ function buildDesignCandidateFromInputs({
     includeHourlySeries: true,
   });
 
-  const dispatchModel = buildDesignCandidateDispatchModel({
+  const candidateId = [
+    panel?.id || "no-panel",
+    inverter?.id || "no-inverter",
+    battery?.id || "no-battery",
+    `${totalPanels || 0}-panels`,
+  ].join("__");
+
+  const selectedTariffScenarioRun = buildSelectedTariffScenarioRun({
+    candidateId,
     quote: safeQuote,
     input: safeInput,
     performanceModel: performanceModelForDispatch,
-    battery,
-  });
-
-  const performanceModel = stripCandidatePerformanceHourlySeries(
-    performanceModelForDispatch
-  );
-
-  const financialModel = buildDesignCandidateFinancialModel({
-    quote: safeQuote,
-    input: safeInput,
-    performanceModel: performanceModelForDispatch,
-    dispatchModel,
     costModel,
     battery,
     panelOption: safeInput.panelOption || safeQuote.panelOption || "value",
   });
+
+  const dispatchModel = selectedTariffScenarioRun.dispatchModel;
+  const financialModel = selectedTariffScenarioRun.financialModel;
+
+  const performanceModel = stripCandidatePerformanceHourlySeries(
+    performanceModelForDispatch
+  );
 
   return {
     version: DESIGN_CANDIDATE_SCHEMA_VERSION,
@@ -371,12 +379,7 @@ function buildDesignCandidateFromInputs({
     usedForPricing: false,
     usedForRecommendation: false,
 
-    candidateId: [
-      panel?.id || "no-panel",
-      inverter?.id || "no-inverter",
-      battery?.id || "no-battery",
-      `${totalPanels || 0}-panels`,
-    ].join("__"),
+    candidateId,
 
     inputs: {
       source: "quote_inputs",
@@ -414,6 +417,7 @@ function buildDesignCandidateFromInputs({
     performanceModel,
     dispatchModel,
     financialModel,
+    selectedTariffScenarioRun: summarizeScenarioRun(selectedTariffScenarioRun),
     scoring: buildScoringPlaceholder(),
 
     roadmap: {

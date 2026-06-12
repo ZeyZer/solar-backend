@@ -114,6 +114,12 @@ function runStandardCandidateSetTest() {
     "scenarioSet total scenario count mismatch."
   );
 
+  assert(
+    candidateSet.scenarioSet.summary.selectedTariffScenarioRuns ===
+      candidateSet.candidates.length,
+    "Expected one selected-tariff scenario run per candidate."
+  );
+
   for (const candidate of candidateSet.candidates) {
     assert(candidate.candidateId, "Candidate missing candidateId.");
     assert(candidate.products.panel, `${candidate.candidateId} missing panel product.`);

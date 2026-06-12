@@ -1,5 +1,9 @@
 const DESIGN_CANDIDATE_SCENARIO_VERSION = "2026-beta-1";
 
+const {
+  summarizeScenarioRun,
+} = require("./designCandidateScenarioRunnerService");
+
 function numberOrZero(value) {
   const n = Number(value);
   return Number.isFinite(n) ? n : 0;
@@ -196,10 +200,17 @@ function summarizeTariffAndControl(candidate = {}) {
 
 function buildCandidateScenario(candidate = {}, index = 0) {
   const scenarioId = buildScenarioId(candidate, index);
+  const selectedTariffScenarioRun =
+    candidate?.selectedTariffScenarioRun || null;
 
   return {
     scenarioId,
     candidateId: candidate?.candidateId || null,
+
+    selectedTariffScenarioRun:
+      selectedTariffScenarioRun
+        ? summarizeScenarioRun(selectedTariffScenarioRun)
+        : null,
 
     version: DESIGN_CANDIDATE_SCENARIO_VERSION,
     mode: "candidate_selected_tariff_scenario_beta",
@@ -226,6 +237,9 @@ function buildCandidateScenario(candidate = {}, index = 0) {
         "candidate_pvgis_performance_model_beta",
       dispatch: hasActiveDispatch(candidate),
       financial: hasActiveFinancial(candidate),
+      selectedTariffScenarioRun:
+        selectedTariffScenarioRun?.mode ===
+        "candidate_scenario_run_selected_tariff_beta",
     },
 
     limitations: [
@@ -243,6 +257,7 @@ function buildScenarioSummary(scenarios = []) {
     activePerformanceScenarios: 0,
     activeDispatchScenarios: 0,
     activeFinancialScenarios: 0,
+    selectedTariffScenarioRuns: 0,
     roofArrayPvgisScenarios: 0,
     aggregatePvgisFallbackScenarios: 0,
     unavailableFinancialScenarios: 0,
@@ -275,6 +290,10 @@ function buildScenarioSummary(scenarios = []) {
 
     if (scenario.financial?.mode === "candidate_financial_model_unavailable") {
       summary.unavailableFinancialScenarios += 1;
+    }
+
+    if (scenario.activeModels?.selectedTariffScenarioRun) {
+      summary.selectedTariffScenarioRuns += 1;
     }
   }
 

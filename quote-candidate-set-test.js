@@ -236,6 +236,12 @@ async function main() {
     "Expected active financial scenarios in quote-level scenario set."
   );
 
+  assert(
+    quote.designCandidateSet.scenarioSet.summary.selectedTariffScenarioRuns ===
+      quote.designCandidateSet.candidates.length,
+    "Expected one selected-tariff scenario run per quote candidate."
+  );
+
   const pvgisCandidate = findCandidateWithPvgisPerformance(
     quote.designCandidateSet.candidates
   );
@@ -340,6 +346,8 @@ async function main() {
       quote.designCandidateSet.scenarioSet.summary.totalScenarios,
     activeFinancialScenarios:
       quote.designCandidateSet.scenarioSet.summary.activeFinancialScenarios,
+    selectedTariffScenarioRuns:
+      quote.designCandidateSet.scenarioSet.summary.selectedTariffScenarioRuns,
   });
 }
 

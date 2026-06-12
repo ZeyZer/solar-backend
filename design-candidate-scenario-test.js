@@ -184,6 +184,18 @@ function runDirectScenarioSetTest() {
 
   assert(firstActive, "Expected at least one active financial scenario.");
   assert(firstActive.scenarioId, "Scenario missing scenarioId.");
+
+  assert(
+    firstActive.selectedTariffScenarioRun,
+    "Scenario missing selectedTariffScenarioRun summary."
+  );
+
+  assert(
+    firstActive.selectedTariffScenarioRun.mode ===
+      "candidate_scenario_run_selected_tariff_beta",
+    "Unexpected selectedTariffScenarioRun mode."
+  );
+
   assert(firstActive.candidateId, "Scenario missing candidateId.");
   assert(firstActive.tariffAndControl, "Scenario missing tariff/control section.");
   assert(
@@ -232,6 +244,12 @@ function runCandidateSetIncludesScenarioSetTest() {
   assert(
     candidateSet.scenarioSet.summary.totalScenarios === candidateSet.candidates.length,
     "Candidate set scenario count mismatch."
+  );
+
+  assert(
+    candidateSet.scenarioSet.summary.selectedTariffScenarioRuns ===
+      candidateSet.candidates.length,
+    "Expected one selected-tariff scenario run per candidate."
   );
 
   console.log("  ✓ Candidate set scenario set OK:", {
