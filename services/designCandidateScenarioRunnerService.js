@@ -11,6 +11,11 @@ const {
   buildDesignCandidateFinancialModel,
 } = require("./designCandidateFinancialService");
 
+const {
+  buildSelectedTariffScenarioDefinition,
+  summarizeScenarioDefinition,
+} = require("./tariffControlScenarioDefinitionService");
+
 const DESIGN_CANDIDATE_SCENARIO_RUNNER_VERSION = "2026-beta-1";
 
 function numberOrZero(value) {
@@ -101,6 +106,13 @@ function buildSelectedTariffScenarioRun({
     battery,
   });
 
+  const scenarioDefinition = buildSelectedTariffScenarioDefinition({
+    input: safeInput,
+    quote: safeQuote,
+    battery,
+    batteryControlStrategy,
+  });
+
   const dispatchModel = buildDesignCandidateDispatchModel({
     quote: safeQuote,
     input: safeInput,
@@ -139,6 +151,12 @@ function buildSelectedTariffScenarioRun({
     scenarioRunId,
     candidateId,
 
+    scenarioDefinitionId:
+      scenarioDefinition.scenarioDefinitionId,
+
+    scenarioDefinition:
+      summarizeScenarioDefinition(scenarioDefinition),
+
     usedForCalculation: false,
     usedForPricing: false,
     usedForRecommendation: false,
@@ -149,6 +167,10 @@ function buildSelectedTariffScenarioRun({
       multiTariffScenarioOptimisation: false,
       selectedTariffSource: "quote_or_input_tariff_after",
       oneControlStrategyOnly: true,
+      scenarioDefinitionId:
+        scenarioDefinition.scenarioDefinitionId,
+      scenarioDefinitionSource:
+        "tariff_control_scenario_definition_service",
     },
 
     batteryControlStrategy:
@@ -205,6 +227,11 @@ function summarizeScenarioRun(scenarioRun = {}) {
 
     scenarioRunId: scenarioRun.scenarioRunId || null,
     candidateId: scenarioRun.candidateId || null,
+
+    scenarioDefinitionId:
+      scenarioRun.scenarioDefinitionId || null,
+    scenarioDefinition:
+      scenarioRun.scenarioDefinition || null,
 
     usedForCalculation: false,
     usedForPricing: false,

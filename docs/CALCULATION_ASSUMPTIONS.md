@@ -91,6 +91,43 @@ This is used to explain important beta tariff limitations, including:
 
 These notices are intended to be shown on the quote page and PDF so users understand the limits of the current tariff model.
 
+## Tariff/control scenario definitions
+
+The backend now includes tariff/control scenario definitions.
+
+A scenario definition describes the tariff and battery control strategy used by a scenario run.
+
+Current selected-tariff scenario families:
+
+- standard tariff + self-consumption
+- overnight/time-of-use tariff + timed grid charging
+- flux/import-export tariff + smart import/export
+- no battery + no battery control
+
+Current output fields:
+
+- `candidate.selectedTariffScenarioRun.scenarioDefinition`
+- `candidate.selectedTariffScenarioRun.scenarioDefinitionId`
+- `designCandidateSet.scenarioSet.scenarioDefinitionSet`
+
+Current mode:
+
+- `tariff_control_scenario_definition_beta`
+- `tariff_control_scenario_definition_set_beta`
+
+Current status:
+
+- one selected-tariff/control definition is used per candidate scenario run
+- definitions are de-duplicated in the scenario set
+- future supported scenario families are listed for later expansion
+- definitions are diagnostic only
+
+This phase does not yet run multiple tariff/control combinations.
+
+It prepares the optimiser for future scenario expansion where the optimisation unit becomes:
+
+- candidate + tariff + battery control strategy
+
 ## Battery model
 
 The calculator runs an hourly battery dispatch model where hourly PV/load data is available.

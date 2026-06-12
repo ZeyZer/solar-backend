@@ -120,6 +120,15 @@ function runStandardCandidateSetTest() {
     "Expected one selected-tariff scenario run per candidate."
   );
 
+  assert(
+    candidateSet.scenarioSet.scenarioDefinitionSet,
+    "scenarioSet missing scenarioDefinitionSet."
+  );
+  assert(
+    candidateSet.scenarioSet.scenarioDefinitionSet.counts.definitions >= 1,
+    "Expected at least one scenario definition."
+  );
+
   for (const candidate of candidateSet.candidates) {
     assert(candidate.candidateId, "Candidate missing candidateId.");
     assert(candidate.products.panel, `${candidate.candidateId} missing panel product.`);

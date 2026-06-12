@@ -4,6 +4,10 @@ const {
   summarizeScenarioRun,
 } = require("./designCandidateScenarioRunnerService");
 
+const {
+  buildScenarioDefinitionSetFromDefinitions,
+} = require("./tariffControlScenarioDefinitionService");
+
 function numberOrZero(value) {
   const n = Number(value);
   return Number.isFinite(n) ? n : 0;
@@ -212,6 +216,12 @@ function buildCandidateScenario(candidate = {}, index = 0) {
         ? summarizeScenarioRun(selectedTariffScenarioRun)
         : null,
 
+    scenarioDefinitionId:
+      selectedTariffScenarioRun?.scenarioDefinitionId || null,
+
+    scenarioDefinition:
+      selectedTariffScenarioRun?.scenarioDefinition || null,
+
     version: DESIGN_CANDIDATE_SCENARIO_VERSION,
     mode: "candidate_selected_tariff_scenario_beta",
 
@@ -261,6 +271,7 @@ function buildScenarioSummary(scenarios = []) {
     roofArrayPvgisScenarios: 0,
     aggregatePvgisFallbackScenarios: 0,
     unavailableFinancialScenarios: 0,
+    scenarioDefinitions: 0,
   };
 
   for (const scenario of scenarios) {
@@ -297,7 +308,25 @@ function buildScenarioSummary(scenarios = []) {
     }
   }
 
+  const definitionIds = new Set();
+
+  for (const scenario of scenarios) {
+    if (scenario?.scenarioDefinitionId) {
+      definitionIds.add(scenario.scenarioDefinitionId);
+    }
+  }
+
+  summary.scenarioDefinitions = definitionIds.size;
+
   return summary;
+}
+
+function buildScenarioDefinitionSetFromScenarios(scenarios = []) {
+  const definitions = scenarios
+    .map((scenario) => scenario?.scenarioDefinition)
+    .filter(Boolean);
+
+  return buildScenarioDefinitionSetFromDefinitions(definitions);
 }
 
 function buildCandidateScenarioSet({
@@ -311,6 +340,9 @@ function buildCandidateScenarioSet({
   );
 
   const summary = buildScenarioSummary(scenarios);
+
+  const scenarioDefinitionSet =
+    buildScenarioDefinitionSetFromScenarios(scenarios);
 
   return {
     version: DESIGN_CANDIDATE_SCENARIO_VERSION,
@@ -331,6 +363,7 @@ function buildCandidateScenarioSet({
     },
 
     summary,
+    scenarioDefinitionSet,
 
     readiness:
       scenarios.length === 0

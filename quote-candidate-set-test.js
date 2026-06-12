@@ -242,6 +242,16 @@ async function main() {
     "Expected one selected-tariff scenario run per quote candidate."
   );
 
+  assert(
+    quote.designCandidateSet.scenarioSet.scenarioDefinitionSet,
+    "Quote scenarioSet missing scenarioDefinitionSet."
+  );
+
+  assert(
+    quote.designCandidateSet.scenarioSet.scenarioDefinitionSet.counts.definitions >= 1,
+    "Expected quote scenarioSet to include at least one scenario definition."
+  );
+
   const pvgisCandidate = findCandidateWithPvgisPerformance(
     quote.designCandidateSet.candidates
   );
@@ -348,6 +358,8 @@ async function main() {
       quote.designCandidateSet.scenarioSet.summary.activeFinancialScenarios,
     selectedTariffScenarioRuns:
       quote.designCandidateSet.scenarioSet.summary.selectedTariffScenarioRuns,
+    scenarioDefinitions:
+      quote.designCandidateSet.scenarioSet.scenarioDefinitionSet.counts.definitions,
   });
 }
 

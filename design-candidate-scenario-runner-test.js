@@ -155,6 +155,12 @@ function runCandidateScenarioRunTest() {
   assert(run.usedForRecommendation === false, "Scenario run should not be used for recommendation.");
 
   assert(run.scenarioRunId, "Scenario run missing scenarioRunId.");
+  assert(run.scenarioDefinitionId, "Scenario run missing scenarioDefinitionId.");
+  assert(run.scenarioDefinition, "Scenario run missing scenarioDefinition.");
+  assert(
+    run.scenarioDefinition.scenarioFamily === "time_of_use_grid_charging",
+    "Expected overnight scenario definition family."
+  );
   assert(run.candidateId === candidate.candidateId, "Scenario run candidateId mismatch.");
 
   assert(run.batteryControlStrategy, "Scenario run missing battery control strategy.");
