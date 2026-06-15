@@ -278,6 +278,27 @@ async function main() {
     "Expected quote scenario expansion planned scenarios."
   );
 
+  assert(
+    quote.designCandidateSet.optimisationFunnelPolicy,
+    "designCandidateSet missing optimisationFunnelPolicy."
+  );
+
+  assert(
+    quote.designCandidateSet.optimisationFunnelPolicy.mode ===
+      "design_optimisation_funnel_policy_beta",
+    `Unexpected optimisationFunnelPolicy mode: ${quote.designCandidateSet.optimisationFunnelPolicy.mode}`
+  );
+
+  assert(
+    quote.designCandidateSet.optimisationFunnelPolicy.usedForCalculation === false,
+    "optimisationFunnelPolicy should not be used for calculation."
+  );
+
+  assert(
+    quote.designCandidateSet.optimisationFunnelPolicy.usedForRecommendation === false,
+    "optimisationFunnelPolicy should not be used for recommendation."
+  );
+
   const pvgisCandidate = findCandidateWithPvgisPerformance(
     quote.designCandidateSet.candidates
   );
@@ -390,6 +411,10 @@ async function main() {
       quote.designCandidateSet.scenarioExpansionPlan.summary.targetCandidateCount,
     expansionPlannedScenarios:
       quote.designCandidateSet.scenarioExpansionPlan.summary.plannedScenarioCount,
+    optimisationFunnelReadiness:
+      quote.designCandidateSet.optimisationFunnelPolicy.readiness,
+    topologyRiskCount:
+      quote.designCandidateSet.optimisationFunnelPolicy.topologyRiskSummary.riskCount,
   });
 }
 

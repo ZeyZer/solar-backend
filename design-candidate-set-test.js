@@ -147,6 +147,24 @@ function runStandardCandidateSetTest() {
     "scenarioExpansionPlan should be plan-only."
   );
 
+  assert(
+    candidateSet.optimisationFunnelPolicy,
+    "Candidate set missing optimisationFunnelPolicy."
+  );
+  assert(
+    candidateSet.optimisationFunnelPolicy.mode ===
+      "design_optimisation_funnel_policy_beta",
+    "Unexpected optimisationFunnelPolicy mode."
+  );
+  assert(
+    candidateSet.optimisationFunnelPolicy.usedForCalculation === false,
+    "optimisationFunnelPolicy should not be used for calculation."
+  );
+  assert(
+    candidateSet.optimisationFunnelPolicy.usedForRecommendation === false,
+    "optimisationFunnelPolicy should not be used for recommendation."
+  );
+
   for (const candidate of candidateSet.candidates) {
     assert(candidate.candidateId, "Candidate missing candidateId.");
     assert(candidate.products.panel, `${candidate.candidateId} missing panel product.`);

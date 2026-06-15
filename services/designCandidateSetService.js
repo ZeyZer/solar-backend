@@ -30,6 +30,10 @@ const {
 } = require("./designCandidateScenarioExpansionService");
 
 const {
+  buildOptimisationFunnelPolicy,
+} = require("./designOptimisationFunnelPolicyService");
+
+const {
   attachSystemTypeFits,
 } = require("./systemTypeFitService");
 
@@ -268,6 +272,15 @@ function buildCandidateSetFromInputs({
     maxScenariosPerCandidate: 3,
   });
 
+  const optimisationFunnelPolicy = buildOptimisationFunnelPolicy({
+    input: safeInput,
+    quote: safeQuote,
+    candidates: sortedCandidates,
+    shortlist,
+    optimiserResults,
+    scenarioExpansionPlan,
+  });
+
   return {
     version: DESIGN_CANDIDATE_SET_VERSION,
     mode: "candidate_set_foundation",
@@ -299,6 +312,7 @@ function buildCandidateSetFromInputs({
     optimiserResults,
     scenarioSet,
     scenarioExpansionPlan,
+    optimisationFunnelPolicy,
 
     placeholders: {
       bestPaybackCandidate: optimiserResults.keyCandidateIds.bestPayback,

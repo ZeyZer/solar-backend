@@ -1058,6 +1058,56 @@ Instead of running every possible tariff/control combination for every generated
 
 This phase does not change customer-facing quote calculations, pricing, savings, payback, PDF output, frontend display or recommendations.
 
+## Optimisation funnel policy and electrical topology rules
+
+The backend now includes a diagnostic optimisation funnel policy.
+
+Current output field:
+
+- `designCandidateSet.optimisationFunnelPolicy`
+
+Current mode:
+
+- `design_optimisation_funnel_policy_beta`
+
+This policy documents the intended future optimiser flow:
+
+1. User constraints and preferences
+2. Initial roof layout skeletons
+3. Shade-zone and electrical topology risk detection
+4. Panel family preservation
+5. Inverter envelope generation
+6. Final panel/inverter/topology solve
+7. Tariff-aware battery target sizing
+8. Battery product matching
+9. Candidate pruning and Pareto frontier
+10. Shortlisted candidate scenario testing
+11. Candidate scenario ranking
+
+The policy specifically prevents premature pruning of panels that may solve electrical or topology issues.
+
+Examples:
+
+- short strings may require higher-voltage panels
+- shaded rows may justify separate MPPTs
+- compact roof sections may require compact panels
+- difficult shading may justify optimisers or microinverters
+
+Current status:
+
+- diagnostic policy only
+- no roof geometry solver is implemented
+- no row-level shading model is implemented
+- no inverter envelope is calculated
+- no extra scenario simulations are run
+- no customer-facing recommendations are changed
+
+Current status flags:
+
+- `usedForCalculation`: `false`
+- `usedForPricing`: `false`
+- `usedForRecommendation`: `false`
+
 ## Financial model
 
 The financial model estimates:
