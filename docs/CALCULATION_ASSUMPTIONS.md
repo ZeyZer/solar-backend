@@ -1015,6 +1015,49 @@ Future phases will allow the same runner to test:
 - candidate + flux tariff + smart import/export
 - other valid tariff/control combinations
 
+## Candidate multi-scenario expansion plan
+
+The backend now includes a scenario expansion planning layer.
+
+Current output field:
+
+- `designCandidateSet.scenarioExpansionPlan`
+
+Current mode:
+
+- `candidate_scenario_expansion_plan_beta`
+
+This plan identifies which shortlisted or optimiser-selected candidates should later be tested against multiple tariff/control scenario families.
+
+Current scenario families considered for future expansion:
+
+- self-consumption
+- time-of-use grid charging
+- smart import/export
+- no battery
+
+Current status:
+
+- plan only
+- no additional simulations are run
+- selected candidates only
+- diagnostic only
+
+Current execution fields:
+
+- `executionMode`: `plan_only`
+- `executionStatus`: `not_run`
+
+The purpose is to prevent simulation explosion.
+
+Instead of running every possible tariff/control combination for every generated candidate, the optimiser will later expand scenarios only for:
+
+- optimiser winner candidates
+- shortlisted candidates
+- eligible fallback candidates
+
+This phase does not change customer-facing quote calculations, pricing, savings, payback, PDF output, frontend display or recommendations.
+
 ## Financial model
 
 The financial model estimates:

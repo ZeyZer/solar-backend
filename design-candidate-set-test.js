@@ -129,6 +129,24 @@ function runStandardCandidateSetTest() {
     "Expected at least one scenario definition."
   );
 
+  assert(candidateSet.scenarioExpansionPlan, "Candidate set missing scenarioExpansionPlan.");
+  assert(
+    candidateSet.scenarioExpansionPlan.mode === "candidate_scenario_expansion_plan_beta",
+    "Unexpected scenarioExpansionPlan mode."
+  );
+  assert(
+    candidateSet.scenarioExpansionPlan.usedForCalculation === false,
+    "scenarioExpansionPlan should not be used for calculation."
+  );
+  assert(
+    candidateSet.scenarioExpansionPlan.usedForRecommendation === false,
+    "scenarioExpansionPlan should not be used for recommendation."
+  );
+  assert(
+    candidateSet.scenarioExpansionPlan.executionMode === "plan_only",
+    "scenarioExpansionPlan should be plan-only."
+  );
+
   for (const candidate of candidateSet.candidates) {
     assert(candidate.candidateId, "Candidate missing candidateId.");
     assert(candidate.products.panel, `${candidate.candidateId} missing panel product.`);

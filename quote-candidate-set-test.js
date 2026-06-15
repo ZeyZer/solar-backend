@@ -252,6 +252,32 @@ async function main() {
     "Expected quote scenarioSet to include at least one scenario definition."
   );
 
+  assert(
+    quote.designCandidateSet.scenarioExpansionPlan,
+    "designCandidateSet missing scenarioExpansionPlan."
+  );
+
+  assert(
+    quote.designCandidateSet.scenarioExpansionPlan.mode ===
+      "candidate_scenario_expansion_plan_beta",
+    `Unexpected scenarioExpansionPlan mode: ${quote.designCandidateSet.scenarioExpansionPlan.mode}`
+  );
+
+  assert(
+    quote.designCandidateSet.scenarioExpansionPlan.executionMode === "plan_only",
+    "scenarioExpansionPlan should be plan-only."
+  );
+
+  assert(
+    quote.designCandidateSet.scenarioExpansionPlan.summary.targetCandidateCount > 0,
+    "Expected quote scenario expansion target candidates."
+  );
+
+  assert(
+    quote.designCandidateSet.scenarioExpansionPlan.summary.plannedScenarioCount > 0,
+    "Expected quote scenario expansion planned scenarios."
+  );
+
   const pvgisCandidate = findCandidateWithPvgisPerformance(
     quote.designCandidateSet.candidates
   );
@@ -360,6 +386,10 @@ async function main() {
       quote.designCandidateSet.scenarioSet.summary.selectedTariffScenarioRuns,
     scenarioDefinitions:
       quote.designCandidateSet.scenarioSet.scenarioDefinitionSet.counts.definitions,
+    expansionTargetCandidates:
+      quote.designCandidateSet.scenarioExpansionPlan.summary.targetCandidateCount,
+    expansionPlannedScenarios:
+      quote.designCandidateSet.scenarioExpansionPlan.summary.plannedScenarioCount,
   });
 }
 

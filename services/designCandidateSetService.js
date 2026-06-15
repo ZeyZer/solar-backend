@@ -26,6 +26,10 @@ const {
 } = require("./designCandidateScenarioService");
 
 const {
+  buildScenarioExpansionPlan,
+} = require("./designCandidateScenarioExpansionService");
+
+const {
   attachSystemTypeFits,
 } = require("./systemTypeFitService");
 
@@ -244,16 +248,24 @@ function buildCandidateSetFromInputs({
     selectedSystemType,
   });
 
-  const scenarioSet = buildCandidateScenarioSet({
-    candidates: sortedCandidates,
-    selectedSystemType,
-  });
-
   const shortlist = buildCandidateShortlist({
     candidates: sortedCandidates,
     selectedSystemType,
     maxShortlist: 8,
     maxRejectedExamples: 5,
+  });
+
+  const scenarioSet = buildCandidateScenarioSet({
+    candidates: sortedCandidates,
+    selectedSystemType,
+  });
+
+  const scenarioExpansionPlan = buildScenarioExpansionPlan({
+    candidates: sortedCandidates,
+    shortlist,
+    optimiserResults,
+    maxCandidates: 8,
+    maxScenariosPerCandidate: 3,
   });
 
   return {
@@ -286,6 +298,7 @@ function buildCandidateSetFromInputs({
 
     optimiserResults,
     scenarioSet,
+    scenarioExpansionPlan,
 
     placeholders: {
       bestPaybackCandidate: optimiserResults.keyCandidateIds.bestPayback,
