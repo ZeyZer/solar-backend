@@ -182,6 +182,38 @@ function runStandardCandidateSetTest() {
     "designPreferenceProfile should not be used for recommendation."
   );
 
+  assert(
+    candidateSet.candidates.every(
+      (candidate) => candidate.preferenceConstraintEvaluation
+    ),
+    "Every candidate should include preferenceConstraintEvaluation."
+  );
+
+  assert(
+    candidateSet.candidates.every(
+      (candidate) =>
+        candidate.preferenceConstraintEvaluation.mode ===
+        "design_preference_constraint_evaluation_beta"
+    ),
+    "Unexpected preferenceConstraintEvaluation mode."
+  );
+
+  assert(
+    candidateSet.candidates.every(
+      (candidate) =>
+        candidate.preferenceConstraintEvaluation.usedForCalculation === false
+    ),
+    "preferenceConstraintEvaluation should not be used for calculation."
+  );
+
+  assert(
+    candidateSet.candidates.every(
+      (candidate) =>
+        candidate.preferenceConstraintEvaluation.usedForRecommendation === false
+    ),
+    "preferenceConstraintEvaluation should not be used for recommendation."
+  );
+
   for (const candidate of candidateSet.candidates) {
     assert(candidate.candidateId, "Candidate missing candidateId.");
     assert(candidate.products.panel, `${candidate.candidateId} missing panel product.`);

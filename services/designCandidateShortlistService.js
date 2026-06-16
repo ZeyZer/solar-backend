@@ -250,6 +250,26 @@ function summarizeCandidate(candidate, selectedSystemType = "balanced") {
         candidate?.financialModel?.confidence?.level || null,
     },
 
+    preferenceConstraints: {
+      mode: candidate?.preferenceConstraintEvaluation?.mode || null,
+      hardConstraintStatus:
+        candidate?.preferenceConstraintEvaluation?.summary?.hardConstraintStatus || null,
+      hardConstraintCount:
+        candidate?.preferenceConstraintEvaluation?.summary?.hardConstraintCount ?? null,
+      passedHardConstraints:
+        candidate?.preferenceConstraintEvaluation?.summary?.passedHardConstraints ?? null,
+      failedHardConstraints:
+        candidate?.preferenceConstraintEvaluation?.summary?.failedHardConstraints ?? null,
+      unknownHardConstraints:
+        candidate?.preferenceConstraintEvaluation?.summary?.unknownHardConstraints ?? null,
+      failedConstraintIds:
+        candidate?.preferenceConstraintEvaluation?.summary?.failedConstraintIds || [],
+      appliedToFiltering:
+        candidate?.preferenceConstraintEvaluation?.appliedToFiltering === true,
+      appliedToRanking:
+        candidate?.preferenceConstraintEvaluation?.appliedToRanking === true,
+    },
+
     selectedSystemTypeFit: getSelectedSystemTypeFit(
       candidate,
       selectedSystemType

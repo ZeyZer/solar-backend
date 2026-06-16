@@ -70,6 +70,9 @@ function runStandardShortlistTest() {
 
     assert(candidate.financial, `${candidate.candidateId} missing financial summary.`);
     assert(candidate.financial.mode, `${candidate.candidateId} missing financial mode.`);
+
+    assert(candidate.preferenceConstraints, `${candidate.candidateId} missing preference constraint summary.`);
+    assert(candidate.preferenceConstraints.mode ===  "design_preference_constraint_evaluation_beta",`${candidate.candidateId} has unexpected preference constraint mode.`);
   }
 
   console.log("  ✓ Standard shortlist OK:", {

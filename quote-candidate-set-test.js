@@ -320,6 +320,30 @@ async function main() {
     "designPreferenceProfile should not be used for recommendation."
   );
 
+  assert(
+    quote.designCandidateSet.candidates.every(
+      (candidate) => candidate.preferenceConstraintEvaluation
+    ),
+    "Every quote candidate should include preferenceConstraintEvaluation."
+  );
+
+  assert(
+    quote.designCandidateSet.candidates.every(
+      (candidate) =>
+        candidate.preferenceConstraintEvaluation.mode ===
+        "design_preference_constraint_evaluation_beta"
+    ),
+    "Unexpected quote preferenceConstraintEvaluation mode."
+  );
+
+  assert(
+    quote.designCandidateSet.candidates.every(
+      (candidate) =>
+        candidate.preferenceConstraintEvaluation.usedForRecommendation === false
+    ),
+    "preferenceConstraintEvaluation should not be used for recommendation."
+  );
+
   const pvgisCandidate = findCandidateWithPvgisPerformance(
     quote.designCandidateSet.candidates
   );
@@ -440,6 +464,9 @@ async function main() {
       quote.designCandidateSet.designPreferenceProfile.readiness,
     preferenceSystemType:
       quote.designCandidateSet.designPreferenceProfile.selectedSystemType,
+    preferenceConstraintStatus:
+      quote.designCandidateSet.candidates[0]?.preferenceConstraintEvaluation
+        ?.summary?.hardConstraintStatus,
   });
 }
 

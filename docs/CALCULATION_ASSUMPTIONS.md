@@ -1162,6 +1162,63 @@ Current status flags:
 
 Future phases will apply these hard constraints and soft preferences to candidate pruning, scoring and recommendation logic.
 
+## Diagnostic design preference constraint evaluation
+
+The backend now evaluates design preference hard constraints against each generated candidate.
+
+Current candidate field:
+
+- `candidate.preferenceConstraintEvaluation`
+
+Current mode:
+
+- `design_preference_constraint_evaluation_beta`
+
+The evaluation checks hard constraints from:
+
+- `designCandidateSet.designPreferenceProfile.hardConstraints.constraints`
+
+Examples of evaluated constraints:
+
+- all-black panels required
+- minimum panel warranty
+- backup capability required
+- hybrid inverter required
+- minimum inverter warranty
+- battery required
+- minimum usable battery capacity
+- maximum budget
+
+Possible candidate statuses:
+
+- `no_hard_constraints`
+- `passes_all_hard_constraints`
+- `passes_known_constraints_with_unknowns`
+- `fails_hard_constraints`
+
+Current status:
+
+- diagnostic only
+- not applied to filtering
+- not applied to ranking
+- not used for calculation
+- not used for pricing
+- not used for recommendation
+
+Current status flags:
+
+- `usedForCalculation`: `false`
+- `usedForPricing`: `false`
+- `usedForRecommendation`: `false`
+- `appliedToFiltering`: `false`
+- `appliedToRanking`: `false`
+
+Important limitation:
+
+Some catalogue data may be incomplete, so unknown constraint results should not yet be treated as failures.
+
+Future phases will normalise catalogue data and then allow selected hard constraints to affect candidate pruning.
+
 ## Financial model
 
 The financial model estimates:

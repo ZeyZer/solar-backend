@@ -38,6 +38,10 @@ const {
 } = require("./designPreferenceProfileService");
 
 const {
+  applyDesignPreferenceConstraintEvaluations,
+} = require("./designPreferenceConstraintEvaluationService");
+
+const {
   attachSystemTypeFits,
 } = require("./systemTypeFitService");
 
@@ -252,29 +256,36 @@ function buildCandidateSetFromInputs({
     return getCandidateCost(a) - getCandidateCost(b);
   });
 
-  const summary = summarizeFilteredCandidates(sortedCandidates);
+  const preferenceEvaluatedCandidates =
+    applyDesignPreferenceConstraintEvaluations({
+      candidates: sortedCandidates,
+      designPreferenceProfile,
+    });
 
-  const selectedSystemType = safeInput.systemType || "balanced";
+  const summary = summarizeFilteredCandidates(preferenceEvaluatedCandidates);
+
+  const selectedSystemType =
+    designPreferenceProfile?.selectedSystemType || safeInput.systemType || "balanced";
 
   const optimiserResults = buildDesignCandidateRankingResults({
-    candidates: sortedCandidates,
+    candidates: preferenceEvaluatedCandidates,
     selectedSystemType,
   });
 
   const shortlist = buildCandidateShortlist({
-    candidates: sortedCandidates,
+    candidates: preferenceEvaluatedCandidates,
     selectedSystemType,
     maxShortlist: 8,
     maxRejectedExamples: 5,
   });
 
   const scenarioSet = buildCandidateScenarioSet({
-    candidates: sortedCandidates,
+    candidates: preferenceEvaluatedCandidates,
     selectedSystemType,
   });
 
   const scenarioExpansionPlan = buildScenarioExpansionPlan({
-    candidates: sortedCandidates,
+    candidates: preferenceEvaluatedCandidates,
     shortlist,
     optimiserResults,
     maxCandidates: 8,
@@ -284,7 +295,7 @@ function buildCandidateSetFromInputs({
   const optimisationFunnelPolicy = buildOptimisationFunnelPolicy({
     input: safeInput,
     quote: safeQuote,
-    candidates: sortedCandidates,
+    candidates: preferenceEvaluatedCandidates,
     shortlist,
     optimiserResults,
     scenarioExpansionPlan,
@@ -310,14 +321,14 @@ function buildCandidateSetFromInputs({
       panelCandidateCount: panelCandidates.length,
       inverterCandidateCount: inverterCandidates.length,
       batteryCandidateCount: batteryCandidates.length,
-      candidateCount: sortedCandidates.length,
+      candidateCount: preferenceEvaluatedCandidates.length,
     },
 
     summary,
     designPreferenceProfile,
     shortlist,
 
-    candidates: sortedCandidates,
+    candidates: preferenceEvaluatedCandidates,
 
     optimiserResults,
     scenarioSet,
