@@ -13,6 +13,10 @@ function normaliseId(value, fallback = "unknown") {
 }
 
 function numberOrNull(value) {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
 }
