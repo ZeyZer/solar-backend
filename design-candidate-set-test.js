@@ -165,6 +165,23 @@ function runStandardCandidateSetTest() {
     "optimisationFunnelPolicy should not be used for recommendation."
   );
 
+  assert(
+    candidateSet.designPreferenceProfile,
+    "Candidate set missing designPreferenceProfile."
+  );
+  assert(
+    candidateSet.designPreferenceProfile.mode === "design_preference_profile_beta",
+    "Unexpected designPreferenceProfile mode."
+  );
+  assert(
+    candidateSet.designPreferenceProfile.usedForCalculation === false,
+    "designPreferenceProfile should not be used for calculation."
+  );
+  assert(
+    candidateSet.designPreferenceProfile.usedForRecommendation === false,
+    "designPreferenceProfile should not be used for recommendation."
+  );
+
   for (const candidate of candidateSet.candidates) {
     assert(candidate.candidateId, "Candidate missing candidateId.");
     assert(candidate.products.panel, `${candidate.candidateId} missing panel product.`);

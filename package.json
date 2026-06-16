@@ -29,7 +29,8 @@
     "test:candidate-scenario-runner": "node design-candidate-scenario-runner-test.js",
     "test:candidate-scenario-definitions": "node design-candidate-scenario-definition-test.js",
     "test:candidate-scenario-expansion": "node design-candidate-scenario-expansion-test.js",
-    "test:optimisation-funnel-policy": "node design-optimisation-funnel-policy-test.js"
+    "test:optimisation-funnel-policy": "node design-optimisation-funnel-policy-test.js",
+    "test:design-preferences": "node design-preference-profile-test.js"
   },
   "keywords": [],
   "author": "",

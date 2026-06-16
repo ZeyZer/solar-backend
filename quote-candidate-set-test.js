@@ -299,6 +299,27 @@ async function main() {
     "optimisationFunnelPolicy should not be used for recommendation."
   );
 
+  assert(
+    quote.designCandidateSet.designPreferenceProfile,
+    "designCandidateSet missing designPreferenceProfile."
+  );
+
+  assert(
+    quote.designCandidateSet.designPreferenceProfile.mode ===
+      "design_preference_profile_beta",
+    `Unexpected designPreferenceProfile mode: ${quote.designCandidateSet.designPreferenceProfile.mode}`
+  );
+
+  assert(
+    quote.designCandidateSet.designPreferenceProfile.usedForCalculation === false,
+    "designPreferenceProfile should not be used for calculation."
+  );
+
+  assert(
+    quote.designCandidateSet.designPreferenceProfile.usedForRecommendation === false,
+    "designPreferenceProfile should not be used for recommendation."
+  );
+
   const pvgisCandidate = findCandidateWithPvgisPerformance(
     quote.designCandidateSet.candidates
   );
@@ -415,6 +436,10 @@ async function main() {
       quote.designCandidateSet.optimisationFunnelPolicy.readiness,
     topologyRiskCount:
       quote.designCandidateSet.optimisationFunnelPolicy.topologyRiskSummary.riskCount,
+    preferenceProfileReadiness:
+      quote.designCandidateSet.designPreferenceProfile.readiness,
+    preferenceSystemType:
+      quote.designCandidateSet.designPreferenceProfile.selectedSystemType,
   });
 }
 

@@ -34,6 +34,10 @@ const {
 } = require("./designOptimisationFunnelPolicyService");
 
 const {
+  buildDesignPreferenceProfile,
+} = require("./designPreferenceProfileService");
+
+const {
   attachSystemTypeFits,
 } = require("./systemTypeFitService");
 
@@ -178,6 +182,11 @@ function buildCandidateSetFromInputs({
     maxBatteryCandidates,
   });
 
+  const designPreferenceProfile = buildDesignPreferenceProfile({
+    input: safeInput,
+    quote: safeQuote,
+  });
+
   const candidates = [];
 
   for (const panel of panelCandidates) {
@@ -305,6 +314,7 @@ function buildCandidateSetFromInputs({
     },
 
     summary,
+    designPreferenceProfile,
     shortlist,
 
     candidates: sortedCandidates,

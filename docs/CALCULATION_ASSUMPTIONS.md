@@ -1108,6 +1108,60 @@ Current status flags:
 - `usedForPricing`: `false`
 - `usedForRecommendation`: `false`
 
+## Design preference profile
+
+The backend now includes a diagnostic design preference profile.
+
+Current output field:
+
+- `designCandidateSet.designPreferenceProfile`
+
+Current mode:
+
+- `design_preference_profile_beta`
+
+The profile separates user preferences into:
+
+- hard constraints
+- soft preferences
+
+Examples of hard constraints:
+
+- all-black panels required
+- minimum panel warranty
+- backup capability required
+- hybrid inverter required
+- battery required
+- minimum battery capacity
+- maximum budget
+
+Examples of soft preferences:
+
+- low upfront cost
+- best payback
+- best lifetime savings
+- aesthetics
+- long warranty
+- smart controls
+- backup readiness
+- shade resilience
+
+Current status:
+
+- diagnostic only
+- no hardware is filtered yet
+- candidate ranking is not changed yet
+- quote calculations are not changed
+- PDF and frontend recommendations are not changed
+
+Current status flags:
+
+- `usedForCalculation`: `false`
+- `usedForPricing`: `false`
+- `usedForRecommendation`: `false`
+
+Future phases will apply these hard constraints and soft preferences to candidate pruning, scoring and recommendation logic.
+
 ## Financial model
 
 The financial model estimates:
