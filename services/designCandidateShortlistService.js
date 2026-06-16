@@ -250,6 +250,28 @@ function summarizeCandidate(candidate, selectedSystemType = "balanced") {
         candidate?.financialModel?.confidence?.level || null,
     },
 
+    hardwareMetadata: {
+      mode: candidate?.hardwareMetadataNormalisation?.mode || null,
+      dataCompletenessScore:
+        candidate?.hardwareMetadataNormalisation?.summary?.dataCompletenessScore ?? null,
+      missingRequiredFieldCount:
+        candidate?.hardwareMetadataNormalisation?.summary?.missingRequiredFieldCount ?? null,
+      panelWattage:
+        candidate?.hardwareMetadataNormalisation?.summary?.panelWattage ?? null,
+      inverterType:
+        candidate?.hardwareMetadataNormalisation?.summary?.inverterType ?? null,
+      inverterHybrid:
+        candidate?.hardwareMetadataNormalisation?.summary?.inverterHybrid ?? null,
+      inverterBackupCompatible:
+        candidate?.hardwareMetadataNormalisation?.summary?.inverterBackupCompatible ?? null,
+      batteryUsableKWh:
+        candidate?.hardwareMetadataNormalisation?.summary?.batteryUsableKWh ?? null,
+      appliedToFiltering:
+        candidate?.hardwareMetadataNormalisation?.appliedToFiltering === true,
+      appliedToRanking:
+        candidate?.hardwareMetadataNormalisation?.appliedToRanking === true,
+    },
+
     preferenceConstraints: {
       mode: candidate?.preferenceConstraintEvaluation?.mode || null,
       hardConstraintStatus:

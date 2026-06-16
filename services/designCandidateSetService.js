@@ -42,6 +42,11 @@ const {
 } = require("./designPreferenceConstraintEvaluationService");
 
 const {
+  applyHardwareMetadataNormalisationToCandidates,
+  buildHardwareMetadataNormalisationSummary,
+} = require("./hardwareMetadataNormalisationService");
+
+const {
   attachSystemTypeFits,
 } = require("./systemTypeFitService");
 
@@ -256,10 +261,20 @@ function buildCandidateSetFromInputs({
     return getCandidateCost(a) - getCandidateCost(b);
   });
 
+  const hardwareMetadataCandidates =
+    applyHardwareMetadataNormalisationToCandidates({
+      candidates: sortedCandidates,
+    });
+
   const preferenceEvaluatedCandidates =
     applyDesignPreferenceConstraintEvaluations({
-      candidates: sortedCandidates,
+      candidates: hardwareMetadataCandidates,
       designPreferenceProfile,
+    });
+
+  const hardwareMetadataSummary =
+    buildHardwareMetadataNormalisationSummary({
+      candidates: preferenceEvaluatedCandidates,
     });
 
   const summary = summarizeFilteredCandidates(preferenceEvaluatedCandidates);
@@ -326,6 +341,7 @@ function buildCandidateSetFromInputs({
 
     summary,
     designPreferenceProfile,
+    hardwareMetadataSummary,
     shortlist,
 
     candidates: preferenceEvaluatedCandidates,

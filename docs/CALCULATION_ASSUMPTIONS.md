@@ -1219,6 +1219,64 @@ Some catalogue data may be incomplete, so unknown constraint results should not 
 
 Future phases will normalise catalogue data and then allow selected hard constraints to affect candidate pruning.
 
+## Hardware metadata normalisation
+
+The backend now includes diagnostic hardware metadata normalisation.
+
+Current candidate field:
+
+- `candidate.hardwareMetadataNormalisation`
+
+Current candidate set field:
+
+- `designCandidateSet.hardwareMetadataSummary`
+
+Current mode:
+
+- `candidate_hardware_metadata_normalisation_beta`
+- `hardware_metadata_normalisation_summary_beta`
+
+The normalisation layer standardises product metadata for:
+
+- panel power
+- panel warranty
+- panel aesthetics
+- panel dimensions
+- panel electrical fields
+- inverter type
+- inverter phase
+- inverter AC/DC rating
+- inverter MPPT fields
+- inverter backup capability
+- inverter hybrid capability
+- inverter monitoring/export-control capability
+- battery usable capacity
+- battery charge/discharge power
+- battery warranty
+- product pricing fields
+- catalogue data completeness
+
+Current status:
+
+- diagnostic only
+- not applied to filtering
+- not applied to ranking
+- not used for calculation
+- not used for pricing
+- not used for recommendation
+
+Current status flags:
+
+- `usedForCalculation`: `false`
+- `usedForPricing`: `false`
+- `usedForRecommendation`: `false`
+- `appliedToFiltering`: `false`
+- `appliedToRanking`: `false`
+
+The design preference constraint evaluation now prefers normalised hardware metadata where available, then falls back to raw product fields.
+
+This prepares the optimiser for future safe enforcement of hard constraints and for later inverter-envelope and roof-topology pruning.
+
 ## Financial model
 
 The financial model estimates:

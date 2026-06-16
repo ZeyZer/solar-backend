@@ -214,6 +214,32 @@ function runStandardCandidateSetTest() {
     "preferenceConstraintEvaluation should not be used for recommendation."
   );
 
+  assert(
+    candidateSet.hardwareMetadataSummary,
+    "Candidate set missing hardwareMetadataSummary."
+  );
+
+  assert(
+    candidateSet.hardwareMetadataSummary.mode ===
+      "hardware_metadata_normalisation_summary_beta",
+    "Unexpected hardwareMetadataSummary mode."
+  );
+
+  assert(
+    candidateSet.candidates.every(
+      (candidate) => candidate.hardwareMetadataNormalisation
+    ),
+    "Every candidate should include hardwareMetadataNormalisation."
+  );
+
+  assert(
+    candidateSet.candidates.every(
+      (candidate) =>
+        candidate.hardwareMetadataNormalisation.usedForRecommendation === false
+    ),
+    "hardwareMetadataNormalisation should not be used for recommendation."
+  );
+
   for (const candidate of candidateSet.candidates) {
     assert(candidate.candidateId, "Candidate missing candidateId.");
     assert(candidate.products.panel, `${candidate.candidateId} missing panel product.`);

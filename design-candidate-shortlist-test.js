@@ -73,6 +73,16 @@ function runStandardShortlistTest() {
 
     assert(candidate.preferenceConstraints, `${candidate.candidateId} missing preference constraint summary.`);
     assert(candidate.preferenceConstraints.mode ===  "design_preference_constraint_evaluation_beta",`${candidate.candidateId} has unexpected preference constraint mode.`);
+
+    assert(
+      candidate.hardwareMetadata,
+      `${candidate.candidateId} missing hardware metadata summary.`
+    );
+    assert(
+      candidate.hardwareMetadata.mode ===
+        "candidate_hardware_metadata_normalisation_beta",
+      `${candidate.candidateId} has unexpected hardware metadata mode.`
+    );
   }
 
   console.log("  ✓ Standard shortlist OK:", {

@@ -315,42 +315,73 @@ function evaluateSingleConstraint({ candidate = {}, constraint = {} } = {}) {
   const value = constraint.value;
   const operator = constraint.operator;
 
+  const metadata =
+    candidate?.hardwareMetadataNormalisation?.products || {};
+
   let actual = null;
   let evidence = null;
 
   if (constraint.constraintId === "panel_all_black_required") {
-    actual = panelAppearsAllBlack(getPanel(candidate));
-    evidence = "panel appearance/aesthetic fields";
+    actual =
+      metadata?.panel?.aesthetics?.allBlack ??
+      panelAppearsAllBlack(getPanel(candidate));
+    evidence = metadata?.panel
+      ? "normalised panel aesthetics metadata"
+      : "panel appearance/aesthetic fields";
   }
 
   if (constraint.constraintId === "panel_min_warranty") {
-    actual = getPanelWarrantyYears(getPanel(candidate));
-    evidence = "panel warranty fields";
+    actual =
+      metadata?.panel?.warranties?.productYears ??
+      getPanelWarrantyYears(getPanel(candidate));
+    evidence = metadata?.panel
+      ? "normalised panel warranty metadata"
+      : "panel warranty fields";
   }
 
   if (constraint.constraintId === "backup_capability_required") {
-    actual = inverterSupportsBackup(getInverter(candidate));
-    evidence = "inverter backup capability fields";
+    actual =
+      metadata?.inverter?.capabilities?.backupCompatible ??
+      inverterSupportsBackup(getInverter(candidate));
+    evidence = metadata?.inverter
+      ? "normalised inverter backup capability metadata"
+      : "inverter backup capability fields";
   }
 
   if (constraint.constraintId === "hybrid_inverter_required") {
-    actual = inverterIsHybrid(getInverter(candidate));
-    evidence = "inverter hybrid capability fields";
+    actual =
+      metadata?.inverter?.capabilities?.hybrid ??
+      inverterIsHybrid(getInverter(candidate));
+    evidence = metadata?.inverter
+      ? "normalised inverter hybrid capability metadata"
+      : "inverter hybrid capability fields";
   }
 
   if (constraint.constraintId === "inverter_min_warranty") {
-    actual = getInverterWarrantyYears(getInverter(candidate));
-    evidence = "inverter warranty fields";
+    actual =
+      metadata?.inverter?.warranties?.productYears ??
+      getInverterWarrantyYears(getInverter(candidate));
+    evidence = metadata?.inverter
+      ? "normalised inverter warranty metadata"
+      : "inverter warranty fields";
   }
 
   if (constraint.constraintId === "battery_required") {
-    actual = hasBattery(candidate);
-    evidence = "selected battery product";
+    actual =
+      metadata?.battery?.exists ??
+      hasBattery(candidate);
+    evidence = metadata?.battery
+      ? "normalised battery metadata"
+      : "selected battery product";
   }
 
   if (constraint.constraintId === "battery_min_usable_capacity") {
-    actual = getBatteryUsableKWh(candidate);
-    evidence = "battery usable capacity fields";
+    actual =
+      metadata?.battery?.capacity?.usableKWh ??
+      getBatteryUsableKWh(candidate);
+    evidence = metadata?.battery
+      ? "normalised battery usable capacity metadata"
+      : "battery usable capacity fields";
   }
 
   if (constraint.constraintId === "maximum_budget") {

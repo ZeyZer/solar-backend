@@ -344,6 +344,32 @@ async function main() {
     "preferenceConstraintEvaluation should not be used for recommendation."
   );
 
+  assert(
+    quote.designCandidateSet.hardwareMetadataSummary,
+    "designCandidateSet missing hardwareMetadataSummary."
+  );
+
+  assert(
+    quote.designCandidateSet.hardwareMetadataSummary.mode ===
+      "hardware_metadata_normalisation_summary_beta",
+    `Unexpected hardwareMetadataSummary mode: ${quote.designCandidateSet.hardwareMetadataSummary.mode}`
+  );
+
+  assert(
+    quote.designCandidateSet.candidates.every(
+      (candidate) => candidate.hardwareMetadataNormalisation
+    ),
+    "Every quote candidate should include hardwareMetadataNormalisation."
+  );
+
+  assert(
+    quote.designCandidateSet.candidates.every(
+      (candidate) =>
+        candidate.hardwareMetadataNormalisation.usedForRecommendation === false
+    ),
+    "hardwareMetadataNormalisation should not be used for recommendation."
+  );
+
   const pvgisCandidate = findCandidateWithPvgisPerformance(
     quote.designCandidateSet.candidates
   );
@@ -467,6 +493,8 @@ async function main() {
     preferenceConstraintStatus:
       quote.designCandidateSet.candidates[0]?.preferenceConstraintEvaluation
         ?.summary?.hardConstraintStatus,
+    hardwareMetadataCompleteness:
+      quote.designCandidateSet.hardwareMetadataSummary.averageCompletenessScore,
   });
 }
 
