@@ -391,6 +391,42 @@ async function main() {
     "preferenceConstraintEnforcementReadiness should not be used for recommendation."
   );
 
+  assert(
+    quote.designCandidateSet.designPreferenceScoringSummary,
+    "designCandidateSet missing designPreferenceScoringSummary."
+  );
+
+  assert(
+    quote.designCandidateSet.designPreferenceScoringSummary.mode ===
+      "design_preference_soft_scoring_summary_beta",
+    `Unexpected designPreferenceScoringSummary mode: ${quote.designCandidateSet.designPreferenceScoringSummary.mode}`
+  );
+
+  assert(
+    quote.designCandidateSet.designPreferenceScoringSummary.usedForCalculation === false,
+    "designPreferenceScoringSummary should not be used for calculation."
+  );
+
+  assert(
+    quote.designCandidateSet.designPreferenceScoringSummary.usedForRecommendation === false,
+    "designPreferenceScoringSummary should not be used for recommendation."
+  );
+
+  assert(
+    quote.designCandidateSet.candidates.every(
+      (candidate) => candidate.designPreferenceScore
+    ),
+    "Every quote candidate should include designPreferenceScore."
+  );
+
+  assert(
+    quote.designCandidateSet.candidates.every(
+      (candidate) =>
+        candidate.designPreferenceScore.usedForRecommendation === false
+    ),
+    "designPreferenceScore should not be used for recommendation."
+  );
+
   const pvgisCandidate = findCandidateWithPvgisPerformance(
     quote.designCandidateSet.candidates
   );
@@ -519,6 +555,11 @@ async function main() {
     preferenceConstraintEnforcementReadiness:
       quote.designCandidateSet.preferenceConstraintEnforcementReadiness.summary
         .enforcementReadiness,
+    designPreferenceAverageScore:
+      quote.designCandidateSet.designPreferenceScoringSummary.averageScore,
+    topPreferenceMatchCandidate:
+      quote.designCandidateSet.designPreferenceScoringSummary
+        .topPreferenceMatchCandidateId,
   });
 }
 

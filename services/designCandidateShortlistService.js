@@ -292,6 +292,22 @@ function summarizeCandidate(candidate, selectedSystemType = "balanced") {
         candidate?.preferenceConstraintEvaluation?.appliedToRanking === true,
     },
 
+    designPreferenceScore: {
+      mode: candidate?.designPreferenceScore?.mode || null,
+      selectedSystemType:
+        candidate?.designPreferenceScore?.selectedSystemType || null,
+      weightedScore:
+        candidate?.designPreferenceScore?.weightedScore ?? null,
+      scoreBand:
+        candidate?.designPreferenceScore?.scoreBand || null,
+      componentScores:
+        candidate?.designPreferenceScore?.componentScores || null,
+      appliedToFiltering:
+        candidate?.designPreferenceScore?.appliedToFiltering === true,
+      appliedToRanking:
+        candidate?.designPreferenceScore?.appliedToRanking === true,
+    },
+
     selectedSystemTypeFit: getSelectedSystemTypeFit(
       candidate,
       selectedSystemType

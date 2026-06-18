@@ -1325,6 +1325,59 @@ Unknown catalogue metadata is not treated as a failure in this phase.
 
 This report prepares the optimiser for future safe enforcement of selected user hard constraints.
 
+## Diagnostic design preference soft scoring
+
+The backend now includes diagnostic soft preference scoring.
+
+Current candidate field:
+
+- `candidate.designPreferenceScore`
+
+Current candidate set field:
+
+- `designCandidateSet.designPreferenceScoringSummary`
+
+Current mode:
+
+- `design_preference_soft_scoring_beta`
+- `design_preference_soft_scoring_summary_beta`
+
+The score uses the soft preference weights from:
+
+- `designCandidateSet.designPreferenceProfile.softPreferences.weights`
+
+Current preference components:
+
+- low upfront cost
+- payback
+- lifetime savings
+- aesthetics
+- warranty
+- smart controls
+- backup readiness
+- shade resilience
+
+Current status:
+
+- diagnostic only
+- not applied to filtering
+- not applied to ranking
+- not used for calculation
+- not used for pricing
+- not used for recommendation
+
+Current status flags:
+
+- `usedForCalculation`: `false`
+- `usedForPricing`: `false`
+- `usedForRecommendation`: `false`
+- `appliedToFiltering`: `false`
+- `appliedToRanking`: `false`
+
+Missing financial or catalogue data is treated neutrally rather than as a failure.
+
+Future phases may use this score in the balanced optimiser ranking, but it is not used for customer-facing recommendations yet.
+
 ## Financial model
 
 The financial model estimates:

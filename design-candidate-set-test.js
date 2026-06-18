@@ -263,6 +263,42 @@ function runStandardCandidateSetTest() {
     "preferenceConstraintEnforcementReadiness should not be used for recommendation."
   );
 
+  // Preference Scoring
+  assert(
+    candidateSet.designPreferenceScoringSummary,
+    "Candidate set missing designPreferenceScoringSummary."
+  );
+
+  assert(
+    candidateSet.designPreferenceScoringSummary.mode ===
+      "design_preference_soft_scoring_summary_beta",
+    "Unexpected designPreferenceScoringSummary mode."
+  );
+
+  assert(
+    candidateSet.designPreferenceScoringSummary.usedForCalculation === false,
+    "designPreferenceScoringSummary should not be used for calculation."
+  );
+
+  assert(
+    candidateSet.designPreferenceScoringSummary.usedForRecommendation === false,
+    "designPreferenceScoringSummary should not be used for recommendation."
+  );
+
+  assert(
+    candidateSet.candidates.every((candidate) => candidate.designPreferenceScore),
+    "Every candidate should include designPreferenceScore."
+  );
+
+  assert(
+    candidateSet.candidates.every(
+      (candidate) =>
+        candidate.designPreferenceScore.mode ===
+        "design_preference_soft_scoring_beta"
+    ),
+    "Unexpected designPreferenceScore mode."
+  );
+
   for (const candidate of candidateSet.candidates) {
     assert(candidate.candidateId, "Candidate missing candidateId.");
     assert(candidate.products.panel, `${candidate.candidateId} missing panel product.`);

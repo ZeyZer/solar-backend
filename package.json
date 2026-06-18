@@ -33,7 +33,8 @@
     "test:design-preferences": "node design-preference-profile-test.js",
     "test:design-preference-constraints": "node design-preference-constraint-evaluation-test.js",
     "test:hardware-metadata": "node hardware-metadata-normalisation-test.js",
-    "test:design-preference-enforcement-readiness": "node design-preference-constraint-enforcement-readiness-test.js"
+    "test:design-preference-enforcement-readiness": "node design-preference-constraint-enforcement-readiness-test.js",
+    "test:design-preference-scoring": "node design-preference-scoring-test.js"
   },
   "keywords": [],
   "author": "",
