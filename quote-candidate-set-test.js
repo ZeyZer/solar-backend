@@ -427,6 +427,43 @@ async function main() {
     "designPreferenceScore should not be used for recommendation."
   );
 
+  // Pruning Preview
+  assert(
+    quote.designCandidateSet.diagnosticPruningPreviewSummary,
+    "designCandidateSet missing diagnosticPruningPreviewSummary."
+  );
+
+  assert(
+    quote.designCandidateSet.diagnosticPruningPreviewSummary.mode ===
+      "diagnostic_candidate_pruning_preview_summary_beta",
+    `Unexpected diagnosticPruningPreviewSummary mode: ${quote.designCandidateSet.diagnosticPruningPreviewSummary.mode}`
+  );
+
+  assert(
+    quote.designCandidateSet.diagnosticPruningPreviewSummary.usedForCalculation === false,
+    "diagnosticPruningPreviewSummary should not be used for calculation."
+  );
+
+  assert(
+    quote.designCandidateSet.diagnosticPruningPreviewSummary.usedForRecommendation === false,
+    "diagnosticPruningPreviewSummary should not be used for recommendation."
+  );
+
+  assert(
+    quote.designCandidateSet.candidates.every(
+      (candidate) => candidate.diagnosticPruningPreview
+    ),
+    "Every quote candidate should include diagnosticPruningPreview."
+  );
+
+  assert(
+    quote.designCandidateSet.candidates.every(
+      (candidate) =>
+        candidate.diagnosticPruningPreview.usedForRecommendation === false
+    ),
+    "diagnosticPruningPreview should not be used for recommendation."
+  );
+
   const pvgisCandidate = findCandidateWithPvgisPerformance(
     quote.designCandidateSet.candidates
   );
@@ -560,6 +597,11 @@ async function main() {
     topPreferenceMatchCandidate:
       quote.designCandidateSet.designPreferenceScoringSummary
         .topPreferenceMatchCandidateId,
+    diagnosticPruningReadiness:
+      quote.designCandidateSet.diagnosticPruningPreviewSummary.readiness,
+    diagnosticCarryForwardCount:
+      quote.designCandidateSet.diagnosticPruningPreviewSummary
+        .wouldCarryForwardCount,
   });
 }
 

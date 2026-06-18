@@ -56,6 +56,11 @@ const {
 } = require("./designPreferenceScoringService");
 
 const {
+  applyDiagnosticPruningPreviewToCandidates,
+  buildDiagnosticPruningPreviewSummary,
+} = require("./diagnosticCandidatePruningPreviewService");
+
+const {
   attachSystemTypeFits,
 } = require("./systemTypeFitService");
 
@@ -287,46 +292,57 @@ function buildCandidateSetFromInputs({
       designPreferenceProfile,
     });
 
+  const pruningPreviewCandidates =
+    applyDiagnosticPruningPreviewToCandidates({
+      candidates: preferenceScoredCandidates,
+    });
+
   const hardwareMetadataSummary =
     buildHardwareMetadataNormalisationSummary({
-      candidates: preferenceScoredCandidates,
+      candidates: pruningPreviewCandidates,
     });
 
   const preferenceConstraintEnforcementReadiness =
     buildPreferenceConstraintEnforcementReadiness({
-      candidates: preferenceScoredCandidates,
+      candidates: pruningPreviewCandidates,
       designPreferenceProfile,
     });
 
   const designPreferenceScoringSummary =
     buildDesignPreferenceScoringSummary({
-      candidates: preferenceScoredCandidates,
+      candidates: pruningPreviewCandidates,
     });
 
-  const summary = summarizeFilteredCandidates(preferenceScoredCandidates);
+  const diagnosticPruningPreviewSummary =
+    buildDiagnosticPruningPreviewSummary({
+      candidates: pruningPreviewCandidates,
+      recommendedCarryForwardLimit: 12,
+    });
+
+  const summary = summarizeFilteredCandidates(pruningPreviewCandidates);
 
   const selectedSystemType =
     designPreferenceProfile?.selectedSystemType || safeInput.systemType || "balanced";
 
   const optimiserResults = buildDesignCandidateRankingResults({
-    candidates: preferenceScoredCandidates,
+    candidates: pruningPreviewCandidates,
     selectedSystemType,
   });
 
   const shortlist = buildCandidateShortlist({
-    candidates: preferenceScoredCandidates,
+    candidates: pruningPreviewCandidates,
     selectedSystemType,
     maxShortlist: 8,
     maxRejectedExamples: 5,
   });
 
   const scenarioSet = buildCandidateScenarioSet({
-    candidates: preferenceScoredCandidates,
+    candidates: pruningPreviewCandidates,
     selectedSystemType,
   });
 
   const scenarioExpansionPlan = buildScenarioExpansionPlan({
-    candidates: preferenceScoredCandidates,
+    candidates: pruningPreviewCandidates,
     shortlist,
     optimiserResults,
     maxCandidates: 8,
@@ -336,7 +352,7 @@ function buildCandidateSetFromInputs({
   const optimisationFunnelPolicy = buildOptimisationFunnelPolicy({
     input: safeInput,
     quote: safeQuote,
-    candidates: preferenceScoredCandidates,
+    candidates: pruningPreviewCandidates,
     shortlist,
     optimiserResults,
     scenarioExpansionPlan,
@@ -362,7 +378,7 @@ function buildCandidateSetFromInputs({
       panelCandidateCount: panelCandidates.length,
       inverterCandidateCount: inverterCandidates.length,
       batteryCandidateCount: batteryCandidates.length,
-      candidateCount: preferenceScoredCandidates.length,
+      candidateCount: pruningPreviewCandidates.length,
     },
 
     summary,
@@ -370,9 +386,10 @@ function buildCandidateSetFromInputs({
     hardwareMetadataSummary,
     preferenceConstraintEnforcementReadiness,
     designPreferenceScoringSummary,
+    diagnosticPruningPreviewSummary,
     shortlist,
 
-    candidates: preferenceScoredCandidates,
+    candidates: pruningPreviewCandidates,
 
     optimiserResults,
     scenarioSet,

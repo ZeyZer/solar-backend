@@ -308,6 +308,29 @@ function summarizeCandidate(candidate, selectedSystemType = "balanced") {
         candidate?.designPreferenceScore?.appliedToRanking === true,
     },
 
+    diagnosticPruningPreview: {
+      mode: candidate?.diagnosticPruningPreview?.mode || null,
+      compatibilityStatus:
+        candidate?.diagnosticPruningPreview?.compatibilityStatus || null,
+      hardConstraintStatus:
+        candidate?.diagnosticPruningPreview?.hardConstraintStatus || null,
+      provisionalTier:
+        candidate?.diagnosticPruningPreview?.provisionalTier || null,
+      previewAction:
+        candidate?.diagnosticPruningPreview?.previewAction || null,
+      wouldCarryForwardForFutureOptimisation:
+        candidate?.diagnosticPruningPreview
+          ?.wouldCarryForwardForFutureOptimisation ?? null,
+      carryForwardScore:
+        candidate?.diagnosticPruningPreview?.carryForwardScore ?? null,
+      reasons:
+        candidate?.diagnosticPruningPreview?.reasons || [],
+      appliedToFiltering:
+        candidate?.diagnosticPruningPreview?.appliedToFiltering === true,
+      appliedToRanking:
+        candidate?.diagnosticPruningPreview?.appliedToRanking === true,
+    },
+
     selectedSystemTypeFit: getSelectedSystemTypeFit(
       candidate,
       selectedSystemType

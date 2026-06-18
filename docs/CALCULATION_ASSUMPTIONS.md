@@ -1378,6 +1378,63 @@ Missing financial or catalogue data is treated neutrally rather than as a failur
 
 Future phases may use this score in the balanced optimiser ranking, but it is not used for customer-facing recommendations yet.
 
+## Diagnostic candidate pruning preview
+
+The backend now includes a diagnostic candidate pruning preview.
+
+Current candidate field:
+
+- `candidate.diagnosticPruningPreview`
+
+Current candidate set field:
+
+- `designCandidateSet.diagnosticPruningPreviewSummary`
+
+Current mode:
+
+- `diagnostic_candidate_pruning_preview_beta`
+- `diagnostic_candidate_pruning_preview_summary_beta`
+
+The preview uses:
+
+- existing compatibility status
+- hard-constraint evaluation
+- hard-constraint enforcement readiness
+- hardware metadata completeness
+- soft preference scoring
+- candidate financial availability
+
+It estimates:
+
+- candidates that would probably be carried forward
+- candidates that would probably be rejected if hard constraints were enforced
+- candidates that need better catalogue data before pruning
+- low-priority candidates that should still be kept for now
+
+Current status:
+
+- diagnostic only
+- no candidates are removed
+- not applied to filtering
+- not applied to ranking
+- not used for calculation
+- not used for pricing
+- not used for recommendation
+
+Current status flags:
+
+- `usedForCalculation`: `false`
+- `usedForPricing`: `false`
+- `usedForRecommendation`: `false`
+- `appliedToFiltering`: `false`
+- `appliedToRanking`: `false`
+
+Important:
+
+This is not yet a full Pareto frontier calculation. Roof layout, stringing and inverter envelope checks are not yet included.
+
+Future phases will use this diagnostic preview to design safe candidate pruning and Pareto-frontier selection.
+
 ## Financial model
 
 The financial model estimates:

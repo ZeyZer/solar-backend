@@ -299,6 +299,44 @@ function runStandardCandidateSetTest() {
     "Unexpected designPreferenceScore mode."
   );
 
+  // Pruning Preview
+  assert(
+    candidateSet.diagnosticPruningPreviewSummary,
+    "Candidate set missing diagnosticPruningPreviewSummary."
+  );
+
+  assert(
+    candidateSet.diagnosticPruningPreviewSummary.mode ===
+      "diagnostic_candidate_pruning_preview_summary_beta",
+    "Unexpected diagnosticPruningPreviewSummary mode."
+  );
+
+  assert(
+    candidateSet.diagnosticPruningPreviewSummary.usedForCalculation === false,
+    "diagnosticPruningPreviewSummary should not be used for calculation."
+  );
+
+  assert(
+    candidateSet.diagnosticPruningPreviewSummary.usedForRecommendation === false,
+    "diagnosticPruningPreviewSummary should not be used for recommendation."
+  );
+
+  assert(
+    candidateSet.candidates.every(
+      (candidate) => candidate.diagnosticPruningPreview
+    ),
+    "Every candidate should include diagnosticPruningPreview."
+  );
+
+  assert(
+    candidateSet.candidates.every(
+      (candidate) =>
+        candidate.diagnosticPruningPreview.mode ===
+        "diagnostic_candidate_pruning_preview_beta"
+    ),
+    "Unexpected diagnosticPruningPreview mode."
+  );
+
   for (const candidate of candidateSet.candidates) {
     assert(candidate.candidateId, "Candidate missing candidateId.");
     assert(candidate.products.panel, `${candidate.candidateId} missing panel product.`);

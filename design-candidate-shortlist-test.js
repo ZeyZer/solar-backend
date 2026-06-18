@@ -96,6 +96,18 @@ function runStandardShortlistTest() {
         "design_preference_soft_scoring_beta",
       `${candidate.candidateId} has unexpected design preference score mode.`
     );
+
+    // Pruning Preview
+    assert(
+      candidate.diagnosticPruningPreview,
+      `${candidate.candidateId} missing diagnostic pruning preview summary.`
+    );
+
+    assert(
+      candidate.diagnosticPruningPreview.mode ===
+        "diagnostic_candidate_pruning_preview_beta",
+      `${candidate.candidateId} has unexpected diagnostic pruning preview mode.`
+    );
   }
 
   console.log("  ✓ Standard shortlist OK:", {
