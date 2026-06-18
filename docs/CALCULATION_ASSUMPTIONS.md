@@ -1277,6 +1277,54 @@ The design preference constraint evaluation now prefers normalised hardware meta
 
 This prepares the optimiser for future safe enforcement of hard constraints and for later inverter-envelope and roof-topology pruning.
 
+## Design preference constraint enforcement readiness
+
+The backend now includes a diagnostic hard-constraint enforcement readiness report.
+
+Current candidate set field:
+
+- `designCandidateSet.preferenceConstraintEnforcementReadiness`
+
+Current mode:
+
+- `design_preference_constraint_enforcement_readiness_beta`
+
+The report uses:
+
+- `designCandidateSet.designPreferenceProfile`
+- `candidate.hardwareMetadataNormalisation`
+- `candidate.preferenceConstraintEvaluation`
+
+It answers:
+
+- which hard constraints are ready to enforce
+- which constraints still have unknown catalogue data
+- which candidates would be rejected if constraints were enforced
+- which candidates need better catalogue data before enforcement
+
+Current status:
+
+- diagnostic only
+- not applied to filtering
+- not applied to ranking
+- not used for calculation
+- not used for pricing
+- not used for recommendation
+
+Current status flags:
+
+- `usedForCalculation`: `false`
+- `usedForPricing`: `false`
+- `usedForRecommendation`: `false`
+- `appliedToFiltering`: `false`
+- `appliedToRanking`: `false`
+
+Important:
+
+Unknown catalogue metadata is not treated as a failure in this phase.
+
+This report prepares the optimiser for future safe enforcement of selected user hard constraints.
+
 ## Financial model
 
 The financial model estimates:

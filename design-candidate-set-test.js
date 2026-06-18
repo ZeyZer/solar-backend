@@ -225,6 +225,7 @@ function runStandardCandidateSetTest() {
     "Unexpected hardwareMetadataSummary mode."
   );
 
+  // Hardware Normalisation
   assert(
     candidateSet.candidates.every(
       (candidate) => candidate.hardwareMetadataNormalisation
@@ -238,6 +239,28 @@ function runStandardCandidateSetTest() {
         candidate.hardwareMetadataNormalisation.usedForRecommendation === false
     ),
     "hardwareMetadataNormalisation should not be used for recommendation."
+  );
+
+  // Preference Contraint Enforcement
+  assert(
+    candidateSet.preferenceConstraintEnforcementReadiness,
+    "Candidate set missing preferenceConstraintEnforcementReadiness."
+  );
+
+  assert(
+    candidateSet.preferenceConstraintEnforcementReadiness.mode ===
+      "design_preference_constraint_enforcement_readiness_beta",
+    "Unexpected preferenceConstraintEnforcementReadiness mode."
+  );
+
+  assert(
+    candidateSet.preferenceConstraintEnforcementReadiness.usedForCalculation === false,
+    "preferenceConstraintEnforcementReadiness should not be used for calculation."
+  );
+
+  assert(
+    candidateSet.preferenceConstraintEnforcementReadiness.usedForRecommendation === false,
+    "preferenceConstraintEnforcementReadiness should not be used for recommendation."
   );
 
   for (const candidate of candidateSet.candidates) {

@@ -47,6 +47,10 @@ const {
 } = require("./hardwareMetadataNormalisationService");
 
 const {
+  buildPreferenceConstraintEnforcementReadiness,
+} = require("./designPreferenceConstraintEnforcementReadinessService");
+
+const {
   attachSystemTypeFits,
 } = require("./systemTypeFitService");
 
@@ -276,6 +280,12 @@ function buildCandidateSetFromInputs({
     buildHardwareMetadataNormalisationSummary({
       candidates: preferenceEvaluatedCandidates,
     });
+  
+  const preferenceConstraintEnforcementReadiness =
+    buildPreferenceConstraintEnforcementReadiness({
+      candidates: preferenceEvaluatedCandidates,
+      designPreferenceProfile,
+    });
 
   const summary = summarizeFilteredCandidates(preferenceEvaluatedCandidates);
 
@@ -342,6 +352,7 @@ function buildCandidateSetFromInputs({
     summary,
     designPreferenceProfile,
     hardwareMetadataSummary,
+    preferenceConstraintEnforcementReadiness,
     shortlist,
 
     candidates: preferenceEvaluatedCandidates,
