@@ -444,6 +444,44 @@ function runStandardCandidateSetTest() {
     "Unexpected roofDesignConfidence mode."
   );
 
+  // Roof Area Analysis
+  assert(
+    candidateSet.areaPanelCapacityEstimateSummary,
+    "Candidate set missing areaPanelCapacityEstimateSummary."
+  );
+
+  assert(
+    candidateSet.areaPanelCapacityEstimateSummary.mode ===
+      "area_panel_capacity_estimate_summary_beta",
+    "Unexpected areaPanelCapacityEstimateSummary mode."
+  );
+
+  assert(
+    candidateSet.areaPanelCapacityEstimateSummary.usedForCalculation === false,
+    "areaPanelCapacityEstimateSummary should not be used for calculation."
+  );
+
+  assert(
+    candidateSet.areaPanelCapacityEstimateSummary.usedForRecommendation === false,
+    "areaPanelCapacityEstimateSummary should not be used for recommendation."
+  );
+
+  assert(
+    candidateSet.candidates.every(
+      (candidate) => candidate.areaPanelCapacityEstimate
+    ),
+    "Every candidate should include areaPanelCapacityEstimate."
+  );
+
+  assert(
+    candidateSet.candidates.every(
+      (candidate) =>
+        candidate.areaPanelCapacityEstimate.mode ===
+        "area_panel_capacity_estimate_beta"
+    ),
+    "Unexpected areaPanelCapacityEstimate mode."
+  );
+
   for (const candidate of candidateSet.candidates) {
     assert(candidate.candidateId, "Candidate missing candidateId.");
     assert(candidate.products.panel, `${candidate.candidateId} missing panel product.`);

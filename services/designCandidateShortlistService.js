@@ -408,6 +408,59 @@ function summarizeCandidate(candidate, selectedSystemType = "balanced") {
         candidate?.roofDesignConfidence?.appliedToRanking === true,
     },
 
+    areaPanelCapacityEstimate: {
+      mode: candidate?.areaPanelCapacityEstimate?.mode || null,
+      inputBasis:
+        candidate?.areaPanelCapacityEstimate?.inputBasis || null,
+      capacityEstimateAvailable:
+        candidate?.areaPanelCapacityEstimate?.capacityEstimateAvailable === true,
+      estimateStatus:
+        candidate?.areaPanelCapacityEstimate?.estimateStatus || null,
+      panelAreaSource:
+        candidate?.areaPanelCapacityEstimate?.panelAreaModel
+          ?.panelAreaSource || null,
+      panelAreaM2:
+        candidate?.areaPanelCapacityEstimate?.panelAreaModel
+          ?.panelAreaM2 ?? null,
+      panelWattage:
+        candidate?.areaPanelCapacityEstimate?.panelAreaModel
+          ?.panelWattage ?? null,
+      estimatedPanelCountRange:
+        candidate?.areaPanelCapacityEstimate?.summary
+          ?.totalEstimatedPanelCountRange || null,
+      estimatedSystemSizeKwpRange:
+        candidate?.areaPanelCapacityEstimate?.summary
+          ?.totalEstimatedSystemSizeKwpRange || null,
+      comparisonToAssumedPanelCount:
+        candidate?.areaPanelCapacityEstimate?.summary
+          ?.comparisonToAssumedPanelCount || null,
+      confidenceLevel:
+        candidate?.areaPanelCapacityEstimate?.summary
+          ?.confidenceLevel || null,
+      confidenceScore:
+        candidate?.areaPanelCapacityEstimate?.summary
+          ?.confidenceScore ?? null,
+      issueCount:
+        candidate?.areaPanelCapacityEstimate?.summary
+          ?.issueCount ?? 0,
+      canSupportFutureAreaBasedPanelEstimate:
+        candidate?.areaPanelCapacityEstimate?.summary
+          ?.canSupportFutureAreaBasedPanelEstimate === true,
+      canConfirmPanelFit:
+        candidate?.areaPanelCapacityEstimate?.summary
+          ?.canConfirmPanelFit === true,
+      canConfirmLargerPanelFit:
+        candidate?.areaPanelCapacityEstimate?.summary
+          ?.canConfirmLargerPanelFit === true,
+      canConfirmMorePanelsFit:
+        candidate?.areaPanelCapacityEstimate?.summary
+          ?.canConfirmMorePanelsFit === true,
+      appliedToFiltering:
+        candidate?.areaPanelCapacityEstimate?.appliedToFiltering === true,
+      appliedToRanking:
+        candidate?.areaPanelCapacityEstimate?.appliedToRanking === true,
+    },
+
     selectedSystemTypeFit: getSelectedSystemTypeFit(
       candidate,
       selectedSystemType

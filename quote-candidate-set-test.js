@@ -570,6 +570,43 @@ async function main() {
     "roofDesignConfidence should not be used for recommendation."
   );
 
+  // Roof Area
+  assert(
+    quote.designCandidateSet.areaPanelCapacityEstimateSummary,
+    "designCandidateSet missing areaPanelCapacityEstimateSummary."
+  );
+
+  assert(
+    quote.designCandidateSet.areaPanelCapacityEstimateSummary.mode ===
+      "area_panel_capacity_estimate_summary_beta",
+    `Unexpected areaPanelCapacityEstimateSummary mode: ${quote.designCandidateSet.areaPanelCapacityEstimateSummary.mode}`
+  );
+
+  assert(
+    quote.designCandidateSet.areaPanelCapacityEstimateSummary.usedForCalculation === false,
+    "areaPanelCapacityEstimateSummary should not be used for calculation."
+  );
+
+  assert(
+    quote.designCandidateSet.areaPanelCapacityEstimateSummary.usedForRecommendation === false,
+    "areaPanelCapacityEstimateSummary should not be used for recommendation."
+  );
+
+  assert(
+    quote.designCandidateSet.candidates.every(
+      (candidate) => candidate.areaPanelCapacityEstimate
+    ),
+    "Every quote candidate should include areaPanelCapacityEstimate."
+  );
+
+  assert(
+    quote.designCandidateSet.candidates.every(
+      (candidate) =>
+        candidate.areaPanelCapacityEstimate.usedForRecommendation === false
+    ),
+    "areaPanelCapacityEstimate should not be used for recommendation."
+  );
+
 
 
   //PVGIS
@@ -721,6 +758,11 @@ async function main() {
       quote.designCandidateSet.roofDesignConfidenceSummary.readiness,
     roofDesignConfidence:
       quote.designCandidateSet.roofDesignConfidenceSummary.averageConfidenceLabel,
+    areaPanelCapacityReadiness:
+      quote.designCandidateSet.areaPanelCapacityEstimateSummary.readiness,
+    areaPanelCapacityAvailable:
+      quote.designCandidateSet.areaPanelCapacityEstimateSummary
+        .areaEstimateAvailableCandidateCount,
   });
 }
 

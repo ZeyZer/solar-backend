@@ -132,6 +132,18 @@ function runStandardShortlistTest() {
         "roof_design_confidence_beta",
       `${candidate.candidateId} has unexpected roof design confidence mode.`
     );
+
+    // Area Test
+    assert(
+      candidate.areaPanelCapacityEstimate,
+      `${candidate.candidateId} missing area panel capacity estimate summary.`
+    );
+
+    assert(
+      candidate.areaPanelCapacityEstimate.mode ===
+        "area_panel_capacity_estimate_beta",
+      `${candidate.candidateId} has unexpected area panel capacity estimate mode.`
+    );
   }
 
   console.log("  ✓ Standard shortlist OK:", {

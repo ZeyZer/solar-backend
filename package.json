@@ -38,7 +38,8 @@
     "test:diagnostic-pruning-preview": "node diagnostic-candidate-pruning-preview-test.js",
     "test:roof-geometry-input": "node roof-geometry-input-test.js",
     "test:manual-roof-polygon": "node manual-roof-polygon-model-test.js",
-    "test:roof-design-confidence": "node roof-design-confidence-test.js"
+    "test:roof-design-confidence": "node roof-design-confidence-test.js",
+    "test:area-panel-capacity": "node area-panel-capacity-estimator-test.js"
   },
   "keywords": [],
   "author": "",

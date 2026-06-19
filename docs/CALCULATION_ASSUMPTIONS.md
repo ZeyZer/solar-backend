@@ -1592,6 +1592,62 @@ Important limitations:
 
 This model prepares the optimiser for safe future customer messaging around guessed panel counts, drawn roof areas and verified roof geometry.
 
+## Area-to-panel capacity estimator foundation
+
+The backend now includes a diagnostic area-to-panel capacity estimator.
+
+Current candidate field:
+
+- `candidate.areaPanelCapacityEstimate`
+
+Current candidate set field:
+
+- `designCandidateSet.areaPanelCapacityEstimateSummary`
+
+Current modes:
+
+- `area_panel_capacity_estimate_beta`
+- `area_panel_capacity_estimate_summary_beta`
+
+The estimator can use roof area geometry from:
+
+- manually drawn roof polygons
+- admin-entered roof dimensions
+- future satellite/LiDAR-derived geometry
+
+It estimates a broad panel count range using:
+
+- usable roof area
+- panel area from catalogue dimensions where available
+- a wattage-based panel area assumption where panel dimensions are missing
+- simple packing assumptions for roof geometry type
+
+Current behaviour:
+
+- If only user-estimated panel count is available, no area-based estimate is produced.
+- If roof area geometry is available, a rough low / expected / high panel count range is produced.
+- If panel dimensions are missing, the estimator may use a low-confidence wattage-based panel area assumption.
+- The result can be compared against the user’s assumed panel count where both are available.
+
+Current status:
+
+- diagnostic only
+- does not calculate final panel layout
+- does not confirm physical panel fit
+- does not confirm larger panels will fit
+- does not confirm more panels will fit
+- not applied to filtering
+- not applied to ranking
+- not used for calculation
+- not used for pricing
+- not used for recommendation
+
+Important:
+
+This is not a true layout engine. It does not yet apply exact setbacks, obstacles, portrait/landscape orientation, row spacing, fire access zones or panel placement geometry.
+
+This model exists to prepare for a future roof layout skeleton and manual “draw my roof” workflow.
+
 ## Financial model
 
 The financial model estimates:
