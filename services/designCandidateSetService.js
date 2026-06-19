@@ -64,6 +64,12 @@ const {
   attachSystemTypeFits,
 } = require("./systemTypeFitService");
 
+const {
+  buildRoofGeometryInputModel,
+  applyRoofGeometryAssumptionsToCandidates,
+  buildRoofGeometryInputSummary,
+} = require("./roofGeometryInputService");
+
 const DESIGN_CANDIDATE_SET_VERSION = "2026-beta-1";
 
 function numberOrZero(value) {
@@ -185,6 +191,10 @@ function buildCandidateSetFromInputs({
   const safeQuote = quote || {};
   const safeInput = input || {};
   const activeRoofs = getActiveRoofs({ input: safeInput, roofs });
+  const roofGeometryInput = buildRoofGeometryInputModel({
+    input: safeInput,
+    quote: safeQuote,
+  });
 
   const batteryKWh = getBatteryKWh({
     quote: safeQuote,
@@ -297,6 +307,18 @@ function buildCandidateSetFromInputs({
       candidates: preferenceScoredCandidates,
     });
 
+  const roofGeometryCandidates =
+    applyRoofGeometryAssumptionsToCandidates({
+      candidates: pruningPreviewCandidates,
+      roofGeometryInput,
+    });
+
+  const roofGeometryInputSummary =
+    buildRoofGeometryInputSummary({
+      roofGeometryInput,
+      candidates: roofGeometryCandidates,
+    });
+
   const hardwareMetadataSummary =
     buildHardwareMetadataNormalisationSummary({
       candidates: pruningPreviewCandidates,
@@ -319,30 +341,30 @@ function buildCandidateSetFromInputs({
       recommendedCarryForwardLimit: 12,
     });
 
-  const summary = summarizeFilteredCandidates(pruningPreviewCandidates);
+  const summary = summarizeFilteredCandidates(roofGeometryCandidates);
 
   const selectedSystemType =
     designPreferenceProfile?.selectedSystemType || safeInput.systemType || "balanced";
 
   const optimiserResults = buildDesignCandidateRankingResults({
-    candidates: pruningPreviewCandidates,
+    candidates: roofGeometryCandidates,
     selectedSystemType,
   });
 
   const shortlist = buildCandidateShortlist({
-    candidates: pruningPreviewCandidates,
+    candidates: roofGeometryCandidates,
     selectedSystemType,
     maxShortlist: 8,
     maxRejectedExamples: 5,
   });
 
   const scenarioSet = buildCandidateScenarioSet({
-    candidates: pruningPreviewCandidates,
+    candidates: roofGeometryCandidates,
     selectedSystemType,
   });
 
   const scenarioExpansionPlan = buildScenarioExpansionPlan({
-    candidates: pruningPreviewCandidates,
+    candidates: roofGeometryCandidates,
     shortlist,
     optimiserResults,
     maxCandidates: 8,
@@ -352,7 +374,7 @@ function buildCandidateSetFromInputs({
   const optimisationFunnelPolicy = buildOptimisationFunnelPolicy({
     input: safeInput,
     quote: safeQuote,
-    candidates: pruningPreviewCandidates,
+    candidates: roofGeometryCandidates,
     shortlist,
     optimiserResults,
     scenarioExpansionPlan,
@@ -378,7 +400,7 @@ function buildCandidateSetFromInputs({
       panelCandidateCount: panelCandidates.length,
       inverterCandidateCount: inverterCandidates.length,
       batteryCandidateCount: batteryCandidates.length,
-      candidateCount: pruningPreviewCandidates.length,
+      candidateCount: roofGeometryCandidates.length,
     },
 
     summary,
@@ -387,9 +409,11 @@ function buildCandidateSetFromInputs({
     preferenceConstraintEnforcementReadiness,
     designPreferenceScoringSummary,
     diagnosticPruningPreviewSummary,
+    roofGeometryInput,
+    roofGeometryInputSummary,
     shortlist,
 
-    candidates: pruningPreviewCandidates,
+    candidates: roofGeometryCandidates,
 
     optimiserResults,
     scenarioSet,

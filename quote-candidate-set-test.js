@@ -464,6 +464,57 @@ async function main() {
     "diagnosticPruningPreview should not be used for recommendation."
   );
 
+  // Roof Geometry
+  assert(
+    quote.designCandidateSet.roofGeometryInput,
+    "designCandidateSet missing roofGeometryInput."
+  );
+
+  assert(
+    quote.designCandidateSet.roofGeometryInput.mode ===
+      "roof_geometry_input_model_beta",
+    `Unexpected roofGeometryInput mode: ${quote.designCandidateSet.roofGeometryInput.mode}`
+  );
+
+  assert(
+    quote.designCandidateSet.roofGeometryInput.usedForCalculation === false,
+    "roofGeometryInput should not be used for calculation."
+  );
+
+  assert(
+    quote.designCandidateSet.roofGeometryInput.usedForRecommendation === false,
+    "roofGeometryInput should not be used for recommendation."
+  );
+
+  assert(
+    quote.designCandidateSet.roofGeometryInputSummary,
+    "designCandidateSet missing roofGeometryInputSummary."
+  );
+
+  assert(
+    quote.designCandidateSet.roofGeometryInputSummary.mode ===
+      "roof_geometry_input_summary_beta",
+    `Unexpected roofGeometryInputSummary mode: ${quote.designCandidateSet.roofGeometryInputSummary.mode}`
+  );
+
+  assert(
+    quote.designCandidateSet.candidates.every(
+      (candidate) => candidate.roofGeometryAssumption
+    ),
+    "Every quote candidate should include roofGeometryAssumption."
+  );
+
+  assert(
+    quote.designCandidateSet.candidates.every(
+      (candidate) =>
+        candidate.roofGeometryAssumption.usedForRecommendation === false
+    ),
+    "roofGeometryAssumption should not be used for recommendation."
+  );
+
+
+
+  //PVGIS
   const pvgisCandidate = findCandidateWithPvgisPerformance(
     quote.designCandidateSet.candidates
   );
@@ -602,6 +653,10 @@ async function main() {
     diagnosticCarryForwardCount:
       quote.designCandidateSet.diagnosticPruningPreviewSummary
         .wouldCarryForwardCount,
+    roofGeometryReadiness:
+      quote.designCandidateSet.roofGeometryInputSummary.readiness,
+    roofGeometryConfidence:
+      quote.designCandidateSet.roofGeometryInputSummary.confidenceLevel,
   });
 }
 

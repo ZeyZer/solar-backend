@@ -108,6 +108,18 @@ function runStandardShortlistTest() {
         "diagnostic_candidate_pruning_preview_beta",
       `${candidate.candidateId} has unexpected diagnostic pruning preview mode.`
     );
+
+    // Roof Geometry
+    assert(
+      candidate.roofGeometry,
+      `${candidate.candidateId} missing roof geometry summary.`
+    );
+
+    assert(
+      candidate.roofGeometry.mode ===
+        "candidate_roof_geometry_assumption_beta",
+      `${candidate.candidateId} has unexpected roof geometry mode.`
+    );
   }
 
   console.log("  ✓ Standard shortlist OK:", {

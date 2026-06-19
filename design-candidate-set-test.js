@@ -337,6 +337,54 @@ function runStandardCandidateSetTest() {
     "Unexpected diagnosticPruningPreview mode."
   );
 
+  // Roof Geometry 
+  assert(
+    candidateSet.roofGeometryInput,
+    "Candidate set missing roofGeometryInput."
+  );
+
+  assert(
+    candidateSet.roofGeometryInput.mode === "roof_geometry_input_model_beta",
+    "Unexpected roofGeometryInput mode."
+  );
+
+  assert(
+    candidateSet.roofGeometryInput.usedForCalculation === false,
+    "roofGeometryInput should not be used for calculation."
+  );
+
+  assert(
+    candidateSet.roofGeometryInput.usedForRecommendation === false,
+    "roofGeometryInput should not be used for recommendation."
+  );
+
+  assert(
+    candidateSet.roofGeometryInputSummary,
+    "Candidate set missing roofGeometryInputSummary."
+  );
+
+  assert(
+    candidateSet.roofGeometryInputSummary.mode ===
+      "roof_geometry_input_summary_beta",
+    "Unexpected roofGeometryInputSummary mode."
+  );
+
+  assert(
+    candidateSet.candidates.every(
+      (candidate) => candidate.roofGeometryAssumption
+    ),
+    "Every candidate should include roofGeometryAssumption."
+  );
+
+  assert(
+    candidateSet.candidates.every(
+      (candidate) =>
+        candidate.roofGeometryAssumption.mode ===
+        "candidate_roof_geometry_assumption_beta"
+    ),
+    "Unexpected roofGeometryAssumption mode."
+  );
+
   for (const candidate of candidateSet.candidates) {
     assert(candidate.candidateId, "Candidate missing candidateId.");
     assert(candidate.products.panel, `${candidate.candidateId} missing panel product.`);

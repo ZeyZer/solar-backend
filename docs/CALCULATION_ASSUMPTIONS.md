@@ -1435,6 +1435,60 @@ This is not yet a full Pareto frontier calculation. Roof layout, stringing and i
 
 Future phases will use this diagnostic preview to design safe candidate pruning and Pareto-frontier selection.
 
+## Roof geometry input schema and confidence model
+
+The backend now includes a diagnostic roof geometry input model.
+
+Current candidate set fields:
+
+- `designCandidateSet.roofGeometryInput`
+- `designCandidateSet.roofGeometryInputSummary`
+
+Current candidate field:
+
+- `candidate.roofGeometryAssumption`
+
+Current modes:
+
+- `roof_geometry_input_model_beta`
+- `roof_geometry_input_summary_beta`
+- `candidate_roof_geometry_assumption_beta`
+
+The model supports multiple roof input sources:
+
+- `user_estimated_panel_count`
+- `manual_roof_polygon`
+- `admin_entered_roof_dimensions`
+- `future_auto_detected_roof_geometry`
+- `surveyed_roof_geometry`
+
+Current behaviour:
+
+- Existing roof inputs are treated as assumed panel positions.
+- Manual polygon and dimension fields can be recorded but are not yet used for final layout.
+- Candidate system size can be estimated from assumed panel positions and candidate panel wattage.
+- Physical fit is not verified unless explicitly marked as verified.
+- Larger panels are not assumed to fit.
+- More panels are not assumed to fit.
+- True layout optimisation is not enabled yet.
+
+Current status:
+
+- diagnostic only
+- not applied to filtering
+- not applied to ranking
+- not used for calculation
+- not used for pricing
+- not used for recommendation
+
+Current status flags:
+
+- `usedForCalculation`: `false`
+- `usedForPricing`: `false`
+- `usedForRecommendation`: `false`
+
+This model exists so current user-estimated panel counts, future manual roof polygons, and future satellite/LiDAR-derived roof geometry can all flow into the same optimiser structure.
+
 ## Financial model
 
 The financial model estimates:

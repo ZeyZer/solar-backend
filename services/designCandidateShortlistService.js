@@ -331,6 +331,44 @@ function summarizeCandidate(candidate, selectedSystemType = "balanced") {
         candidate?.diagnosticPruningPreview?.appliedToRanking === true,
     },
 
+    roofGeometry: {
+      mode: candidate?.roofGeometryAssumption?.mode || null,
+      inputBasis:
+        candidate?.roofGeometryAssumption?.inputBasis || null,
+      confidenceLevel:
+        candidate?.roofGeometryAssumption?.summary?.confidenceLevel || null,
+      confidenceScore:
+        candidate?.roofGeometryAssumption?.summary?.confidenceScore ?? null,
+      totalAssumedPanelPositions:
+        candidate?.roofGeometryAssumption?.summary
+          ?.totalAssumedPanelPositions ?? null,
+      candidatePanelWattage:
+        candidate?.roofGeometryAssumption?.summary
+          ?.candidatePanelWattage ?? null,
+      assumedSystemSizeKwp:
+        candidate?.roofGeometryAssumption?.summary
+          ?.assumedSystemSizeKwp ?? null,
+      physicalFitVerified:
+        candidate?.roofGeometryAssumption?.summary
+          ?.physicalFitVerified === true,
+      panelCountOptimisationAvailable:
+        candidate?.roofGeometryAssumption?.summary
+          ?.panelCountOptimisationAvailable === true,
+      trueLayoutOptimisationAvailable:
+        candidate?.roofGeometryAssumption?.summary
+          ?.trueLayoutOptimisationAvailable === true,
+      canCompareSamePanelCountOptions:
+        candidate?.roofGeometryAssumption?.summary
+          ?.canCompareSamePanelCountOptions === true,
+      canConfirmLargerPanelFit:
+        candidate?.roofGeometryAssumption?.summary
+          ?.canConfirmLargerPanelFit === true,
+      appliedToFiltering:
+        candidate?.roofGeometryAssumption?.appliedToFiltering === true,
+      appliedToRanking:
+        candidate?.roofGeometryAssumption?.appliedToRanking === true,
+    },
+
     selectedSystemTypeFit: getSelectedSystemTypeFit(
       candidate,
       selectedSystemType
