@@ -512,6 +512,27 @@ async function main() {
     "roofGeometryAssumption should not be used for recommendation."
   );
 
+  assert(
+    quote.designCandidateSet.manualRoofPolygonModel,
+    "designCandidateSet missing manualRoofPolygonModel."
+  );
+
+  assert(
+    quote.designCandidateSet.manualRoofPolygonModel.mode ===
+      "manual_roof_polygon_model_beta",
+    `Unexpected manualRoofPolygonModel mode: ${quote.designCandidateSet.manualRoofPolygonModel.mode}`
+  );
+
+  assert(
+    quote.designCandidateSet.manualRoofPolygonModel.usedForCalculation === false,
+    "manualRoofPolygonModel should not be used for calculation."
+  );
+
+  assert(
+    quote.designCandidateSet.manualRoofPolygonModel.usedForRecommendation === false,
+    "manualRoofPolygonModel should not be used for recommendation."
+  );
+
 
 
   //PVGIS
@@ -657,6 +678,8 @@ async function main() {
       quote.designCandidateSet.roofGeometryInputSummary.readiness,
     roofGeometryConfidence:
       quote.designCandidateSet.roofGeometryInputSummary.confidenceLevel,
+    manualRoofPolygonReadiness:
+      quote.designCandidateSet.manualRoofPolygonModel.summary.readiness,
   });
 }
 

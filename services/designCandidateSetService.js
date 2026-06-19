@@ -70,6 +70,10 @@ const {
   buildRoofGeometryInputSummary,
 } = require("./roofGeometryInputService");
 
+const {
+  buildManualRoofPolygonModel,
+} = require("./manualRoofPolygonModelService");
+
 const DESIGN_CANDIDATE_SET_VERSION = "2026-beta-1";
 
 function numberOrZero(value) {
@@ -318,6 +322,11 @@ function buildCandidateSetFromInputs({
       roofGeometryInput,
       candidates: roofGeometryCandidates,
     });
+  
+  const manualRoofPolygonModel = 
+    buildManualRoofPolygonModel({
+      roofGeometryInput,
+    });
 
   const hardwareMetadataSummary =
     buildHardwareMetadataNormalisationSummary({
@@ -411,6 +420,7 @@ function buildCandidateSetFromInputs({
     diagnosticPruningPreviewSummary,
     roofGeometryInput,
     roofGeometryInputSummary,
+    manualRoofPolygonModel,
     shortlist,
 
     candidates: roofGeometryCandidates,

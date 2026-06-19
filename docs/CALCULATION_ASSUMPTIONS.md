@@ -1489,6 +1489,53 @@ Current status flags:
 
 This model exists so current user-estimated panel counts, future manual roof polygons, and future satellite/LiDAR-derived roof geometry can all flow into the same optimiser structure.
 
+## Manual roof polygon model and validation
+
+The backend now includes a diagnostic manual roof polygon model.
+
+Current candidate set field:
+
+- `designCandidateSet.manualRoofPolygonModel`
+
+Current mode:
+
+- `manual_roof_polygon_model_beta`
+
+The model checks whether manually drawn roof polygons are present and whether they are ready for future area-based panel capacity estimation.
+
+It validates:
+
+- polygon coordinate count
+- approximate roof area
+- orientation
+- tilt
+- shading context
+- confidence level
+- whether review is needed before future use
+
+Current readiness states include:
+
+- `manual_polygons_not_provided`
+- `manual_polygons_not_ready`
+- `manual_polygons_partially_ready`
+- `manual_polygons_ready_but_need_review`
+- `manual_polygons_ready_for_future_area_estimation`
+
+Current status:
+
+- diagnostic only
+- does not calculate final panel layout
+- does not confirm panel fit
+- does not confirm larger panels will fit
+- does not confirm more panels will fit
+- not applied to filtering
+- not applied to ranking
+- not used for calculation
+- not used for pricing
+- not used for recommendation
+
+This model prepares the backend for the future “draw my roof” map workflow while keeping current panel-count assumptions honest.
+
 ## Financial model
 
 The financial model estimates:

@@ -36,7 +36,8 @@
     "test:design-preference-enforcement-readiness": "node design-preference-constraint-enforcement-readiness-test.js",
     "test:design-preference-scoring": "node design-preference-scoring-test.js",
     "test:diagnostic-pruning-preview": "node diagnostic-candidate-pruning-preview-test.js",
-    "test:roof-geometry-input": "node roof-geometry-input-test.js"
+    "test:roof-geometry-input": "node roof-geometry-input-test.js",
+    "test:manual-roof-polygon": "node manual-roof-polygon-model-test.js"
   },
   "keywords": [],
   "author": "",

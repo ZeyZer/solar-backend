@@ -385,6 +385,27 @@ function runStandardCandidateSetTest() {
     "Unexpected roofGeometryAssumption mode."
   );
 
+  assert(
+    candidateSet.manualRoofPolygonModel,
+    "Candidate set missing manualRoofPolygonModel."
+  );
+
+  assert(
+    candidateSet.manualRoofPolygonModel.mode ===
+      "manual_roof_polygon_model_beta",
+    "Unexpected manualRoofPolygonModel mode."
+  );
+
+  assert(
+    candidateSet.manualRoofPolygonModel.usedForCalculation === false,
+    "manualRoofPolygonModel should not be used for calculation."
+  );
+
+  assert(
+    candidateSet.manualRoofPolygonModel.usedForRecommendation === false,
+    "manualRoofPolygonModel should not be used for recommendation."
+  );
+
   for (const candidate of candidateSet.candidates) {
     assert(candidate.candidateId, "Candidate missing candidateId.");
     assert(candidate.products.panel, `${candidate.candidateId} missing panel product.`);
