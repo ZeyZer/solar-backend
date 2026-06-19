@@ -74,6 +74,11 @@ const {
   buildManualRoofPolygonModel,
 } = require("./manualRoofPolygonModelService");
 
+const {
+  applyRoofDesignConfidenceToCandidates,
+  buildRoofDesignConfidenceSummary,
+} = require("./roofDesignConfidenceService");
+
 const DESIGN_CANDIDATE_SET_VERSION = "2026-beta-1";
 
 function numberOrZero(value) {
@@ -328,6 +333,18 @@ function buildCandidateSetFromInputs({
       roofGeometryInput,
     });
 
+  const roofDesignConfidenceCandidates =
+    applyRoofDesignConfidenceToCandidates({
+      candidates: roofGeometryCandidates,
+      roofGeometryInput,
+      manualRoofPolygonModel,
+    });
+
+  const roofDesignConfidenceSummary =
+    buildRoofDesignConfidenceSummary({
+      candidates: roofDesignConfidenceCandidates,
+    });
+
   const hardwareMetadataSummary =
     buildHardwareMetadataNormalisationSummary({
       candidates: pruningPreviewCandidates,
@@ -350,30 +367,30 @@ function buildCandidateSetFromInputs({
       recommendedCarryForwardLimit: 12,
     });
 
-  const summary = summarizeFilteredCandidates(roofGeometryCandidates);
+  const summary = summarizeFilteredCandidates(roofDesignConfidenceCandidates);
 
   const selectedSystemType =
     designPreferenceProfile?.selectedSystemType || safeInput.systemType || "balanced";
 
   const optimiserResults = buildDesignCandidateRankingResults({
-    candidates: roofGeometryCandidates,
+    candidates: roofDesignConfidenceCandidates,
     selectedSystemType,
   });
 
   const shortlist = buildCandidateShortlist({
-    candidates: roofGeometryCandidates,
+    candidates: roofDesignConfidenceCandidates,
     selectedSystemType,
     maxShortlist: 8,
     maxRejectedExamples: 5,
   });
 
   const scenarioSet = buildCandidateScenarioSet({
-    candidates: roofGeometryCandidates,
+    candidates: roofDesignConfidenceCandidates,
     selectedSystemType,
   });
 
   const scenarioExpansionPlan = buildScenarioExpansionPlan({
-    candidates: roofGeometryCandidates,
+    candidates: roofDesignConfidenceCandidates,
     shortlist,
     optimiserResults,
     maxCandidates: 8,
@@ -383,7 +400,7 @@ function buildCandidateSetFromInputs({
   const optimisationFunnelPolicy = buildOptimisationFunnelPolicy({
     input: safeInput,
     quote: safeQuote,
-    candidates: roofGeometryCandidates,
+    candidates: roofDesignConfidenceCandidates,
     shortlist,
     optimiserResults,
     scenarioExpansionPlan,
@@ -409,7 +426,7 @@ function buildCandidateSetFromInputs({
       panelCandidateCount: panelCandidates.length,
       inverterCandidateCount: inverterCandidates.length,
       batteryCandidateCount: batteryCandidates.length,
-      candidateCount: roofGeometryCandidates.length,
+      candidateCount: roofDesignConfidenceCandidates.length,
     },
 
     summary,
@@ -421,9 +438,10 @@ function buildCandidateSetFromInputs({
     roofGeometryInput,
     roofGeometryInputSummary,
     manualRoofPolygonModel,
+    roofDesignConfidenceSummary,
     shortlist,
 
-    candidates: roofGeometryCandidates,
+    candidates: roofDesignConfidenceCandidates,
 
     optimiserResults,
     scenarioSet,

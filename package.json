@@ -37,7 +37,8 @@
     "test:design-preference-scoring": "node design-preference-scoring-test.js",
     "test:diagnostic-pruning-preview": "node diagnostic-candidate-pruning-preview-test.js",
     "test:roof-geometry-input": "node roof-geometry-input-test.js",
-    "test:manual-roof-polygon": "node manual-roof-polygon-model-test.js"
+    "test:manual-roof-polygon": "node manual-roof-polygon-model-test.js",
+    "test:roof-design-confidence": "node roof-design-confidence-test.js"
   },
   "keywords": [],
   "author": "",

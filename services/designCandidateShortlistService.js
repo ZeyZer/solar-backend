@@ -369,6 +369,45 @@ function summarizeCandidate(candidate, selectedSystemType = "balanced") {
         candidate?.roofGeometryAssumption?.appliedToRanking === true,
     },
 
+    roofDesignConfidence: {
+      mode: candidate?.roofDesignConfidence?.mode || null,
+      inputBasis:
+        candidate?.roofDesignConfidence?.inputBasis || null,
+      confidenceCategory:
+        candidate?.roofDesignConfidence?.confidenceCategory || null,
+      confidenceLevel:
+        candidate?.roofDesignConfidence?.confidenceLevel || null,
+      confidenceScore:
+        candidate?.roofDesignConfidence?.confidenceScore ?? null,
+      confidenceLabel:
+        candidate?.roofDesignConfidence?.confidenceLabel || null,
+      sourceDescription:
+        candidate?.roofDesignConfidence?.sourceDescription || null,
+      customerSafeSummary:
+        candidate?.roofDesignConfidence?.customerSafeMessaging?.summary || null,
+      primaryLimitation:
+        candidate?.roofDesignConfidence?.customerSafeMessaging
+          ?.primaryLimitation || null,
+      recommendedNextAction:
+        candidate?.roofDesignConfidence?.internalMessaging
+          ?.recommendedNextAction || null,
+      warningCount:
+        candidate?.roofDesignConfidence?.warnings?.length ?? 0,
+      canUseForFutureAreaBasedEstimate:
+        candidate?.roofDesignConfidence?.optimiserCapabilities
+          ?.canUseForFutureAreaBasedEstimate === true,
+      canConfirmLargerPanelFit:
+        candidate?.roofDesignConfidence?.optimiserCapabilities
+          ?.canConfirmLargerPanelFit === true,
+      canConfirmMorePanelsFit:
+        candidate?.roofDesignConfidence?.optimiserCapabilities
+          ?.canConfirmMorePanelsFit === true,
+      appliedToFiltering:
+        candidate?.roofDesignConfidence?.appliedToFiltering === true,
+      appliedToRanking:
+        candidate?.roofDesignConfidence?.appliedToRanking === true,
+    },
+
     selectedSystemTypeFit: getSelectedSystemTypeFit(
       candidate,
       selectedSystemType

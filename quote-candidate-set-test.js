@@ -533,6 +533,43 @@ async function main() {
     "manualRoofPolygonModel should not be used for recommendation."
   );
 
+  // Roof Design Confidence
+  assert(
+    quote.designCandidateSet.roofDesignConfidenceSummary,
+    "designCandidateSet missing roofDesignConfidenceSummary."
+  );
+
+  assert(
+    quote.designCandidateSet.roofDesignConfidenceSummary.mode ===
+      "roof_design_confidence_summary_beta",
+    `Unexpected roofDesignConfidenceSummary mode: ${quote.designCandidateSet.roofDesignConfidenceSummary.mode}`
+  );
+
+  assert(
+    quote.designCandidateSet.roofDesignConfidenceSummary.usedForCalculation === false,
+    "roofDesignConfidenceSummary should not be used for calculation."
+  );
+
+  assert(
+    quote.designCandidateSet.roofDesignConfidenceSummary.usedForRecommendation === false,
+    "roofDesignConfidenceSummary should not be used for recommendation."
+  );
+
+  assert(
+    quote.designCandidateSet.candidates.every(
+      (candidate) => candidate.roofDesignConfidence
+    ),
+    "Every quote candidate should include roofDesignConfidence."
+  );
+
+  assert(
+    quote.designCandidateSet.candidates.every(
+      (candidate) =>
+        candidate.roofDesignConfidence.usedForRecommendation === false
+    ),
+    "roofDesignConfidence should not be used for recommendation."
+  );
+
 
 
   //PVGIS
@@ -680,6 +717,10 @@ async function main() {
       quote.designCandidateSet.roofGeometryInputSummary.confidenceLevel,
     manualRoofPolygonReadiness:
       quote.designCandidateSet.manualRoofPolygonModel.summary.readiness,
+    roofDesignConfidenceReadiness:
+      quote.designCandidateSet.roofDesignConfidenceSummary.readiness,
+    roofDesignConfidence:
+      quote.designCandidateSet.roofDesignConfidenceSummary.averageConfidenceLabel,
   });
 }
 

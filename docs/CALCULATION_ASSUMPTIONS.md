@@ -1536,6 +1536,62 @@ Current status:
 
 This model prepares the backend for the future “draw my roof” map workflow while keeping current panel-count assumptions honest.
 
+## Roof input confidence and design confidence messaging
+
+The backend now includes diagnostic roof design confidence messaging.
+
+Current candidate field:
+
+- `candidate.roofDesignConfidence`
+
+Current candidate set field:
+
+- `designCandidateSet.roofDesignConfidenceSummary`
+
+Current modes:
+
+- `roof_design_confidence_beta`
+- `roof_design_confidence_summary_beta`
+
+The confidence model explains whether the quote is currently based on:
+
+- user-estimated panel count
+- manually drawn roof polygon
+- area geometry
+- verified roof geometry
+- verified panel fit
+- incomplete or unknown roof geometry
+
+The model provides:
+
+- confidence category
+- confidence level
+- confidence score
+- customer-safe summary wording
+- quote disclaimer wording
+- internal recommended next action
+- roof input warnings
+- whether future area-based estimation is possible
+
+Current status:
+
+- diagnostic only
+- not applied to filtering
+- not applied to ranking
+- not used for calculation
+- not used for pricing
+- not used for recommendation
+
+Important limitations:
+
+- Does not verify final panel layout
+- Does not confirm larger panels will fit
+- Does not confirm additional panels will fit
+- Does not perform satellite, LiDAR or surveyed roof detection
+- Does not currently change public-facing recommendations
+
+This model prepares the optimiser for safe future customer messaging around guessed panel counts, drawn roof areas and verified roof geometry.
+
 ## Financial model
 
 The financial model estimates:

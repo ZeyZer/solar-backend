@@ -406,6 +406,44 @@ function runStandardCandidateSetTest() {
     "manualRoofPolygonModel should not be used for recommendation."
   );
 
+  // Roof Design Confidence Summary 
+  assert(
+    candidateSet.roofDesignConfidenceSummary,
+    "Candidate set missing roofDesignConfidenceSummary."
+  );
+
+  assert(
+    candidateSet.roofDesignConfidenceSummary.mode ===
+      "roof_design_confidence_summary_beta",
+    "Unexpected roofDesignConfidenceSummary mode."
+  );
+
+  assert(
+    candidateSet.roofDesignConfidenceSummary.usedForCalculation === false,
+    "roofDesignConfidenceSummary should not be used for calculation."
+  );
+
+  assert(
+    candidateSet.roofDesignConfidenceSummary.usedForRecommendation === false,
+    "roofDesignConfidenceSummary should not be used for recommendation."
+  );
+
+  assert(
+    candidateSet.candidates.every(
+      (candidate) => candidate.roofDesignConfidence
+    ),
+    "Every candidate should include roofDesignConfidence."
+  );
+
+  assert(
+    candidateSet.candidates.every(
+      (candidate) =>
+        candidate.roofDesignConfidence.mode ===
+        "roof_design_confidence_beta"
+    ),
+    "Unexpected roofDesignConfidence mode."
+  );
+
   for (const candidate of candidateSet.candidates) {
     assert(candidate.candidateId, "Candidate missing candidateId.");
     assert(candidate.products.panel, `${candidate.candidateId} missing panel product.`);

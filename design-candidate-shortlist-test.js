@@ -120,6 +120,18 @@ function runStandardShortlistTest() {
         "candidate_roof_geometry_assumption_beta",
       `${candidate.candidateId} has unexpected roof geometry mode.`
     );
+
+    // Roof Design Confidence
+    assert(
+      candidate.roofDesignConfidence,
+      `${candidate.candidateId} missing roof design confidence summary.`
+    );
+
+    assert(
+      candidate.roofDesignConfidence.mode ===
+        "roof_design_confidence_beta",
+      `${candidate.candidateId} has unexpected roof design confidence mode.`
+    );
   }
 
   console.log("  ✓ Standard shortlist OK:", {
