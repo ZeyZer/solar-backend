@@ -1648,6 +1648,47 @@ This is not a true layout engine. It does not yet apply exact setbacks, obstacle
 
 This model exists to prepare for a future roof layout skeleton and manual “draw my roof” workflow.
 
+## Draw My Roof MVP contract
+
+The backend now has a documented contract for a future “Draw My Roof” frontend feature.
+
+Current documentation:
+
+- `docs/DRAW_MY_ROOF_MVP_PLAN.md`
+- `docs/DRAW_MY_ROOF_INPUT_CONTRACT.md`
+
+Current test:
+
+- `draw-my-roof-contract-test.js`
+
+The future frontend should send drawn roof data into:
+
+- `input.roofGeometry`
+
+The backend can already receive and interpret a manually drawn roof polygon through the following diagnostic outputs:
+
+- `designCandidateSet.roofGeometryInput`
+- `designCandidateSet.manualRoofPolygonModel`
+- `designCandidateSet.roofGeometryInputSummary`
+- `designCandidateSet.roofDesignConfidenceSummary`
+- `designCandidateSet.areaPanelCapacityEstimateSummary`
+- `candidate.roofGeometryAssumption`
+- `candidate.roofDesignConfidence`
+- `candidate.areaPanelCapacityEstimate`
+
+Current status:
+
+- diagnostic only
+- no map UI implemented yet
+- no automatic roof detection
+- no final panel layout
+- no physical fit confirmation
+- no recommendation changes
+- no calculation changes
+- no pricing changes
+
+This contract prepares the system for a future manual roof drawing frontend while keeping current quote outputs safe.
+
 ## Financial model
 
 The financial model estimates:

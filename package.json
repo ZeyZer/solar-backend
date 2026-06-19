@@ -39,7 +39,8 @@
     "test:roof-geometry-input": "node roof-geometry-input-test.js",
     "test:manual-roof-polygon": "node manual-roof-polygon-model-test.js",
     "test:roof-design-confidence": "node roof-design-confidence-test.js",
-    "test:area-panel-capacity": "node area-panel-capacity-estimator-test.js"
+    "test:area-panel-capacity": "node area-panel-capacity-estimator-test.js",
+    "test:draw-my-roof-contract": "node draw-my-roof-contract-test.js"
   },
   "keywords": [],
   "author": "",
