@@ -16,25 +16,25 @@ const {
 
 const {
   buildDesignCompatibilityPreview,
-} = require("../services/designCompatibilityService");
+} = require("../services/hardware/designCompatibilityService");
 
 const {
   buildTariffWarnings,
-} = require("../services/tariffWarningService");
+} = require("../services/tariffs/tariffWarningService");
 
 const {
   getHardwareCatalogForQuote,
-} = require("../services/hardwareCatalogService");
+} = require("../services/hardware/hardwareCatalogService");
 
 const {
   attachBatteryProductsToRecommendations,
-} = require("../services/batteryProductMappingService");
+} = require("../services/hardware/batteryProductMappingService");
 
 const {
   normalizeTariff,
   isRetailRateTariff,
   computeHourlyBilling,
-} = require("../services/tariffService");
+} = require("../services/tariffs/tariffService");
 
 const {
   round2,
@@ -42,23 +42,23 @@ const {
   makePaybackAndLifetimeSeries,
   makeBatteryAwarePaybackAndLifetimeSeries,
   makeYearlyRowsFromPaybackSeries,
-} = require("../services/financialService");
+} = require("../services/modelling/financialService");
 
 const {
   simulateHourByHour,
-} = require("../services/batterySimulationService");
+} = require("../services/modelling/batterySimulationService");
 
 const {
   extractDaySlice,
-} = require("../services/hourlyDebugService");
+} = require("../services/modelling/hourlyDebugService");
 
 const {
   calculateQuote,
-} = require("../services/quoteBaseService");
+} = require("../services/quote/quoteBaseService");
 
 const {
   buildBatteryRecommendations,
-} = require("../services/batteryRecommendationService");
+} = require("../services/modelling/batteryRecommendationService");
 
 const router = express.Router();
 

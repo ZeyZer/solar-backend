@@ -1,6 +1,6 @@
 const {
   getDefaultTariff,
-} = require("../config/tariffPresets");
+} = require("../../config/tariffPresets");
 
 function isHourInWindow(hod, startHour, endHour) {
   const hour = Number(hod ?? 0);

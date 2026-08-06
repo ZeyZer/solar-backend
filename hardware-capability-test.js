@@ -2,7 +2,7 @@ const {
   listActivePanels,
   listActiveInverters,
   listActiveBatteries,
-} = require("./services/hardwareCatalogService");
+} = require("./services/hardware/hardwareCatalogService");
 
 function assert(condition, message) {
   if (!condition) {

@@ -1,5 +1,5 @@
-const { CONFIG } = require("../config/quoteConfig");
-const { getPostcodeArea } = require("../utils/postcodeUtils");
+const { CONFIG } = require("../../config/quoteConfig");
+const { getPostcodeArea } = require("../../utils/postcodeUtils");
 
 // ===== Region table (unchanged) =====
 const REGION_TABLE = [

@@ -1,11 +1,11 @@
 const {
   resolveCandidateBatteryControlStrategy,
   summarizeCandidateBatteryControlStrategy,
-} = require("./candidateBatteryControlStrategyService");
+} = require("../tariffs/candidateBatteryControlStrategyService");
 
 const {
   simulateHourByHour,
-} = require("./batterySimulationService");
+} = require("../modelling/batterySimulationService");
 
 const DESIGN_CANDIDATE_DISPATCH_VERSION = "2026-beta-1";
 

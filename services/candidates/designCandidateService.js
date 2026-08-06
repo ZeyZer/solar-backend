@@ -5,11 +5,11 @@ const {
   findInverterById,
   findBatteryById,
   findClosestBatteryByUsableKWh,
-} = require("./hardwareCatalogService");
+} = require("../hardware/hardwareCatalogService");
 
 const {
   buildDesignCompatibilityPreview,
-} = require("./designCompatibilityService");
+} = require("../hardware/designCompatibilityService");
 
 const {
   buildDesignCandidateCostModel,
@@ -31,7 +31,7 @@ const {
 const {
   buildSelectedTariffScenarioRun,
   summarizeScenarioRun,
-} = require("./designCandidateScenarioRunnerService");
+} = require("../scenarios/designCandidateScenarioRunnerService");
 
 const DESIGN_CANDIDATE_SCHEMA_VERSION = "2026-beta-1";
 

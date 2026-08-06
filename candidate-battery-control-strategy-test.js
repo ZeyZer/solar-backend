@@ -1,6 +1,6 @@
 const {
   resolveCandidateBatteryControlStrategy,
-} = require("./services/candidateBatteryControlStrategyService");
+} = require("./services/tariffs/candidateBatteryControlStrategyService");
 
 function assert(condition, message) {
   if (!condition) {

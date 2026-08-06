@@ -1,22 +1,22 @@
-const { CONFIG } = require("../config/quoteConfig");
+const { CONFIG } = require("../../config/quoteConfig");
 
 const {
   normalizeTariff,
   computeHourlyBilling,
-} = require("./tariffService");
+} = require("../tariffs/tariffService");
 
 const {
   simulateHourByHour,
-} = require("./batterySimulationService");
+} = require("../modelling/batterySimulationService");
 
 const {
   makePaybackAndLifetimeSeries,
-} = require("./financialService");
+} = require("../modelling/financialService");
 
 const {
   resolveCandidateBatteryControlStrategy,
   summarizeCandidateBatteryControlStrategy,
-} = require("./candidateBatteryControlStrategyService");
+} = require("../tariffs/candidateBatteryControlStrategyService");
 
 const DESIGN_CANDIDATE_FINANCIAL_VERSION = "2026-beta-1";
 

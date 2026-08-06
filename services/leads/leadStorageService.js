@@ -2,7 +2,7 @@ const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 
-const LEADS_FILE = path.join(__dirname, "..", "leads.json");
+const LEADS_FILE = path.join(__dirname, "..", "..", "leads.json");
 
 function createLeadId() {
   return `lead_${crypto.randomUUID()}`;

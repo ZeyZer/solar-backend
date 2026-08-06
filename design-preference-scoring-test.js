@@ -1,19 +1,19 @@
 const {
   buildDesignPreferenceProfile,
-} = require("./services/designPreferenceProfileService");
+} = require("./services/preferences/designPreferenceProfileService");
 
 const {
   applyHardwareMetadataNormalisationToCandidates,
-} = require("./services/hardwareMetadataNormalisationService");
+} = require("./services/hardware/hardwareMetadataNormalisationService");
 
 const {
   applyDesignPreferenceScoringToCandidates,
   buildDesignPreferenceScoringSummary,
-} = require("./services/designPreferenceScoringService");
+} = require("./services/preferences/designPreferenceScoringService");
 
 const {
   buildCandidateSetFromInputs,
-} = require("./services/designCandidateSetService");
+} = require("./services/candidates/designCandidateSetService");
 
 function assert(condition, message) {
   if (!condition) {

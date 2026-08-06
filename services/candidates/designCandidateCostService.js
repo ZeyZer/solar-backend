@@ -1,4 +1,4 @@
-const { CONFIG } = require("../config/quoteConfig");
+const { CONFIG } = require("../../config/quoteConfig");
 
 const DESIGN_CANDIDATE_COST_VERSION = "2026-beta-1";
 

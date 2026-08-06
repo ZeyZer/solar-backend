@@ -8,7 +8,7 @@ const {
   getSystemTypeProfile,
   listSystemTypeProfiles,
   SYSTEM_TYPE_PROFILES_VERSION,
-} = require("../config/systemTypeProfiles");
+} = require("../../config/systemTypeProfiles");
 
 const SYSTEM_TYPE_FIT_VERSION = "2026-beta-1";
 

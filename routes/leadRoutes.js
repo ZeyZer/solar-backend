@@ -11,15 +11,15 @@ const {
   BREVO_CALL_LIST_ID,
   upsertBrevoContact,
   sendQuoteEmailWithAttachment,
-} = require("../services/brevoService");
+} = require("../services/integrations/brevoService");
 
 const {
   recordLeadEvent,
-} = require("../services/supabaseLeadService");
+} = require("../services/leads/supabaseLeadService");
 
 const {
   generateQuotePdfBuffer,
-} = require("../services/pdfService");
+} = require("../services/pdf/pdfService");
 
 const router = express.Router();
 

@@ -514,7 +514,7 @@ monthlyAfter
 ```txt
 server.js = app setup and route mounting
 routes/ = API endpoint handlers
-services/ = calculation, PDF, Brevo, PVGIS, tariff, battery, financial logic
+services/ = grouped calculation, candidate, integration, PDF, tariff, battery, and financial logic
 utils/ = generic helpers
 config/ = quote configuration
 docs/ = reference documents
@@ -545,7 +545,7 @@ Frontend and backend tariff defaults must stay aligned.
 If Flux-style defaults change, update:
 
 ```txt
-backend/services/tariffService.js
+backend/services/tariffs/tariffService.js
 frontend/src/App.js DEFAULT_TARIFF
 frontend tariff modal labels
 backend regression tests
