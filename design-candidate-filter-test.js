@@ -1,10 +1,10 @@
 const {
   buildDesignCandidateFromInputs,
-} = require("./services/designCandidateService");
+} = require("./services/candidates/designCandidateService");
 
 const {
   applyCandidateFiltering,
-} = require("./services/designCandidateFilterService");
+} = require("./services/candidates/designCandidateFilterService");
 
 function assert(condition, message) {
   if (!condition) {

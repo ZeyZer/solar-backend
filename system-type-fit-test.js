@@ -1,20 +1,20 @@
 const {
   buildDesignCandidateFromInputs,
-} = require("./services/designCandidateService");
+} = require("./services/candidates/designCandidateService");
 
 const {
   applyCandidateFiltering,
-} = require("./services/designCandidateFilterService");
+} = require("./services/candidates/designCandidateFilterService");
 
 const {
   buildSystemTypeFits,
   attachSystemTypeFits,
   getBestFitSystemType,
-} = require("./services/systemTypeFitService");
+} = require("./services/hardware/systemTypeFitService");
 
 const {
   buildCandidateSetFromInputs,
-} = require("./services/designCandidateSetService");
+} = require("./services/candidates/designCandidateSetService");
 
 function assert(condition, message) {
   if (!condition) {

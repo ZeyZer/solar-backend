@@ -1,6 +1,6 @@
 const {
   buildDesignCompatibilityPreview,
-} = require("./services/designCompatibilityService");
+} = require("./services/hardware/designCompatibilityService");
 
 function assert(condition, message) {
   if (!condition) {

@@ -3,15 +3,15 @@ const {
   buildCandidateRoofGeometryAssumption,
   applyRoofGeometryAssumptionsToCandidates,
   buildRoofGeometryInputSummary,
-} = require("./services/roofGeometryInputService");
+} = require("./services/roof/roofGeometryInputService");
 
 const {
   applyHardwareMetadataNormalisationToCandidates,
-} = require("./services/hardwareMetadataNormalisationService");
+} = require("./services/hardware/hardwareMetadataNormalisationService");
 
 const {
   buildCandidateSetFromInputs,
-} = require("./services/designCandidateSetService");
+} = require("./services/candidates/designCandidateSetService");
 
 function assert(condition, message) {
   if (!condition) {

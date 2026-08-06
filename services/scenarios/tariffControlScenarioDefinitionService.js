@@ -1,7 +1,7 @@
 const {
   resolveCandidateBatteryControlStrategy,
   summarizeCandidateBatteryControlStrategy,
-} = require("./candidateBatteryControlStrategyService");
+} = require("../tariffs/candidateBatteryControlStrategyService");
 
 const TARIFF_CONTROL_SCENARIO_DEFINITION_VERSION = "2026-beta-1";
 

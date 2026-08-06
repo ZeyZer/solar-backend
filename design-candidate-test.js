@@ -1,6 +1,6 @@
 const {
   buildDesignCandidateFromInputs,
-} = require("./services/designCandidateService");
+} = require("./services/candidates/designCandidateService");
 
 function assert(condition, message) {
   if (!condition) {

@@ -3,11 +3,11 @@ const {
   buildPriorityWeights,
   buildHardConstraints,
   buildSoftPreferences,
-} = require("./services/designPreferenceProfileService");
+} = require("./services/preferences/designPreferenceProfileService");
 
 const {
   buildCandidateSetFromInputs,
-} = require("./services/designCandidateSetService");
+} = require("./services/candidates/designCandidateSetService");
 
 function assert(condition, message) {
   if (!condition) {

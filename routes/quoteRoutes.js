@@ -20,15 +20,15 @@ const {
 
 const {
   buildTariffWarnings,
-} = require("../services/tariffWarningService");
+} = require("../services/tariffs/tariffWarningService");
 
 const {
   getHardwareCatalogForQuote,
-} = require("../services/hardwareCatalogService");
+} = require("../services/hardware/hardwareCatalogService");
 
 const {
   attachBatteryProductsToRecommendations,
-} = require("../services/batteryProductMappingService");
+} = require("../services/hardware/batteryProductMappingService");
 
 const {
   validateAndNormalisePostcode,
@@ -36,7 +36,7 @@ const {
 
 const {
   calculateQuote,
-} = require("../services/quoteBaseService");
+} = require("../services/quote/quoteBaseService");
 
 const {
   averageHourlyArrays,
@@ -46,26 +46,26 @@ const {
 
 const {
   buildDesignCompatibilityPreview,
-} = require("../services/designCompatibilityService");
+} = require("../services/hardware/designCompatibilityService");
 
 const {
   buildCandidateSetFromInputs,
-} = require("../services/designCandidateSetService");
+} = require("../services/candidates/designCandidateSetService");
 
 const {
   runHourlyModelForYear,
   getTotalPvgisAnnualKWh,
-} = require("../services/pvgisService");
+} = require("../services/integrations/pvgisService");
 
 const {
   normalizeTariff,
   isRetailRateTariff,
   computeHourlyBilling,
-} = require("../services/tariffService");
+} = require("../services/tariffs/tariffService");
 
 const {
   buildDailyUsageProfile,
-} = require("../services/loadProfileService");
+} = require("../services/modelling/loadProfileService");
 
 const {
   round2,
@@ -73,33 +73,33 @@ const {
   makePaybackAndLifetimeSeries,
   makeBatteryAwarePaybackAndLifetimeSeries,
   makeYearlyRowsFromPaybackSeries,
-} = require("../services/financialService");
+} = require("../services/modelling/financialService");
 
 const {
   simulateHourByHour,
-} = require("../services/batterySimulationService");
+} = require("../services/modelling/batterySimulationService");
 
 const {
   buildBatteryRecommendations,
-} = require("../services/batteryRecommendationService");
+} = require("../services/modelling/batteryRecommendationService");
 
 const {
   extractDaySlice,
-} = require("../services/hourlyDebugService");
+} = require("../services/modelling/hourlyDebugService");
 
 const {
   createLeadId,
   saveLeadLocally,
-} = require("../services/leadStorageService");
+} = require("../services/leads/leadStorageService");
 
 const {
   saveLeadToSupabase,
-} = require("../services/supabaseLeadService");
+} = require("../services/leads/supabaseLeadService");
 
 const {
   estimateSelfConsumptionAndSavings,
   getMcsRoofGroupData,
-} = require("../services/selfConsumptionService");
+} = require("../services/modelling/selfConsumptionService");
 
 const router = express.Router();
 

@@ -1,14 +1,14 @@
 const {
   buildRoofGeometryInputModel,
-} = require("./services/roofGeometryInputService");
+} = require("./services/roof/roofGeometryInputService");
 
 const {
   buildManualRoofPolygonModel,
-} = require("./services/manualRoofPolygonModelService");
+} = require("./services/roof/manualRoofPolygonModelService");
 
 const {
   buildCandidateSetFromInputs,
-} = require("./services/designCandidateSetService");
+} = require("./services/candidates/designCandidateSetService");
 
 function assert(condition, message) {
   if (!condition) {

@@ -1,15 +1,15 @@
 const {
   resolveCandidateBatteryControlStrategy,
   summarizeCandidateBatteryControlStrategy,
-} = require("./candidateBatteryControlStrategyService");
+} = require("../tariffs/candidateBatteryControlStrategyService");
 
 const {
   buildDesignCandidateDispatchModel,
-} = require("./designCandidateDispatchService");
+} = require("../candidates/designCandidateDispatchService");
 
 const {
   buildDesignCandidateFinancialModel,
-} = require("./designCandidateFinancialService");
+} = require("../candidates/designCandidateFinancialService");
 
 const {
   buildSelectedTariffScenarioDefinition,

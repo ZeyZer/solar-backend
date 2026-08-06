@@ -7,19 +7,19 @@ if (!fetchFn) {
 const {
   normalizeTariff, 
   isRetailRateTariff,
-} = require("../services/tariffService");
+} = require("../tariffs/tariffService");
 
 const {
   buildHourlyLoadForSeries,
-} = require("../services/loadProfileService");
+} = require("../modelling/loadProfileService");
 
 const {
   simulateHourByHour,
-} = require("../services/batterySimulationService");
+} = require("../modelling/batterySimulationService");
 
 const {
   sum12,
-} = require("../utils/arrayUtils");
+} = require("../../utils/arrayUtils");
 
 // ===== PVGIS =====
 const PVGIS = {

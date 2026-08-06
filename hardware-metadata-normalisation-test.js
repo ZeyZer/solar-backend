@@ -2,7 +2,7 @@ const {
   listActivePanels,
   listActiveInverters,
   listActiveBatteries,
-} = require("./services/hardwareCatalogService");
+} = require("./services/hardware/hardwareCatalogService");
 
 const {
   normalisePanelMetadata,
@@ -11,19 +11,19 @@ const {
   buildCandidateHardwareMetadataNormalisation,
   applyHardwareMetadataNormalisationToCandidates,
   buildHardwareMetadataNormalisationSummary,
-} = require("./services/hardwareMetadataNormalisationService");
+} = require("./services/hardware/hardwareMetadataNormalisationService");
 
 const {
   buildDesignPreferenceProfile,
-} = require("./services/designPreferenceProfileService");
+} = require("./services/preferences/designPreferenceProfileService");
 
 const {
   evaluateDesignPreferenceConstraintsForCandidate,
-} = require("./services/designPreferenceConstraintEvaluationService");
+} = require("./services/preferences/designPreferenceConstraintEvaluationService");
 
 const {
   buildCandidateSetFromInputs,
-} = require("./services/designCandidateSetService");
+} = require("./services/candidates/designCandidateSetService");
 
 function assert(condition, message) {
   if (!condition) {

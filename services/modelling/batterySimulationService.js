@@ -2,11 +2,11 @@ const {
   normalizeTariff,
   isRetailRateTariff,
   rateForHour,
-} = require("./tariffService");
+} = require("../tariffs/tariffService");
 
 const {
   getBatteryModelAssumptions,
-} = require("../config/batteryModelConfig");
+} = require("../../config/batteryModelConfig");
 
 function simulateHourByHour({
   pvHourlyKWh,

@@ -1,15 +1,15 @@
 const {
   buildDesignPreferenceProfile,
-} = require("./services/designPreferenceProfileService");
+} = require("./services/preferences/designPreferenceProfileService");
 
 const {
   evaluateDesignPreferenceConstraintsForCandidate,
   applyDesignPreferenceConstraintEvaluations,
-} = require("./services/designPreferenceConstraintEvaluationService");
+} = require("./services/preferences/designPreferenceConstraintEvaluationService");
 
 const {
   buildCandidateSetFromInputs,
-} = require("./services/designCandidateSetService");
+} = require("./services/candidates/designCandidateSetService");
 
 function assert(condition, message) {
   if (!condition) {

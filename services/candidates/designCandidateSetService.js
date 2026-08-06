@@ -2,7 +2,7 @@ const {
   listActivePanels,
   listActiveInverters,
   listActiveBatteries,
-} = require("./hardwareCatalogService");
+} = require("../hardware/hardwareCatalogService");
 
 const {
   buildDesignCandidateFromInputs,
@@ -23,11 +23,11 @@ const {
 
 const {
   buildCandidateScenarioSet,
-} = require("./designCandidateScenarioService");
+} = require("../scenarios/designCandidateScenarioService");
 
 const {
   buildScenarioExpansionPlan,
-} = require("./designCandidateScenarioExpansionService");
+} = require("../scenarios/designCandidateScenarioExpansionService");
 
 const {
   buildOptimisationFunnelPolicy,
@@ -35,54 +35,54 @@ const {
 
 const {
   buildDesignPreferenceProfile,
-} = require("./designPreferenceProfileService");
+} = require("../preferences/designPreferenceProfileService");
 
 const {
   applyDesignPreferenceConstraintEvaluations,
-} = require("./designPreferenceConstraintEvaluationService");
+} = require("../preferences/designPreferenceConstraintEvaluationService");
 
 const {
   applyHardwareMetadataNormalisationToCandidates,
   buildHardwareMetadataNormalisationSummary,
-} = require("./hardwareMetadataNormalisationService");
+} = require("../hardware/hardwareMetadataNormalisationService");
 
 const {
   buildPreferenceConstraintEnforcementReadiness,
-} = require("./designPreferenceConstraintEnforcementReadinessService");
+} = require("../preferences/designPreferenceConstraintEnforcementReadinessService");
 
 const {
   applyDesignPreferenceScoringToCandidates,
   buildDesignPreferenceScoringSummary,
-} = require("./designPreferenceScoringService");
+} = require("../preferences/designPreferenceScoringService");
 
 const {
   applyDiagnosticPruningPreviewToCandidates,
   buildDiagnosticPruningPreviewSummary,
-} = require("./diagnosticCandidatePruningPreviewService");
+} = require("../pruning/diagnosticCandidatePruningPreviewService");
 
 const {
   attachSystemTypeFits,
-} = require("./systemTypeFitService");
+} = require("../hardware/systemTypeFitService");
 
 const {
   buildRoofGeometryInputModel,
   applyRoofGeometryAssumptionsToCandidates,
   buildRoofGeometryInputSummary,
-} = require("./roofGeometryInputService");
+} = require("../roof/roofGeometryInputService");
 
 const {
   buildManualRoofPolygonModel,
-} = require("./manualRoofPolygonModelService");
+} = require("../roof/manualRoofPolygonModelService");
 
 const {
   applyRoofDesignConfidenceToCandidates,
   buildRoofDesignConfidenceSummary,
-} = require("./roofDesignConfidenceService");
+} = require("../roof/roofDesignConfidenceService");
 
 const {
   applyAreaPanelCapacityEstimatesToCandidates,
   buildAreaPanelCapacityEstimateSummary,
-} = require("./areaPanelCapacityEstimatorService");
+} = require("../roof/areaPanelCapacityEstimatorService");
 
 const DESIGN_CANDIDATE_SET_VERSION = "2026-beta-1";
 

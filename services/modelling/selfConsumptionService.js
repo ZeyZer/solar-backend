@@ -1,12 +1,12 @@
-const { CONFIG } = require("../config/quoteConfig");
-const MCS_TABLES = require("../data/mcs_self_consumption_tables.json")?.tables;
+const { CONFIG } = require("../../config/quoteConfig");
+const MCS_TABLES = require("../../data/mcs_self_consumption_tables.json")?.tables;
 
 const {
   PVGIS,
   getLatLonFromUkPostcode,
   orientationToPvgisAspect,
   getPvgisAnnualKWhForRoof,
-} = require("../services/pvgisService");
+} = require("../integrations/pvgisService");
 
 // ===============================
 // Heuristic battery uplift shaped like MCS tables

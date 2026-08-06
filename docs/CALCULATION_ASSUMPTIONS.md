@@ -76,7 +76,7 @@ Current beta tariff assumptions are stored in:
 
 '''txt
 backend/config/tariffPresets.js
-backend/services/tariffService.js
+backend/services/tariffs/tariffService.js
 
 ## Tariff warnings and notices
 
@@ -181,7 +181,7 @@ Current files:
 backend/data/hardware/batteries.json
 backend/data/hardware/panels.json
 backend/data/hardware/inverters.json
-backend/services/hardwareCatalogService.js
+backend/services/hardware/hardwareCatalogService.js
 
 ## Design-ready hardware catalogue fields
 

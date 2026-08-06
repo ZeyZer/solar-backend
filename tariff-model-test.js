@@ -2,7 +2,7 @@ const {
   normalizeTariff,
   rateForHour,
   computeHourlyBilling,
-} = require("./services/tariffService");
+} = require("./services/tariffs/tariffService");
 
 const {
   getTariffPreset,

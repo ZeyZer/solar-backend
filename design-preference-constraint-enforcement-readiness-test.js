@@ -1,22 +1,22 @@
 const {
   buildDesignPreferenceProfile,
-} = require("./services/designPreferenceProfileService");
+} = require("./services/preferences/designPreferenceProfileService");
 
 const {
   applyHardwareMetadataNormalisationToCandidates,
-} = require("./services/hardwareMetadataNormalisationService");
+} = require("./services/hardware/hardwareMetadataNormalisationService");
 
 const {
   applyDesignPreferenceConstraintEvaluations,
-} = require("./services/designPreferenceConstraintEvaluationService");
+} = require("./services/preferences/designPreferenceConstraintEvaluationService");
 
 const {
   buildPreferenceConstraintEnforcementReadiness,
-} = require("./services/designPreferenceConstraintEnforcementReadinessService");
+} = require("./services/preferences/designPreferenceConstraintEnforcementReadinessService");
 
 const {
   buildCandidateSetFromInputs,
-} = require("./services/designCandidateSetService");
+} = require("./services/candidates/designCandidateSetService");
 
 function assert(condition, message) {
   if (!condition) {

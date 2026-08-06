@@ -3,12 +3,12 @@ const express = require("express");
 const {
   generateQuotePdfBuffer,
   getPdfQuoteDataById,
-} = require("../services/pdfService");
+} = require("../services/pdf/pdfService");
 
 const {
   recordLeadEvent,
   getLeadFromSupabaseByLeadId,
-} = require("../services/supabaseLeadService");
+} = require("../services/leads/supabaseLeadService");
 
 const router = express.Router();
 

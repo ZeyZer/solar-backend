@@ -1,7 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 
-const HARDWARE_DIR = path.join(__dirname, "..", "data", "hardware");
+const HARDWARE_DIR = path.join(__dirname, "..", "..", "data", "hardware");
 
 const HARDWARE_CATALOG_VERSION = "2026-beta-1";
 

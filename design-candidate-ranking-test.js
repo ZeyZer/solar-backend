@@ -1,10 +1,10 @@
 const {
   buildCandidateSetFromInputs,
-} = require("./services/designCandidateSetService");
+} = require("./services/candidates/designCandidateSetService");
 
 const {
   buildDesignCandidateRankingResults,
-} = require("./services/designCandidateRankingService");
+} = require("./services/candidates/designCandidateRankingService");
 
 function assert(condition, message) {
   if (!condition) {
