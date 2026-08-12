@@ -8,6 +8,10 @@ const {
   normaliseGoogleSolarBuildingInsights,
 } = require("../services/roof/solarBuildingModelNormalisationService");
 
+const {
+  analyseSolarTargetBuildings,
+} = require("../services/roof/solarTargetBuildingService");
+
 const router = express.Router();
 
 function numberOrNull(value) {
@@ -40,6 +44,7 @@ function makeTargetFromBody(body = {}) {
   return {
     id: body.targetId || body.id || "target-1",
     label: body.label || "Solar target building",
+    source: body.source || "single_building_insights_request",
     latitude: location.latitude,
     longitude: location.longitude,
   };
@@ -134,6 +139,47 @@ router.post("/building-insights", async (req, res) => {
         code: googleErrorCode,
         message,
       },
+    });
+  }
+});
+
+router.post("/building-insights/batch", async (req, res) => {
+  const body = req.body || {};
+  const targets = body.solarTargetBuildings || body.targets || [];
+
+  if (!Array.isArray(targets) || targets.length === 0) {
+    return res.status(400).json({
+      success: false,
+      diagnosticOnly: true,
+      error: "Provide at least one solar target building.",
+      expectedBody: {
+        solarTargetBuildings: [
+          {
+            id: "target-1",
+            label: "Main house",
+            latitude: 51.26501,
+            longitude: -0.590874,
+          },
+        ],
+      },
+    });
+  }
+
+  try {
+    const result = await analyseSolarTargetBuildings(targets, {
+      requiredQuality: body.requiredQuality,
+      includeDetectedArrays: Boolean(body.includeDetectedArrays),
+      maxTargets: body.maxTargets,
+    });
+
+    return res.json(result);
+  } catch (error) {
+    console.error("Batch Solar roof Building Insights failed:", error);
+
+    return res.status(500).json({
+      success: false,
+      diagnosticOnly: true,
+      error: error?.message || "Batch Solar roof analysis failed.",
     });
   }
 });
