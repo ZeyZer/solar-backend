@@ -15,7 +15,7 @@ const leadRoutes = require("./routes/leadRoutes");
 const pdfRoutes = require("./routes/pdfRoutes");
 const quoteRecalcRoutes = require("./routes/quoteRecalcRoutes");
 const quoteRoutes = require("./routes/quoteRoutes");
-
+const solarRoofRoutes = require("./routes/solarRoofRoutes");
 
 // ====== EXPRESS SETUP ======
 app.use(cors());
@@ -25,6 +25,7 @@ app.use("/api/lead", leadRoutes);
 app.use("/api/quote", pdfRoutes);
 app.use("/api/quote", quoteRecalcRoutes);
 app.use("/api/quote", quoteRoutes);
+app.use("/api/solar-roof", solarRoofRoutes);
 
 
 // ====== ROUTES ======

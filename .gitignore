@@ -22,8 +22,11 @@ private-backups/
 # Debug files
 debug-pdf-page.png
 .DS_Store
+tmp/
 
 # Local/private roof benchmark data
 data/roof-benchmark/benchmark-properties.local.json
 data/roof-benchmark/results/
+
+# Local diagnostic outputs
 tmp/
