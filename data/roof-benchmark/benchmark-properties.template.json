@@ -1,0 +1,58 @@
+[
+  {
+    "id": "benchmark-001",
+    "label": "Simple detached example",
+    "status": "todo",
+
+    "property": {
+      "type": "detached",
+      "postcode": "",
+      "addressNotes": "",
+      "latitude": null,
+      "longitude": null,
+      "hasGarageOrOutbuilding": false,
+      "joinedRoofRisk": "low"
+    },
+
+    "installerDesignTruth": {
+      "panelCount": null,
+      "systemSizeKwp": null,
+      "panelWattage": null,
+      "annualProductionKwh": null,
+      "monthlyProductionKwh": {
+        "jan": null,
+        "feb": null,
+        "mar": null,
+        "apr": null,
+        "may": null,
+        "jun": null,
+        "jul": null,
+        "aug": null,
+        "sep": null,
+        "oct": null,
+        "nov": null,
+        "dec": null
+      },
+      "roofSpacesUsed": [
+        {
+          "label": "Main roof",
+          "orientation": "",
+          "pitchDegrees": null,
+          "panelCount": null,
+          "notes": ""
+        }
+      ]
+    },
+
+    "siteComplexity": {
+      "trees": "none",
+      "chimneys": false,
+      "dormers": false,
+      "rooflights": false,
+      "hipsValleys": "simple",
+      "knownShadingIssues": ""
+    },
+
+    "benchmarkNotes": ""
+  }
+]
