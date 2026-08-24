@@ -143,6 +143,72 @@ function normaliseDetectedArrays(detectedArrays) {
   };
 }
 
+function normaliseGooglePanelPosition(panel, index) {
+  if (!panel || typeof panel !== "object") {
+    return null;
+  }
+
+  return {
+    id: `google-panel-position-${index + 1}`,
+    sourceIndex: index,
+    center: panel.center || null,
+    orientation: panel.orientation || null,
+    segmentIndex:
+      Number.isFinite(Number(panel.segmentIndex))
+        ? Number(panel.segmentIndex)
+        : null,
+    yearlyEnergyDcKwh:
+      Number.isFinite(Number(panel.yearlyEnergyDcKwh))
+        ? Number(panel.yearlyEnergyDcKwh)
+        : null,
+  };
+}
+
+function normaliseGooglePanelConfig(config, index) {
+  if (!config || typeof config !== "object") {
+    return null;
+  }
+
+  return {
+    id: `google-panel-config-${index + 1}`,
+    sourceIndex: index,
+    panelsCount:
+      Number.isFinite(Number(config.panelsCount))
+        ? Number(config.panelsCount)
+        : null,
+    yearlyEnergyDcKwh:
+      Number.isFinite(Number(config.yearlyEnergyDcKwh))
+        ? Number(config.yearlyEnergyDcKwh)
+        : null,
+    roofSegmentSummaries: Array.isArray(config.roofSegmentSummaries)
+      ? config.roofSegmentSummaries
+          .map((summary, summaryIndex) => ({
+            sourceIndex: summaryIndex,
+            pitchDegrees:
+              Number.isFinite(Number(summary.pitchDegrees))
+                ? Number(summary.pitchDegrees)
+                : null,
+            azimuthDegrees:
+              Number.isFinite(Number(summary.azimuthDegrees))
+                ? Number(summary.azimuthDegrees)
+                : null,
+            panelsCount:
+              Number.isFinite(Number(summary.panelsCount))
+                ? Number(summary.panelsCount)
+                : null,
+            yearlyEnergyDcKwh:
+              Number.isFinite(Number(summary.yearlyEnergyDcKwh))
+                ? Number(summary.yearlyEnergyDcKwh)
+                : null,
+            segmentIndex:
+              Number.isFinite(Number(summary.segmentIndex))
+                ? Number(summary.segmentIndex)
+                : null,
+          }))
+      : [],
+  };
+}
+
 function normaliseGoogleSolarBuildingInsights(providerResponse, options = {}) {
   const target = options.target || {};
   const solarPotential = providerResponse?.solarPotential || {};
@@ -159,6 +225,14 @@ function normaliseGoogleSolarBuildingInsights(providerResponse, options = {}) {
     : [];
 
   const roofSegments = roofSegmentStats.map(normaliseRoofSegment);
+
+  const googlePanelPositions = solarPanels
+    .map(normaliseSolarPanel)
+    .filter(Boolean);
+
+  const googlePanelConfigs = solarPanelConfigs
+    .map(normalisePanelConfig)
+    .filter(Boolean);
 
   return {
     id: options.id || "google-solar-building-1",
@@ -214,17 +288,13 @@ function normaliseGoogleSolarBuildingInsights(providerResponse, options = {}) {
     roofSegmentCount: roofSegments.length,
     roofSegments,
 
-    googlePanelPositionsSample: solarPanels
-      .slice(0, 30)
-      .map(normaliseSolarPanel),
+    googlePanelPositions,
+    googlePanelPositionsSample: googlePanelPositions.slice(0, 20),
+    googlePanelPositionsCount: googlePanelPositions.length,
 
-    googlePanelPositionsCount: solarPanels.length,
-
-    googlePanelConfigsSample: solarPanelConfigs
-      .slice(0, 20)
-      .map(normalisePanelConfig),
-
-    googlePanelConfigsCount: solarPanelConfigs.length,
+    googlePanelConfigs,
+    googlePanelConfigsSample: googlePanelConfigs.slice(0, 20),
+    googlePanelConfigsCount: googlePanelConfigs.length,
 
     detectedArrays: normaliseDetectedArrays(providerResponse?.detectedArrays),
 

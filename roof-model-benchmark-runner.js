@@ -11,6 +11,26 @@ const {
   analyseSolarTargetBuildings,
 } = require("./services/roof/solarTargetBuildingService");
 
+const {
+  buildAutoFilteredRoofEstimate,
+} = require("./services/roof/roofBenchmarkAutoFilteredEstimateService");
+
+const {
+  buildPanelAssumptionAudit,
+} = require("./services/roof/roofBenchmarkPanelAssumptionAuditService");
+
+const {
+  buildSegmentPanelAudit,
+} = require("./services/roof/roofBenchmarkSegmentPanelAuditService");
+
+const {
+  buildSegmentSelectorAudit,
+} = require("./services/roof/roofBenchmarkSegmentSelectorService");
+
+const {
+  buildPracticalPanelEstimate,
+} = require("./services/roof/roofBenchmarkPracticalPanelEstimateService");
+
 const DEFAULT_INPUT_PATH = path.join(
   process.cwd(),
   "data",
@@ -82,6 +102,18 @@ function getInstallerAnnualProduction(item) {
   return numberOrNull(item.installerDesignTruth?.annualProductionKwh);
 }
 
+function getGooglePanelConfigs(building) {
+  if (Array.isArray(building?.googlePanelConfigs)) {
+    return building.googlePanelConfigs;
+  }
+
+  if (Array.isArray(building?.googlePanelConfigsSample)) {
+    return building.googlePanelConfigsSample;
+  }
+
+  return [];
+}
+
 function getGoogleMaxPanels(analysis) {
   const buildings = Array.isArray(analysis?.solarBuildingModels)
     ? analysis.solarBuildingModels
@@ -101,9 +133,7 @@ function getGoogleAnnualEnergyKwh(analysis) {
     : [];
 
   return buildings.reduce((sum, building) => {
-    const configs = Array.isArray(building?.googlePanelConfigsSample)
-      ? building.googlePanelConfigsSample
-      : [];
+    const configs = getGooglePanelConfigs(building);
 
     const maxConfig = configs.reduce((best, config) => {
       const panels = numberOrNull(config?.panelsCount) || 0;
@@ -112,13 +142,72 @@ function getGoogleAnnualEnergyKwh(analysis) {
       return panels > bestPanels ? config : best;
     }, null);
 
-    return (
-      sum +
-      (numberOrNull(maxConfig?.yearlyEnergyDcKwh) ||
-        numberOrNull(building?.solarPotential?.maxArrayEnergyKwh) ||
-        0)
-    );
+    return sum + (numberOrNull(maxConfig?.yearlyEnergyDcKwh) || 0);
   }, 0);
+}
+
+function getConfigClosestToPanelCount(building, targetPanelCount) {
+  const cleanTarget = numberOrNull(targetPanelCount);
+
+  if (cleanTarget === null) {
+    return null;
+  }
+
+  const configs = getGooglePanelConfigs(building);
+
+  return configs.reduce((best, config) => {
+    const panels = numberOrNull(config?.panelsCount);
+
+    if (panels === null) {
+      return best;
+    }
+
+    if (!best) {
+      return config;
+    }
+
+    const currentDelta = Math.abs(panels - cleanTarget);
+    const bestDelta = Math.abs(
+      (numberOrNull(best?.panelsCount) || 0) - cleanTarget
+    );
+
+    if (currentDelta < bestDelta) {
+      return config;
+    }
+
+    if (
+      currentDelta === bestDelta &&
+      (numberOrNull(config?.yearlyEnergyDcKwh) || 0) >
+        (numberOrNull(best?.yearlyEnergyDcKwh) || 0)
+    ) {
+      return config;
+    }
+
+    return best;
+  }, null);
+}
+
+function getGoogleClosestInstallerConfigSummary(analysis, installerPanelCount) {
+  const buildings = Array.isArray(analysis?.solarBuildingModels)
+    ? analysis.solarBuildingModels
+    : [];
+
+  if (buildings.length !== 1) {
+    return null;
+  }
+
+  const building = buildings[0];
+  const config = getConfigClosestToPanelCount(building, installerPanelCount);
+
+  if (!config) {
+    return null;
+  }
+
+  return {
+    panelsCount: numberOrNull(config.panelsCount),
+    yearlyEnergyDcKwh: numberOrNull(config.yearlyEnergyDcKwh),
+    roofSegmentSummaries: config.roofSegmentSummaries || [],
+  };
 }
 
 function percentageDifference(actual, expected) {
@@ -157,6 +246,17 @@ function summariseBenchmarkResult(item, analysis) {
   const googleMaxPanels = getGoogleMaxPanels(analysis);
   const googleAnnualEnergyKwh = getGoogleAnnualEnergyKwh(analysis);
 
+  const googleClosestInstallerConfig = getGoogleClosestInstallerConfigSummary(
+    analysis,
+    installerPanelCount
+  );
+
+  const autoFilteredEstimate = buildAutoFilteredRoofEstimate(analysis, item);
+  const panelAssumptionAudit = buildPanelAssumptionAudit(analysis, item);
+  const segmentPanelAudit = buildSegmentPanelAudit(analysis, item);
+  const segmentSelectorAudit = buildSegmentSelectorAudit(analysis);
+  const practicalPanelEstimate = buildPracticalPanelEstimate(segmentSelectorAudit);
+
   const panelDeltaPercent = percentageDifference(
     googleMaxPanels,
     installerPanelCount
@@ -164,6 +264,16 @@ function summariseBenchmarkResult(item, analysis) {
 
   const annualEnergyDeltaPercent = percentageDifference(
     googleAnnualEnergyKwh,
+    installerAnnualProductionKwh
+  );
+
+  const autoFilteredPanelDeltaPercent = percentageDifference(
+    autoFilteredEstimate?.panelsCount,
+    installerPanelCount
+  );
+
+  const autoFilteredEnergyDeltaPercent = percentageDifference(
+    autoFilteredEstimate?.annualEnergyKwh,
     installerAnnualProductionKwh
   );
 
@@ -185,6 +295,12 @@ function summariseBenchmarkResult(item, analysis) {
       summary: analysis?.summary ?? null,
       maxPanels: googleMaxPanels || null,
       annualEnergyKwh: googleAnnualEnergyKwh || null,
+      closestInstallerPanelCountConfig: googleClosestInstallerConfig,
+      autoFilteredEstimate,
+      panelAssumptionAudit,
+      segmentPanelAudit,
+      segmentSelectorAudit,
+      practicalPanelEstimate,
       buildings: (analysis?.solarBuildingModels || []).map((building) => ({
         id: building.id,
         targetLabel: building.targetLabel,
@@ -214,6 +330,27 @@ function summariseBenchmarkResult(item, analysis) {
       targetAnnualEnergyWithin15Percent:
         annualEnergyDeltaPercent !== null &&
         Math.abs(annualEnergyDeltaPercent) <= 15,
+
+      closestConfigPanelDeltaPercent: percentageDifference(
+        googleClosestInstallerConfig?.panelsCount,
+        installerPanelCount
+      ),
+      closestConfigAnnualEnergyDeltaPercent: percentageDifference(
+        googleClosestInstallerConfig?.yearlyEnergyDcKwh,
+        installerAnnualProductionKwh
+      ),
+
+      autoFilteredPanelDeltaPercent,
+      autoFilteredEnergyDeltaPercent,
+      autoFilteredPanelCountAccuracy: classifyPanelCountAccuracy(
+        autoFilteredPanelDeltaPercent
+      ),
+      autoFilteredPanelCountWithin10Percent:
+        autoFilteredPanelDeltaPercent !== null &&
+        Math.abs(autoFilteredPanelDeltaPercent) <= 10,
+      autoFilteredEnergyWithin15Percent:
+        autoFilteredEnergyDeltaPercent !== null &&
+        Math.abs(autoFilteredEnergyDeltaPercent) <= 15,
     },
 
     benchmarkNotes: item.benchmarkNotes || "",
@@ -268,13 +405,28 @@ async function runBenchmark(items) {
           installerPanelCount: summary.installerTruth.panelCount,
           googleMaxPanels: summary.googleSolarApi.maxPanels,
           panelDeltaPercent: summary.comparison.panelDeltaPercent,
-          panelCountAccuracy: summary.comparison.panelCountAccuracy,
-          installerAnnualProductionKwh:
-            summary.installerTruth.annualProductionKwh,
-          googleAnnualEnergyKwh: summary.googleSolarApi.annualEnergyKwh,
-          annualEnergyDeltaPercent:
-            summary.comparison.annualEnergyDeltaPercent,
-          imagery: summary.googleSolarApi.buildings?.[0]?.imagery,
+
+          closestConfigPanels:
+            summary.googleSolarApi.closestInstallerPanelCountConfig
+              ?.panelsCount,
+          closestConfigAnnualKwh:
+            summary.googleSolarApi.closestInstallerPanelCountConfig
+              ?.yearlyEnergyDcKwh,
+          closestConfigEnergyDeltaPercent:
+            summary.comparison.closestConfigAnnualEnergyDeltaPercent,
+
+          autoFilteredPanels:
+            summary.googleSolarApi.autoFilteredEstimate?.panelsCount,
+          autoFilteredAnnualKwh:
+            summary.googleSolarApi.autoFilteredEstimate?.annualEnergyKwh,
+          autoFilteredPanelDeltaPercent:
+            summary.comparison.autoFilteredPanelDeltaPercent,
+          autoFilteredEnergyDeltaPercent:
+            summary.comparison.autoFilteredEnergyDeltaPercent,
+          autoFilteredConfidence:
+            summary.googleSolarApi.autoFilteredEstimate?.confidence,
+          autoFilteredConfidenceReasons:
+            summary.googleSolarApi.autoFilteredEstimate?.confidenceReasons,
         },
         null,
         2
@@ -334,13 +486,144 @@ async function main() {
       summaryRows.map((row) => ({
         id: row.id,
         label: row.label,
+
         installerPanels: row.installerTruth?.panelCount,
-        googlePanels: row.googleSolarApi?.maxPanels,
-        panelDeltaPercent: row.comparison?.panelDeltaPercent,
-        panelAccuracy: row.comparison?.panelCountAccuracy,
         installerAnnualKwh: row.installerTruth?.annualProductionKwh,
+
+        googlePanels: row.googleSolarApi?.maxPanels,
         googleAnnualKwh: row.googleSolarApi?.annualEnergyKwh,
-        energyDeltaPercent: row.comparison?.annualEnergyDeltaPercent,
+        googlePanelDeltaPercent: row.comparison?.panelDeltaPercent,
+        googleEnergyDeltaPercent: row.comparison?.annualEnergyDeltaPercent,
+
+        closestConfigPanels:
+          row.googleSolarApi?.closestInstallerPanelCountConfig?.panelsCount,
+        closestConfigAnnualKwh:
+          row.googleSolarApi?.closestInstallerPanelCountConfig
+            ?.yearlyEnergyDcKwh,
+        closestConfigPanelDeltaPercent:
+          row.comparison?.closestConfigPanelDeltaPercent,
+        closestConfigEnergyDeltaPercent:
+          row.comparison?.closestConfigAnnualEnergyDeltaPercent,
+
+        autoFilteredPanels:
+          row.googleSolarApi?.autoFilteredEstimate?.panelsCount,
+        autoFilteredAnnualKwh:
+          row.googleSolarApi?.autoFilteredEstimate?.annualEnergyKwh,
+        autoFilteredPanelDeltaPercent:
+          row.comparison?.autoFilteredPanelDeltaPercent,
+        autoFilteredEnergyDeltaPercent:
+          row.comparison?.autoFilteredEnergyDeltaPercent,
+        autoFilteredPanelAccuracy:
+          row.comparison?.autoFilteredPanelCountAccuracy,
+        autoFilteredConfidence:
+          row.googleSolarApi?.autoFilteredEstimate?.confidence,
+        autoFilteredConfidenceScore:
+          row.googleSolarApi?.autoFilteredEstimate?.confidenceScore,
+        autoFilteredConfidenceReasons:
+          row.googleSolarApi?.autoFilteredEstimate?.confidenceReasons,
+
+        panelAuditStatus:
+          row.googleSolarApi?.panelAssumptionAudit?.status,
+
+        googlePanelWatts:
+          row.googleSolarApi?.panelAssumptionAudit?.firstBuilding?.googlePanel
+            ?.wattage,
+        googlePanelWidthM:
+          row.googleSolarApi?.panelAssumptionAudit?.firstBuilding?.googlePanel
+            ?.widthMeters,
+        googlePanelHeightM:
+          row.googleSolarApi?.panelAssumptionAudit?.firstBuilding?.googlePanel
+            ?.heightMeters,
+        googlePanelFootprintM2:
+          row.googleSolarApi?.panelAssumptionAudit?.firstBuilding?.googlePanel
+            ?.footprintM2,
+
+        installerPanelModel:
+          row.googleSolarApi?.panelAssumptionAudit?.firstBuilding
+            ?.installerPanel?.model,
+        installerPanelWatts:
+          row.googleSolarApi?.panelAssumptionAudit?.firstBuilding
+            ?.installerPanel?.wattage,
+        installerPanelWidthM:
+          row.googleSolarApi?.panelAssumptionAudit?.firstBuilding
+            ?.installerPanel?.widthMeters,
+        installerPanelHeightM:
+          row.googleSolarApi?.panelAssumptionAudit?.firstBuilding
+            ?.installerPanel?.heightMeters,
+        installerPanelFootprintM2:
+          row.googleSolarApi?.panelAssumptionAudit?.firstBuilding
+            ?.installerPanel?.footprintM2,
+
+        footprintAdjustedGoogleMaxPanels:
+          row.googleSolarApi?.panelAssumptionAudit?.firstBuilding
+            ?.footprintAdjustedInstallerEquivalentPanels,
+        googleToInstallerFootprintRatio:
+          row.googleSolarApi?.panelAssumptionAudit?.firstBuilding?.ratios
+            ?.googleToInstallerFootprintRatio,
+        panelAuditMissing:
+          row.googleSolarApi?.panelAssumptionAudit?.firstBuilding?.missing,
+
+        segmentAuditStatus:
+          row.googleSolarApi?.segmentPanelAudit?.status,
+        maxOnlySegmentIndexes:
+          row.googleSolarApi?.segmentPanelAudit?.firstBuilding
+            ?.maxOnlySegmentIndexes,
+        closestInstallerSegmentIndexes:
+          row.googleSolarApi?.segmentPanelAudit?.firstBuilding
+            ?.closestInstallerSegmentIndexes,
+        segmentRows:
+          row.googleSolarApi?.segmentPanelAudit?.firstBuilding?.segmentRows,
+
+        selectorStrategy:
+          row.googleSolarApi?.segmentSelectorAudit?.firstBuilding?.strategy,
+        selectorRecommendedSegmentIndexes:
+          row.googleSolarApi?.segmentSelectorAudit?.firstBuilding
+            ?.recommendedSegmentIndexes,
+        selectorOptionalSegmentIndexes:
+          row.googleSolarApi?.segmentSelectorAudit?.firstBuilding
+            ?.optionalSegmentIndexes,
+        selectorExcludedSegmentIndexes:
+          row.googleSolarApi?.segmentSelectorAudit?.firstBuilding
+            ?.excludedSegmentIndexes,
+        selectorRecommendedPanels:
+          row.googleSolarApi?.segmentSelectorAudit?.firstBuilding
+            ?.recommendedConfig?.panelsCount,
+        selectorRecommendedAnnualKwh:
+          row.googleSolarApi?.segmentSelectorAudit?.firstBuilding
+            ?.recommendedConfig?.yearlyEnergyDcKwh,
+        selectorRecommendedConfigSource:
+          row.googleSolarApi?.segmentSelectorAudit?.firstBuilding
+            ?.recommendedConfig?.source,
+        selectorScoredSegments:
+          row.googleSolarApi?.segmentSelectorAudit?.firstBuilding
+            ?.scoredSegments,
+
+        practicalEstimateStatus:
+          row.googleSolarApi?.practicalPanelEstimate?.status,
+        practicalCapacityPanels:
+          row.googleSolarApi?.practicalPanelEstimate?.capacity?.panels,
+        practicalCapacityAnnualKwh:
+          row.googleSolarApi?.practicalPanelEstimate?.capacity?.annualKwh,
+        practicalPanelsLow:
+          row.googleSolarApi?.practicalPanelEstimate?.practicalPanels?.low,
+        practicalPanelsExpected:
+          row.googleSolarApi?.practicalPanelEstimate?.practicalPanels
+            ?.expected,
+        practicalPanelsHigh:
+          row.googleSolarApi?.practicalPanelEstimate?.practicalPanels?.high,
+        practicalAnnualKwhLow:
+          row.googleSolarApi?.practicalPanelEstimate?.practicalAnnualKwh?.low,
+        practicalAnnualKwhExpected:
+          row.googleSolarApi?.practicalPanelEstimate?.practicalAnnualKwh
+            ?.expected,
+        practicalAnnualKwhHigh:
+          row.googleSolarApi?.practicalPanelEstimate?.practicalAnnualKwh?.high,
+        practicalConfidence:
+          row.googleSolarApi?.practicalPanelEstimate?.confidence?.level,
+        practicalConfidenceScore:
+          row.googleSolarApi?.practicalPanelEstimate?.confidence?.score,
+        practicalEstimateReasons:
+          row.googleSolarApi?.practicalPanelEstimate?.reasons,
       })),
       null,
       2
