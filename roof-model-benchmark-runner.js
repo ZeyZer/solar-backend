@@ -31,6 +31,14 @@ const {
   buildPracticalPanelEstimate,
 } = require("./services/roof/roofBenchmarkPracticalPanelEstimateService");
 
+const {
+  buildProductionDeltaDiagnostic,
+} = require("./services/roof/roofBenchmarkProductionDeltaDiagnosticService");
+
+const {
+  buildBenchmarkTargetEvaluation,
+} = require("./services/roof/roofBenchmarkTargetEvaluationService");
+
 const DEFAULT_INPUT_PATH = path.join(
   process.cwd(),
   "data",
@@ -256,6 +264,17 @@ function summariseBenchmarkResult(item, analysis) {
   const segmentPanelAudit = buildSegmentPanelAudit(analysis, item);
   const segmentSelectorAudit = buildSegmentSelectorAudit(analysis);
   const practicalPanelEstimate = buildPracticalPanelEstimate(segmentSelectorAudit);
+  const productionDeltaDiagnostic = buildProductionDeltaDiagnostic({
+    benchmarkItem: item,
+    panelAssumptionAudit,
+    practicalPanelEstimate,
+  });
+
+  const targetEvaluation = buildBenchmarkTargetEvaluation({
+    benchmarkItem: item,
+    practicalPanelEstimate,
+    productionDeltaDiagnostic,
+  });
 
   const panelDeltaPercent = percentageDifference(
     googleMaxPanels,
@@ -301,6 +320,8 @@ function summariseBenchmarkResult(item, analysis) {
       segmentPanelAudit,
       segmentSelectorAudit,
       practicalPanelEstimate,
+      productionDeltaDiagnostic,
+      targetEvaluation,
       buildings: (analysis?.solarBuildingModels || []).map((building) => ({
         id: building.id,
         targetLabel: building.targetLabel,
@@ -624,6 +645,51 @@ async function main() {
           row.googleSolarApi?.practicalPanelEstimate?.confidence?.score,
         practicalEstimateReasons:
           row.googleSolarApi?.practicalPanelEstimate?.reasons,
+
+        productionDiagnosticStatus:
+          row.googleSolarApi?.productionDeltaDiagnostic?.status,
+        installerSystemSizeKwp:
+          row.googleSolarApi?.productionDeltaDiagnostic?.installerReference
+            ?.systemSizeKwp,
+        practicalSystemSizeKwpExpected:
+          row.googleSolarApi?.productionDeltaDiagnostic?.practicalEstimate
+            ?.systemSizeKwp?.expected,
+        installerSpecificYieldKwhPerKwp:
+          row.googleSolarApi?.productionDeltaDiagnostic?.installerReference
+            ?.specificYieldKwhPerKwp,
+        practicalSpecificYieldKwhPerKwpExpected:
+          row.googleSolarApi?.productionDeltaDiagnostic?.practicalEstimate
+            ?.specificYieldKwhPerKwp?.expected,
+        expectedSystemSizeDeltaPercent:
+          row.googleSolarApi?.productionDeltaDiagnostic?.deltas
+            ?.expectedSystemSizeDeltaPercent,
+        specificYieldDeltaPercent:
+          row.googleSolarApi?.productionDeltaDiagnostic?.deltas
+            ?.specificYieldDeltaPercent,
+        productionModelDeltaFlag:
+          row.googleSolarApi?.productionDeltaDiagnostic?.productionModelDelta
+            ?.flag,
+        productionModelDeltaSeverity:
+          row.googleSolarApi?.productionDeltaDiagnostic?.productionModelDelta
+            ?.severity,
+        productionModelDeltaReason:
+          row.googleSolarApi?.productionDeltaDiagnostic?.productionModelDelta
+            ?.reason,
+
+        targetPanelTruthInRange:
+          row.googleSolarApi?.targetEvaluation?.checks?.panelTruthInRange,
+        targetAnnualTruthInRange:
+          row.googleSolarApi?.targetEvaluation?.checks?.annualTruthInRange,
+        targetPanelExpectedWithin10Percent:
+          row.googleSolarApi?.targetEvaluation?.checks
+            ?.panelExpectedWithin10Percent,
+        targetAnnualExpectedWithin15Percent:
+          row.googleSolarApi?.targetEvaluation?.checks
+            ?.annualExpectedWithin15Percent,
+        targetOverallPass:
+          row.googleSolarApi?.targetEvaluation?.checks?.overallTargetPass,
+        targetWarnings:
+          row.googleSolarApi?.targetEvaluation?.warnings,
       })),
       null,
       2
