@@ -39,6 +39,22 @@ const {
   buildBenchmarkTargetEvaluation,
 } = require("./services/roof/roofBenchmarkTargetEvaluationService");
 
+const {
+  buildHybridPvgisProductionBenchmark,
+} = require("./services/roof/roofBenchmarkHybridPvgisProductionService");
+
+const {
+  buildGoogleShadeDataLayersAudit,
+} = require("./services/roof/roofBenchmarkGoogleShadeDataLayersAuditService");
+
+const {
+  buildGoogleHourlyShadeFactorAudit,
+} = require("./services/roof/roofBenchmarkGoogleHourlyShadeFactorService");
+
+const {
+  buildSegmentShadeAdjustedPvgisProductionBenchmark,
+} = require("./services/roof/roofBenchmarkSegmentShadeAdjustedPvgisProductionService");
+
 const DEFAULT_INPUT_PATH = path.join(
   process.cwd(),
   "data",
@@ -247,7 +263,7 @@ function classifyPanelCountAccuracy(panelDeltaPercent) {
   return "outside_target";
 }
 
-function summariseBenchmarkResult(item, analysis) {
+async function summariseBenchmarkResult(item, analysis) {
   const installerPanelCount = getInstallerPanelCount(item);
   const installerAnnualProductionKwh = getInstallerAnnualProduction(item);
 
@@ -275,6 +291,33 @@ function summariseBenchmarkResult(item, analysis) {
     practicalPanelEstimate,
     productionDeltaDiagnostic,
   });
+
+  const hybridPvgisProductionBenchmark =
+    await buildHybridPvgisProductionBenchmark({
+      benchmarkItem: item,
+      panelAssumptionAudit,
+      segmentSelectorAudit,
+      practicalPanelEstimate,
+    });
+
+  const googleShadeDataLayersAudit =
+    await buildGoogleShadeDataLayersAudit({
+      benchmarkItem: item,
+    });
+
+  const googleHourlyShadeFactorAudit =
+    await buildGoogleHourlyShadeFactorAudit({
+      benchmarkItem: item,
+      analysis,
+      hybridPvgisProductionBenchmark,
+    });
+
+  const segmentShadeAdjustedPvgisProductionBenchmark =
+    await buildSegmentShadeAdjustedPvgisProductionBenchmark({
+      benchmarkItem: item,
+      hybridPvgisProductionBenchmark,
+      googleHourlyShadeFactorAudit,
+    });
 
   const panelDeltaPercent = percentageDifference(
     googleMaxPanels,
@@ -322,6 +365,10 @@ function summariseBenchmarkResult(item, analysis) {
       practicalPanelEstimate,
       productionDeltaDiagnostic,
       targetEvaluation,
+      hybridPvgisProductionBenchmark,
+      googleShadeDataLayersAudit,
+      googleHourlyShadeFactorAudit,
+      segmentShadeAdjustedPvgisProductionBenchmark,
       buildings: (analysis?.solarBuildingModels || []).map((building) => ({
         id: building.id,
         targetLabel: building.targetLabel,
@@ -411,7 +458,7 @@ async function runBenchmark(items) {
       maxTargets: 1,
     });
 
-    const summary = summariseBenchmarkResult(item, analysis);
+    const summary = await summariseBenchmarkResult(item, analysis);
 
     results.push({
       benchmark: item,
@@ -690,6 +737,108 @@ async function main() {
           row.googleSolarApi?.targetEvaluation?.checks?.overallTargetPass,
         targetWarnings:
           row.googleSolarApi?.targetEvaluation?.warnings,
+
+        hybridPvgisStatus:
+          row.googleSolarApi?.hybridPvgisProductionBenchmark?.status,
+        hybridPvgisPanels:
+          row.googleSolarApi?.hybridPvgisProductionBenchmark
+            ?.allocatedPanelTotal,
+        hybridPvgisSystemSizeKwp:
+          row.googleSolarApi?.hybridPvgisProductionBenchmark?.systemSizeKwp,
+        hybridPvgisAnnualKwh:
+          row.googleSolarApi?.hybridPvgisProductionBenchmark?.pvgis
+            ?.annualKwh,
+        hybridPvgisAnnualDeltaPercent:
+          row.googleSolarApi?.hybridPvgisProductionBenchmark?.deltas
+            ?.annualDeltaPercent,
+        hybridPvgisMonthlyKwh:
+          row.googleSolarApi?.hybridPvgisProductionBenchmark?.pvgis
+            ?.monthlyKwh,
+        hybridPvgisInstallerMonthlyKwh:
+          row.googleSolarApi?.hybridPvgisProductionBenchmark
+            ?.installerReference?.monthlyKwh,
+        hybridPvgisMonthlyDeltaPercent:
+          row.googleSolarApi?.hybridPvgisProductionBenchmark?.deltas
+            ?.monthlyDeltaPercent,
+        hybridPvgisSegmentInputs:
+          row.googleSolarApi?.hybridPvgisProductionBenchmark?.segmentInputs,
+
+        googleShadeDataLayersStatus:
+          row.googleSolarApi?.googleShadeDataLayersAudit?.status,
+        googleShadeImageryQuality:
+          row.googleSolarApi?.googleShadeDataLayersAudit?.dataLayers
+            ?.imageryQuality,
+        googleShadeHasMonthlyFlux:
+          row.googleSolarApi?.googleShadeDataLayersAudit?.dataLayers
+            ?.hasMonthlyFluxUrl,
+        googleShadeHourlyShadeUrlCount:
+          row.googleSolarApi?.googleShadeDataLayersAudit?.dataLayers
+            ?.hourlyShadeUrlCount,
+        googleShadeHasHourlyShade:
+          row.googleSolarApi?.googleShadeDataLayersAudit?.dataLayers
+            ?.hasHourlyShadeUrls,
+        googleShadeRequestRadiusMeters:
+          row.googleSolarApi?.googleShadeDataLayersAudit?.request
+            ?.radiusMeters,
+        googleShadeAuditError:
+          row.googleSolarApi?.googleShadeDataLayersAudit?.error,
+
+        googleHourlyShadeStatus:
+          row.googleSolarApi?.googleHourlyShadeFactorAudit?.status,
+        googleHourlyShadeImageryQuality:
+          row.googleSolarApi?.googleHourlyShadeFactorAudit?.imageryQuality,
+        googleHourlyShadePanelSampleCount:
+          row.googleSolarApi?.googleHourlyShadeFactorAudit
+            ?.selectedPanelSampleCount,
+        googleHourlyShadeRequestLocation:
+          row.googleSolarApi?.googleHourlyShadeFactorAudit?.requestLocation,
+        googleHourlyShadeSamplesBySegment:
+          row.googleSolarApi?.googleHourlyShadeFactorAudit
+            ?.selectedPanelSamplesBySegment,
+        googleMonthlyAverageShadeFactor:
+          row.googleSolarApi?.googleHourlyShadeFactorAudit
+            ?.monthlyAverageShadeFactor,
+        googleMonthlyValidPointSampleCounts:
+          row.googleSolarApi?.googleHourlyShadeFactorAudit
+            ?.monthlyValidPointSampleCounts,
+        googleSegmentMonthlyAverageShadeFactor:
+          row.googleSolarApi?.googleHourlyShadeFactorAudit
+            ?.segmentMonthlyAverageShadeFactor,
+        googleSegmentMonthlyValidPointSampleCounts:
+          row.googleSolarApi?.googleHourlyShadeFactorAudit
+            ?.segmentMonthlyValidPointSampleCounts,
+        googleHourlyShadeDebugSamples:
+          row.googleSolarApi?.googleHourlyShadeFactorAudit?.debugSamples,
+        googleHourlyShadeAuditError:
+          row.googleSolarApi?.googleHourlyShadeFactorAudit?.error,
+
+        segmentShadeAdjustedPvgisStatus:
+          row.googleSolarApi?.segmentShadeAdjustedPvgisProductionBenchmark
+            ?.status,
+        segmentShadeAdjustedPvgisUnshadedAnnualKwh:
+          row.googleSolarApi?.segmentShadeAdjustedPvgisProductionBenchmark
+            ?.pvgisUnshaded?.annualKwh,
+        segmentShadeAdjustedPvgisAnnualKwh:
+          row.googleSolarApi?.segmentShadeAdjustedPvgisProductionBenchmark
+            ?.pvgisSegmentShadeAdjusted?.annualKwh,
+        segmentShadeAdjustedPvgisAnnualDeltaPercent:
+          row.googleSolarApi?.segmentShadeAdjustedPvgisProductionBenchmark
+            ?.deltas?.segmentShadeAdjustedAnnualDeltaPercent,
+        segmentShadeAdjustedPvgisShadeLossKwh:
+          row.googleSolarApi?.segmentShadeAdjustedPvgisProductionBenchmark
+            ?.shadeImpact?.annualShadeLossKwh,
+        segmentShadeAdjustedPvgisShadeLossPercent:
+          row.googleSolarApi?.segmentShadeAdjustedPvgisProductionBenchmark
+            ?.shadeImpact?.annualShadeLossPercent,
+        segmentShadeAdjustedPvgisMonthlyKwh:
+          row.googleSolarApi?.segmentShadeAdjustedPvgisProductionBenchmark
+            ?.pvgisSegmentShadeAdjusted?.monthlyKwh,
+        segmentShadeAdjustedPvgisMonthlyDeltaPercent:
+          row.googleSolarApi?.segmentShadeAdjustedPvgisProductionBenchmark
+            ?.deltas?.segmentShadeAdjustedMonthlyDeltaPercent,
+        segmentShadeAdjustedPvgisError:
+          row.googleSolarApi?.segmentShadeAdjustedPvgisProductionBenchmark
+            ?.error,
       })),
       null,
       2
