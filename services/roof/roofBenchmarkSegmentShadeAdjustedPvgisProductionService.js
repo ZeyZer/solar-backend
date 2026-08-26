@@ -1,10 +1,19 @@
-// R1.7b.2b
+// R1.7b.8
 // Applies segment-level Google month/hour shade matrices to each segment's PVGIS hourly output.
+// Includes both:
+// 1) direct Google shade adjustment
+// 2) adaptive diffuse-floor policy adjustment
 
 const {
   getLatLonFromUkPostcode,
   getPvgisHourlyKWhForRoof,
 } = require("../integrations/pvgisService");
+
+const {
+  applyDiffuseFloor,
+  calculateDirectShadeLossPercent,
+  chooseAdaptiveShadePolicy,
+} = require("./googleShadeAdjustmentPolicyService");
 
 function numberOrNull(value) {
   if (value === null || value === undefined || value === "") return null;
@@ -68,9 +77,9 @@ function clampShadeFactor(value) {
   return Math.min(1, Math.max(0, number));
 }
 
-function getShadeFactor({ matrix, monthIdx, hourOfDay }) {
+function getShadeFactor({ matrix, monthIdx, hourOfDay, hourOffset = 0 }) {
   const month = Number(monthIdx);
-  const hour = Number(hourOfDay);
+  const hour = (Number(hourOfDay) + Number(hourOffset) + 24) % 24;
 
   if (month < 0 || month > 11 || hour < 0 || hour > 23) {
     return 1;
@@ -82,20 +91,34 @@ function getShadeFactor({ matrix, monthIdx, hourOfDay }) {
   return value === null ? 1 : value;
 }
 
-function applyShadeToHourly({ hourlyKwh, monthIdx, hourOfDay, shadeMatrix }) {
+function applyShadeToHourly({
+  hourlyKwh,
+  monthIdx,
+  hourOfDay,
+  shadeMatrix,
+  diffuseFloor = 0,
+  hourOffset = 0,
+}) {
   const adjusted = [];
   const factors = [];
 
   for (let i = 0; i < hourlyKwh.length; i += 1) {
     const original = Number(hourlyKwh[i] || 0);
-    const factor = getShadeFactor({
+
+    const shadeFactor = getShadeFactor({
       matrix: shadeMatrix,
       monthIdx: monthIdx[i],
       hourOfDay: hourOfDay[i],
+      hourOffset,
     });
 
-    adjusted.push(round2(original * factor));
-    factors.push(round2(factor));
+    const multiplier = applyDiffuseFloor({
+      shadeFactor,
+      diffuseFloor,
+    });
+
+    adjusted.push(round2(original * multiplier));
+    factors.push(round2(multiplier));
   }
 
   return { adjusted, factors };
@@ -169,12 +192,190 @@ function monthlyDeltaPercent(estimateMonthly, referenceMonthly) {
   );
 }
 
+function buildYearlyAdjustedResult({
+  year,
+  baseSegmentProfiles,
+  segmentMatrices,
+  diffuseFloor,
+  hourOffset,
+}) {
+  const adjustedSegmentProfiles = [];
+
+  for (const baseProfile of baseSegmentProfiles) {
+    const segmentKey = String(baseProfile.segmentIndex);
+    const shadeMatrix = segmentMatrices[segmentKey];
+
+    const adjusted = applyShadeToHourly({
+      hourlyKwh: baseProfile.unshadedHourlyKwh,
+      monthIdx: baseProfile.monthIdx,
+      hourOfDay: baseProfile.hourOfDay,
+      shadeMatrix,
+      diffuseFloor,
+      hourOffset,
+    });
+
+    const unshadedAnnualKwh = round1(
+      baseProfile.unshadedHourlyKwh.reduce(
+        (sum, value) => sum + Number(value || 0),
+        0
+      )
+    );
+
+    const adjustedAnnualKwh = round1(
+      adjusted.adjusted.reduce((sum, value) => sum + Number(value || 0), 0)
+    );
+
+    adjustedSegmentProfiles.push({
+      segmentIndex: baseProfile.segmentIndex,
+      allocatedPanels: baseProfile.allocatedPanels,
+      peakPowerKwp: baseProfile.peakPowerKwp,
+      tiltDeg: baseProfile.tiltDeg,
+      googleAzimuthDegrees: baseProfile.googleAzimuthDegrees,
+      pvgisAspectDeg: baseProfile.pvgisAspectDeg,
+
+      unshadedAnnualKwh,
+      adjustedAnnualKwh,
+      shadeLossKwh: round1(unshadedAnnualKwh - adjustedAnnualKwh),
+      shadeLossPercent:
+        unshadedAnnualKwh > 0
+          ? round1(((unshadedAnnualKwh - adjustedAnnualKwh) / unshadedAnnualKwh) * 100)
+          : null,
+
+      adjustedHourlyKwh: adjusted.adjusted,
+    });
+  }
+
+  const unshadedTotalHourly = sumHourlyArrays(
+    baseSegmentProfiles.map((profile) => profile.unshadedHourlyKwh)
+  );
+
+  const adjustedTotalHourly = sumHourlyArrays(
+    adjustedSegmentProfiles.map((profile) => profile.adjustedHourlyKwh)
+  );
+
+  if (!unshadedTotalHourly || !adjustedTotalHourly) {
+    return null;
+  }
+
+  const monthIdx = baseSegmentProfiles[0].monthIdx;
+
+  const unshadedMonthlyKwh = monthlyFromHourly(unshadedTotalHourly, monthIdx);
+  const adjustedMonthlyKwh = monthlyFromHourly(adjustedTotalHourly, monthIdx);
+
+  const unshadedAnnualKwh = round1(
+    unshadedTotalHourly.reduce((sum, value) => sum + Number(value || 0), 0)
+  );
+
+  const adjustedAnnualKwh = round1(
+    adjustedTotalHourly.reduce((sum, value) => sum + Number(value || 0), 0)
+  );
+
+  return {
+    year,
+    diffuseFloor,
+    hourOffset,
+
+    unshadedAnnualKwh,
+    adjustedAnnualKwh,
+    shadeLossKwh: round1(unshadedAnnualKwh - adjustedAnnualKwh),
+    shadeLossPercent:
+      unshadedAnnualKwh > 0
+        ? round1(((unshadedAnnualKwh - adjustedAnnualKwh) / unshadedAnnualKwh) * 100)
+        : null,
+
+    unshadedMonthlyKwh,
+    adjustedMonthlyKwh,
+
+    segmentProfiles: adjustedSegmentProfiles.map((profile) => ({
+      segmentIndex: profile.segmentIndex,
+      allocatedPanels: profile.allocatedPanels,
+      peakPowerKwp: profile.peakPowerKwp,
+      unshadedAnnualKwh: profile.unshadedAnnualKwh,
+      adjustedAnnualKwh: profile.adjustedAnnualKwh,
+      shadeLossPercent: profile.shadeLossPercent,
+    })),
+  };
+}
+
+function aggregateYearlyResults(yearlyResults = []) {
+  const valid = yearlyResults.filter(Boolean);
+
+  if (!valid.length) {
+    return null;
+  }
+
+  const unshadedAnnualKwh = round1(
+    average(valid.map((result) => result.unshadedAnnualKwh))
+  );
+
+  const adjustedAnnualKwh = round1(
+    average(valid.map((result) => result.adjustedAnnualKwh))
+  );
+
+  const unshadedMonthlyKwh = averageMonthly(
+    valid.map((result) => result.unshadedMonthlyKwh)
+  );
+
+  const adjustedMonthlyKwh = averageMonthly(
+    valid.map((result) => result.adjustedMonthlyKwh)
+  );
+
+  return {
+    unshadedAnnualKwh,
+    adjustedAnnualKwh,
+    unshadedMonthlyKwh,
+    adjustedMonthlyKwh,
+    shadeLossKwh: round1(unshadedAnnualKwh - adjustedAnnualKwh),
+    shadeLossPercent:
+      unshadedAnnualKwh > 0
+        ? round1(((unshadedAnnualKwh - adjustedAnnualKwh) / unshadedAnnualKwh) * 100)
+        : null,
+  };
+}
+
+async function buildBaseSegmentProfilesForYear({
+  year,
+  location,
+  segmentInputs,
+}) {
+  const baseSegmentProfiles = [];
+
+  for (const segment of segmentInputs) {
+    const peakPowerKwp = numberOrNull(segment.peakPowerKwp);
+    if (!peakPowerKwp || peakPowerKwp <= 0) continue;
+
+    const pvgisProfile = await getPvgisHourlyKWhForRoof({
+      lat: location.lat,
+      lon: location.lon,
+      tiltDeg: numberOrNull(segment.tiltDeg),
+      aspectDeg: numberOrNull(segment.pvgisAspectDeg),
+      peakPowerKwp,
+      year,
+    });
+
+    baseSegmentProfiles.push({
+      segmentIndex: segment.segmentIndex,
+      allocatedPanels: segment.allocatedPanels,
+      peakPowerKwp: segment.peakPowerKwp,
+      tiltDeg: segment.tiltDeg,
+      googleAzimuthDegrees: segment.googleAzimuthDegrees,
+      pvgisAspectDeg: segment.pvgisAspectDeg,
+
+      unshadedHourlyKwh: pvgisProfile.kWh,
+      monthIdx: pvgisProfile.monthIdx,
+      hourOfDay: pvgisProfile.hourOfDay,
+    });
+  }
+
+  return baseSegmentProfiles;
+}
+
 async function buildSegmentShadeAdjustedPvgisProductionBenchmark({
   benchmarkItem,
   hybridPvgisProductionBenchmark,
   googleHourlyShadeFactorAudit,
 }) {
-  const source = "zeyzer_segment_google_hourly_shade_adjusted_pvgis_v1";
+  const source = "zeyzer_segment_google_hourly_shade_adjusted_pvgis_v2";
 
   const segmentInputs = Array.isArray(hybridPvgisProductionBenchmark?.segmentInputs)
     ? hybridPvgisProductionBenchmark.segmentInputs
@@ -227,139 +428,71 @@ async function buildSegmentShadeAdjustedPvgisProductionBenchmark({
       ? { lat, lon }
       : await getLatLonFromUkPostcode(postcode);
 
-  const yearlyResults = [];
+  const baseYearlyProfiles = [];
 
   for (const year of years) {
-    const segmentProfiles = [];
+    const baseSegmentProfiles = await buildBaseSegmentProfilesForYear({
+      year,
+      location,
+      segmentInputs,
+    });
 
-    for (const segment of segmentInputs) {
-      const segmentKey = String(segment.segmentIndex);
-      const shadeMatrix = segmentMatrices[segmentKey];
-
-      const peakPowerKwp = numberOrNull(segment.peakPowerKwp);
-      if (!peakPowerKwp || peakPowerKwp <= 0) continue;
-
-      const pvgisProfile = await getPvgisHourlyKWhForRoof({
-        lat: location.lat,
-        lon: location.lon,
-        tiltDeg: numberOrNull(segment.tiltDeg),
-        aspectDeg: numberOrNull(segment.pvgisAspectDeg),
-        peakPowerKwp,
+    if (baseSegmentProfiles.length) {
+      baseYearlyProfiles.push({
         year,
-      });
-
-      const shaded = applyShadeToHourly({
-        hourlyKwh: pvgisProfile.kWh,
-        monthIdx: pvgisProfile.monthIdx,
-        hourOfDay: pvgisProfile.hourOfDay,
-        shadeMatrix,
-      });
-
-      const unshadedAnnualKwh = round1(
-        pvgisProfile.kWh.reduce((sum, value) => sum + Number(value || 0), 0)
-      );
-
-      const shadeAdjustedAnnualKwh = round1(
-        shaded.adjusted.reduce((sum, value) => sum + Number(value || 0), 0)
-      );
-
-      segmentProfiles.push({
-        segmentIndex: segment.segmentIndex,
-        allocatedPanels: segment.allocatedPanels,
-        peakPowerKwp: segment.peakPowerKwp,
-        tiltDeg: segment.tiltDeg,
-        googleAzimuthDegrees: segment.googleAzimuthDegrees,
-        pvgisAspectDeg: segment.pvgisAspectDeg,
-
-        unshadedAnnualKwh,
-        shadeAdjustedAnnualKwh,
-        shadeLossKwh: round1(unshadedAnnualKwh - shadeAdjustedAnnualKwh),
-        shadeLossPercent:
-          unshadedAnnualKwh > 0
-            ? round1(((unshadedAnnualKwh - shadeAdjustedAnnualKwh) / unshadedAnnualKwh) * 100)
-            : null,
-
-        unshadedHourlyKwh: pvgisProfile.kWh,
-        shadeAdjustedHourlyKwh: shaded.adjusted,
-        monthIdx: pvgisProfile.monthIdx,
-        hourOfDay: pvgisProfile.hourOfDay,
+        baseSegmentProfiles,
       });
     }
-
-    const unshadedTotalHourly = sumHourlyArrays(
-      segmentProfiles.map((profile) => profile.unshadedHourlyKwh)
-    );
-
-    const shadeAdjustedTotalHourly = sumHourlyArrays(
-      segmentProfiles.map((profile) => profile.shadeAdjustedHourlyKwh)
-    );
-
-    if (!unshadedTotalHourly || !shadeAdjustedTotalHourly) continue;
-
-    const monthIdx = segmentProfiles[0].monthIdx;
-
-    const unshadedMonthlyKwh = monthlyFromHourly(unshadedTotalHourly, monthIdx);
-    const shadeAdjustedMonthlyKwh = monthlyFromHourly(
-      shadeAdjustedTotalHourly,
-      monthIdx
-    );
-
-    const unshadedAnnualKwh = round1(
-      unshadedTotalHourly.reduce((sum, value) => sum + Number(value || 0), 0)
-    );
-
-    const shadeAdjustedAnnualKwh = round1(
-      shadeAdjustedTotalHourly.reduce((sum, value) => sum + Number(value || 0), 0)
-    );
-
-    yearlyResults.push({
-      year,
-      unshadedAnnualKwh,
-      shadeAdjustedAnnualKwh,
-      shadeLossKwh: round1(unshadedAnnualKwh - shadeAdjustedAnnualKwh),
-      shadeLossPercent:
-        unshadedAnnualKwh > 0
-          ? round1(((unshadedAnnualKwh - shadeAdjustedAnnualKwh) / unshadedAnnualKwh) * 100)
-          : null,
-
-      unshadedMonthlyKwh,
-      shadeAdjustedMonthlyKwh,
-
-      segmentProfiles: segmentProfiles.map((profile) => ({
-        segmentIndex: profile.segmentIndex,
-        allocatedPanels: profile.allocatedPanels,
-        peakPowerKwp: profile.peakPowerKwp,
-        unshadedAnnualKwh: profile.unshadedAnnualKwh,
-        shadeAdjustedAnnualKwh: profile.shadeAdjustedAnnualKwh,
-        shadeLossPercent: profile.shadeLossPercent,
-      })),
-    });
   }
 
-  if (!yearlyResults.length) {
+  if (!baseYearlyProfiles.length) {
     return {
       source,
       status: "no_yearly_results",
       postcode,
-      error: "No yearly shade-adjusted PVGIS results were produced.",
+      error: "No yearly PVGIS base profiles were produced.",
     };
   }
 
-  const unshadedAnnualKwh = round1(
-    average(yearlyResults.map((result) => result.unshadedAnnualKwh))
-  );
+  const directYearlyResults = baseYearlyProfiles
+    .map((yearData) =>
+      buildYearlyAdjustedResult({
+        year: yearData.year,
+        baseSegmentProfiles: yearData.baseSegmentProfiles,
+        segmentMatrices,
+        diffuseFloor: 0,
+        hourOffset: 0,
+      })
+    )
+    .filter(Boolean);
 
-  const shadeAdjustedAnnualKwh = round1(
-    average(yearlyResults.map((result) => result.shadeAdjustedAnnualKwh))
-  );
+  const directAggregate = aggregateYearlyResults(directYearlyResults);
 
-  const unshadedMonthlyKwh = averageMonthly(
-    yearlyResults.map((result) => result.unshadedMonthlyKwh)
-  );
+  const directShadeLossPercent = calculateDirectShadeLossPercent({
+    unshadedAnnualKwh: directAggregate?.unshadedAnnualKwh,
+    directShadeAdjustedAnnualKwh: directAggregate?.adjustedAnnualKwh,
+  });
 
-  const shadeAdjustedMonthlyKwh = averageMonthly(
-    yearlyResults.map((result) => result.shadeAdjustedMonthlyKwh)
-  );
+  const adaptivePolicy = chooseAdaptiveShadePolicy({
+    directShadeLossPercent,
+    originalHybridAnnualKwh: hybridPvgisProductionBenchmark?.pvgis?.annualKwh,
+    systemSizeKwp: hybridPvgisProductionBenchmark?.systemSizeKwp,
+    allocatedPanelTotal: hybridPvgisProductionBenchmark?.allocatedPanelTotal,
+  });
+
+  const adaptiveYearlyResults = baseYearlyProfiles
+    .map((yearData) =>
+      buildYearlyAdjustedResult({
+        year: yearData.year,
+        baseSegmentProfiles: yearData.baseSegmentProfiles,
+        segmentMatrices,
+        diffuseFloor: adaptivePolicy.diffuseFloor,
+        hourOffset: adaptivePolicy.hourOffset,
+      })
+    )
+    .filter(Boolean);
+
+  const adaptiveAggregate = aggregateYearlyResults(adaptiveYearlyResults);
 
   const installerAnnualKwh = numberOrNull(
     hybridPvgisProductionBenchmark?.installerReference?.annualKwh
@@ -382,14 +515,28 @@ async function buildSegmentShadeAdjustedPvgisProductionBenchmark({
     selectedPanelSamplesBySegment:
       googleHourlyShadeFactorAudit?.selectedPanelSamplesBySegment || null,
 
+    directShadeLossPercent,
+    adaptivePolicy,
+
     pvgisUnshaded: {
-      annualKwh: unshadedAnnualKwh,
-      monthlyKwh: unshadedMonthlyKwh,
+      annualKwh: directAggregate.unshadedAnnualKwh,
+      monthlyKwh: directAggregate.unshadedMonthlyKwh,
     },
 
+    // Backward-compatible direct Google shade output.
     pvgisSegmentShadeAdjusted: {
-      annualKwh: shadeAdjustedAnnualKwh,
-      monthlyKwh: shadeAdjustedMonthlyKwh,
+      annualKwh: directAggregate.adjustedAnnualKwh,
+      monthlyKwh: directAggregate.adjustedMonthlyKwh,
+      diffuseFloor: 0,
+      hourOffset: 0,
+    },
+
+    // New adaptive policy output.
+    pvgisAdaptiveShadeAdjusted: {
+      annualKwh: adaptiveAggregate.adjustedAnnualKwh,
+      monthlyKwh: adaptiveAggregate.adjustedMonthlyKwh,
+      diffuseFloor: adaptivePolicy.diffuseFloor,
+      hourOffset: adaptivePolicy.hourOffset,
     },
 
     installerReference: {
@@ -399,28 +546,43 @@ async function buildSegmentShadeAdjustedPvgisProductionBenchmark({
 
     deltas: {
       unshadedAnnualDeltaPercent: percentDelta(
-        unshadedAnnualKwh,
+        directAggregate.unshadedAnnualKwh,
         installerAnnualKwh
       ),
+
       segmentShadeAdjustedAnnualDeltaPercent: percentDelta(
-        shadeAdjustedAnnualKwh,
+        directAggregate.adjustedAnnualKwh,
         installerAnnualKwh
       ),
+
       segmentShadeAdjustedMonthlyDeltaPercent: monthlyDeltaPercent(
-        shadeAdjustedMonthlyKwh,
+        directAggregate.adjustedMonthlyKwh,
+        installerMonthlyKwh
+      ),
+
+      adaptiveShadeAdjustedAnnualDeltaPercent: percentDelta(
+        adaptiveAggregate.adjustedAnnualKwh,
+        installerAnnualKwh
+      ),
+
+      adaptiveShadeAdjustedMonthlyDeltaPercent: monthlyDeltaPercent(
+        adaptiveAggregate.adjustedMonthlyKwh,
         installerMonthlyKwh
       ),
     },
 
     shadeImpact: {
-      annualShadeLossKwh: round1(unshadedAnnualKwh - shadeAdjustedAnnualKwh),
-      annualShadeLossPercent:
-        unshadedAnnualKwh > 0
-          ? round1(((unshadedAnnualKwh - shadeAdjustedAnnualKwh) / unshadedAnnualKwh) * 100)
-          : null,
+      directAnnualShadeLossKwh: directAggregate.shadeLossKwh,
+      directAnnualShadeLossPercent: directAggregate.shadeLossPercent,
+
+      adaptiveAnnualShadeLossKwh: adaptiveAggregate.shadeLossKwh,
+      adaptiveAnnualShadeLossPercent: adaptiveAggregate.shadeLossPercent,
     },
 
-    yearlyResults,
+    yearlyResults: {
+      directGoogleShade: directYearlyResults,
+      adaptiveShadePolicy: adaptiveYearlyResults,
+    },
   };
 }
 

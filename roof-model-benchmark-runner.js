@@ -55,6 +55,10 @@ const {
   buildSegmentShadeAdjustedPvgisProductionBenchmark,
 } = require("./services/roof/roofBenchmarkSegmentShadeAdjustedPvgisProductionService");
 
+const {
+  buildAdaptiveTargetEvaluation,
+} = require("./services/roof/roofBenchmarkAdaptiveTargetEvaluationService");
+
 const DEFAULT_INPUT_PATH = path.join(
   process.cwd(),
   "data",
@@ -319,6 +323,12 @@ async function summariseBenchmarkResult(item, analysis) {
       googleHourlyShadeFactorAudit,
     });
 
+  const adaptiveTargetEvaluation = buildAdaptiveTargetEvaluation({
+    benchmarkItem: item,
+    practicalPanelEstimate,
+    segmentShadeAdjustedPvgisProductionBenchmark,
+  });
+
   const panelDeltaPercent = percentageDifference(
     googleMaxPanels,
     installerPanelCount
@@ -369,6 +379,7 @@ async function summariseBenchmarkResult(item, analysis) {
       googleShadeDataLayersAudit,
       googleHourlyShadeFactorAudit,
       segmentShadeAdjustedPvgisProductionBenchmark,
+      adaptiveTargetEvaluation,
       buildings: (analysis?.solarBuildingModels || []).map((building) => ({
         id: building.id,
         targetLabel: building.targetLabel,
@@ -839,6 +850,48 @@ async function main() {
         segmentShadeAdjustedPvgisError:
           row.googleSolarApi?.segmentShadeAdjustedPvgisProductionBenchmark
             ?.error,
+
+        adaptiveShadePolicy:
+          row.googleSolarApi?.segmentShadeAdjustedPvgisProductionBenchmark
+            ?.adaptivePolicy,
+        adaptiveShadeAdjustedPvgisAnnualKwh:
+          row.googleSolarApi?.segmentShadeAdjustedPvgisProductionBenchmark
+            ?.pvgisAdaptiveShadeAdjusted?.annualKwh,
+        adaptiveShadeAdjustedPvgisAnnualDeltaPercent:
+          row.googleSolarApi?.segmentShadeAdjustedPvgisProductionBenchmark
+            ?.deltas?.adaptiveShadeAdjustedAnnualDeltaPercent,
+        adaptiveShadeAdjustedPvgisMonthlyKwh:
+          row.googleSolarApi?.segmentShadeAdjustedPvgisProductionBenchmark
+            ?.pvgisAdaptiveShadeAdjusted?.monthlyKwh,
+        adaptiveShadeAdjustedPvgisMonthlyDeltaPercent:
+          row.googleSolarApi?.segmentShadeAdjustedPvgisProductionBenchmark
+            ?.deltas?.adaptiveShadeAdjustedMonthlyDeltaPercent,
+        adaptiveShadeAdjustedPvgisShadeLossPercent:
+          row.googleSolarApi?.segmentShadeAdjustedPvgisProductionBenchmark
+            ?.shadeImpact?.adaptiveAnnualShadeLossPercent,
+
+        adaptiveTargetOverallPass:
+          row.googleSolarApi?.adaptiveTargetEvaluation?.overallPass,
+        adaptiveTargetPanelWithin10:
+          row.googleSolarApi?.adaptiveTargetEvaluation?.panel
+            ?.expectedWithin10Percent,
+        adaptiveTargetAnnualWithin15:
+          row.googleSolarApi?.adaptiveTargetEvaluation?.annualProduction
+            ?.expectedWithin15Percent,
+        adaptiveTargetMonthlyWeightedWithin15:
+          row.googleSolarApi?.adaptiveTargetEvaluation?.monthlyProduction
+            ?.weightedWithin15Percent,
+        adaptiveTargetWeightedMonthlyErrorPercent:
+          row.googleSolarApi?.adaptiveTargetEvaluation?.monthlyProduction
+            ?.weightedMonthlyAbsErrorPercent,
+        adaptiveTargetFilteredMeanMonthlyErrorPercent:
+          row.googleSolarApi?.adaptiveTargetEvaluation?.monthlyProduction
+            ?.filteredMeanAbsMonthlyDeltaPercent,
+        adaptiveTargetWorstMonthlyKwhError:
+          row.googleSolarApi?.adaptiveTargetEvaluation?.monthlyProduction
+            ?.worstMonthlyKwhError,
+        adaptiveTargetWarnings:
+          row.googleSolarApi?.adaptiveTargetEvaluation?.warnings,
       })),
       null,
       2
