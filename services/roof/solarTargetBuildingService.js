@@ -6,6 +6,10 @@ const {
   normaliseGoogleSolarBuildingInsights,
 } = require("./solarBuildingModelNormalisationService");
 
+const {
+  buildRoofSelectionModelFromBuildingModel,
+} = require("./roofSelectionModelService");
+
 function numberOrNull(value) {
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
@@ -56,6 +60,11 @@ function normaliseSolarTargetBuilding(target = {}, index = 0) {
     source: target.source || "manual_or_selected_target",
     latitude: numberOrNull(latitude),
     longitude: numberOrNull(longitude),
+    propertyType:
+      target.propertyType ||
+      target.property?.propertyType ||
+      target.context?.propertyType ||
+      null,
   };
 }
 
@@ -148,6 +157,13 @@ async function analyseSingleTarget(target, options = {}) {
       id: options.nextBuildingId,
       target,
     });
+
+    buildingModel.roofSelectionModel = buildRoofSelectionModelFromBuildingModel(
+      buildingModel,
+      {
+        propertyType: target.propertyType,
+      }
+    );
 
     return {
       success: true,

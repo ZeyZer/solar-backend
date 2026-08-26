@@ -12,6 +12,10 @@ const {
   analyseSolarTargetBuildings,
 } = require("../services/roof/solarTargetBuildingService");
 
+const {
+  buildRoofSelectionModelFromBuildingModel,
+} = require("../services/roof/roofSelectionModelService");
+
 const router = express.Router();
 
 function numberOrNull(value) {
@@ -47,6 +51,11 @@ function makeTargetFromBody(body = {}) {
     source: body.source || "single_building_insights_request",
     latitude: location.latitude,
     longitude: location.longitude,
+    propertyType:
+      body.propertyType ||
+      body.property?.propertyType ||
+      body.context?.propertyType ||
+      null,
   };
 }
 
@@ -83,6 +92,13 @@ router.post("/building-insights", async (req, res) => {
       providerResponse,
       {
         target,
+      }
+    );
+
+    buildingModel.roofSelectionModel = buildRoofSelectionModelFromBuildingModel(
+      buildingModel,
+      {
+        propertyType: target.propertyType,
       }
     );
 
