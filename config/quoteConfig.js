@@ -52,8 +52,10 @@ const CONFIG = {
     large: 6.5,
   },
   panelOptions: {
-    value: { watt: 430, multiplier: 1.0 },
-    premium: { watt: 460, multiplier: 1.1 },
+    // Panel option wattages control quote system size and PVGIS peak power.
+    // Roof-fit calculations still use the panel footprint assumptions from the AI roof model.
+    value: { watt: 465, multiplier: 1.0 },
+    premium: { watt: 490, multiplier: 1.1 },
   },
   regionalMultipliers: {
     default: 1.0,

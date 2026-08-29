@@ -1,11 +1,11 @@
 [
   {
-    "id": "beta-panel-value-430w",
+    "id": "beta-panel-value-465w",
     "brand": "Beta Catalogue",
-    "model": "Generic Value 430 W Panel",
+    "model": "Generic Value 465 W Panel",
     "category": "panel",
     "panelOption": "value",
-    "wattage": 430,
+    "wattage": 465,
     "technology": "mono",
     "efficiency": null,
     "electrical": {
@@ -63,12 +63,12 @@
     ]
   },
   {
-    "id": "beta-panel-premium-460w",
+    "id": "beta-panel-premium-490w",
     "brand": "Beta Catalogue",
-    "model": "Generic Premium 460 W Panel",
+    "model": "Generic Premium 490 W Panel",
     "category": "panel",
     "panelOption": "premium",
-    "wattage": 460,
+    "wattage": 490,
     "technology": "n-type",
     "efficiency": null,
     "electrical": {
