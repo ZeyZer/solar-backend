@@ -108,6 +108,143 @@ function numberOrZero(value) {
   return Number.isFinite(n) ? n : 0;
 }
 
+function uniqueStrings(values = []) {
+  return Array.from(
+    new Set(
+      values
+        .map((value) => String(value || "").trim())
+        .filter(Boolean)
+    )
+  );
+}
+
+function getPanelOptionLabel(panelOption) {
+  if (panelOption === "premium") return "Premium";
+  return "Standard";
+}
+
+function compactPanelAssumption(panelAssumption = null) {
+  if (!panelAssumption || typeof panelAssumption !== "object") {
+    return null;
+  }
+
+  return {
+    key: panelAssumption.key || null,
+    label: panelAssumption.label || null,
+    panelWatts: panelAssumption.panelWatts ?? null,
+    widthMm: panelAssumption.widthMm ?? null,
+    heightMm: panelAssumption.heightMm ?? null,
+    areaM2: panelAssumption.areaM2 ?? null,
+  };
+}
+
+function buildQuoteCalculationAssumptions({
+  input,
+  panelOpt,
+  panelWatt,
+  quote,
+  hourlyModel,
+  pvgisAnnualKWh,
+} = {}) {
+  const roofs = Array.isArray(input?.roofs) ? input.roofs : [];
+  const aiRoofs = roofs.filter((roof) => !!roof?.aiRoofData);
+
+  const fitAssumptionsByKey = new Map();
+
+  aiRoofs.forEach((roof) => {
+    const compact = compactPanelAssumption(roof?.aiRoofData?.panelAssumption);
+
+    if (!compact) {
+      return;
+    }
+
+    const key = [
+      compact.key,
+      compact.panelWatts,
+      compact.widthMm,
+      compact.heightMm,
+    ]
+      .filter((value) => value !== null && value !== undefined && value !== "")
+      .join("|");
+
+    fitAssumptionsByKey.set(key || `assumption-${fitAssumptionsByKey.size + 1}`, compact);
+  });
+
+  const roofProfiles = Array.isArray(hourlyModel?._pvgisRoofProfiles)
+    ? hourlyModel._pvgisRoofProfiles
+    : [];
+
+  const pvgisInputSources = uniqueStrings(
+    roofProfiles.map((profile) => profile.pvgisInputSource || profile.source)
+  );
+
+  const panelWattSources = uniqueStrings(
+    roofProfiles.map((profile) => profile.panelWattSource)
+  );
+
+  return {
+    version: "r1.9d_panel_option_vs_roof_fit_assumption",
+
+    selectedPanelOption: {
+      key: input?.panelOption || "value",
+      label: getPanelOptionLabel(input?.panelOption || "value"),
+      panelWatt,
+      priceMultiplier: panelOpt?.multiplier ?? null,
+      usedFor: [
+        "quote_system_size_kwp",
+        "pricing",
+        "pvgis_peak_power",
+      ],
+    },
+
+    roofFitAssumption: {
+      source: aiRoofs.length > 0 ? "ai_roof_data" : "legacy_roof_card",
+      aiRoofDataUsed: aiRoofs.length > 0,
+      aiRoofCount: aiRoofs.length,
+      usedFor: [
+        "roof_capacity_estimate",
+        "panel_count_estimate",
+      ],
+      notUsedFor: [
+        "selected_panel_wattage",
+        "pricing_multiplier",
+      ],
+      panelAssumptions: Array.from(fitAssumptionsByKey.values()),
+      note:
+        "Roof-fit assumptions estimate how many same-footprint panels fit. The selected panel option controls the wattage used for quote size, pricing and PVGIS output.",
+    },
+
+    performanceModel: {
+      source: hourlyModel?.model || "fallback_generation_model",
+      annualGenerationKWh:
+        pvgisAnnualKWh ??
+        quote?.estAnnualGenerationKWh ??
+        null,
+      pvgisInputSources,
+      panelWattSources,
+      roofProfileCount: roofProfiles.length,
+      roofProfiles: roofProfiles.map((profile) => ({
+        roofId: profile.roofId || null,
+        source: profile.source || null,
+        pvgisInputSource: profile.pvgisInputSource || null,
+        panelWattSource: profile.panelWattSource || null,
+        panelWatt: profile.panelWatt ?? null,
+        panelCount: profile.panelCount ?? null,
+        systemSizeKwp: profile.baseSystemSizeKwp ?? null,
+        tilt: profile.tilt ?? null,
+        aspectDeg: profile.aspectDeg ?? null,
+        annualGenerationKWh: profile.annualGenerationKWh ?? null,
+      })),
+    },
+
+    quoteSystem: {
+      totalPanels: quote?.panelCount ?? null,
+      systemSizeKwp: quote?.systemSizeKwp ?? null,
+      panelWatt: quote?.panelWatt ?? panelWatt ?? null,
+    },
+  };
+}
+
 function averagePvgisRoofProfiles(results = []) {
   const yearlyProfileSets = results
     .map((result) => result._pvgisRoofProfiles)
@@ -393,6 +530,15 @@ router.post("/", async (req, res) => {
       tariff: input.tariffAfter || input.tariff || null,
     };
 
+
+    quote.calculationAssumptions = buildQuoteCalculationAssumptions({
+      input,
+      panelOpt,
+      panelWatt,
+      quote,
+      hourlyModel,
+      pvgisAnnualKWh,
+    });
 
     const midPrice = (quote.priceLow + quote.priceHigh) / 2;
     const selectedBatteryUsable = Math.max(0, Number(input.batteryKWh || 0)); // user-entered is usable kWh
