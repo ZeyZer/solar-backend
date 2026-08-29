@@ -1,5 +1,32 @@
 const GOOGLE_PANEL_KWP = 0.4;
 
+const GOOGLE_PANEL_ASSUMPTION = {
+  key: "google_solar_default",
+  label: "Google Solar API default panel",
+  panelWatts: 400,
+  widthMm: 1045,
+  heightMm: 1879,
+};
+
+const PANEL_ASSUMPTIONS = {
+  zeyzer_residential_standard: {
+    key: "zeyzer_residential_standard",
+    label: "Zeyzer residential standard panel",
+    panelWatts: 465,
+    widthMm: 1134,
+    heightMm: 1762,
+  },
+  zeyzer_residential_large: {
+    key: "zeyzer_residential_large",
+    label: "Zeyzer residential large panel",
+    panelWatts: 510,
+    widthMm: 1134,
+    heightMm: 1954,
+  },
+};
+
+const DEFAULT_PANEL_ASSUMPTION_KEY = "zeyzer_residential_standard";
+
 const YIELD_THRESHOLDS = {
   strongKwhPerKwp: 800,
   usableKwhPerKwp: 600,
@@ -16,6 +43,11 @@ function round1(value) {
   return Number.isFinite(number) ? Math.round(number * 10) / 10 : null;
 }
 
+function round3(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.round(number * 1000) / 1000 : null;
+}
+
 function normalise(value) {
   return String(value || "").trim().toLowerCase();
 }
@@ -23,6 +55,97 @@ function normalise(value) {
 function clamp(value, min, max) {
   const number = toNumber(value, min);
   return Math.max(min, Math.min(max, number));
+}
+
+function getPanelAreaM2(panel = {}) {
+  const widthMm = toNumber(panel.widthMm);
+  const heightMm = toNumber(panel.heightMm);
+
+  if (!widthMm || !heightMm) {
+    return 0;
+  }
+
+  return (widthMm * heightMm) / 1000000;
+}
+
+function getPanelAssumption(input) {
+  if (input && typeof input === "object") {
+    const panelWatts = toNumber(input.panelWatts);
+    const widthMm = toNumber(input.widthMm);
+    const heightMm = toNumber(input.heightMm);
+
+    if (panelWatts && widthMm && heightMm) {
+      return {
+        key: input.key || "custom_panel_assumption",
+        label: input.label || "Custom panel assumption",
+        panelWatts,
+        widthMm,
+        heightMm,
+      };
+    }
+  }
+
+  if (typeof input === "string" && PANEL_ASSUMPTIONS[input]) {
+    return PANEL_ASSUMPTIONS[input];
+  }
+
+  return PANEL_ASSUMPTIONS[DEFAULT_PANEL_ASSUMPTION_KEY];
+}
+
+function getPanelCountAdjustmentFactor(panelAssumption) {
+  const googlePanelAreaM2 = getPanelAreaM2(GOOGLE_PANEL_ASSUMPTION);
+  const assumedPanelAreaM2 = getPanelAreaM2(panelAssumption);
+
+  if (!googlePanelAreaM2 || !assumedPanelAreaM2) {
+    return 1;
+  }
+
+  return googlePanelAreaM2 / assumedPanelAreaM2;
+}
+
+function convertGooglePanelCountToAssumedPanelCount(
+  googlePanelCount,
+  panelAssumption
+) {
+  const googleCount = Math.max(0, Math.round(toNumber(googlePanelCount)));
+  const adjustmentFactor = getPanelCountAdjustmentFactor(panelAssumption);
+
+  if (!googleCount) {
+    return 0;
+  }
+
+  return Math.max(1, Math.round(googleCount * adjustmentFactor));
+}
+
+function getAssumedPanelKwp(panelAssumption) {
+  return toNumber(panelAssumption?.panelWatts) / 1000;
+}
+
+function calculateAssumedAnnualKwh({
+  annualKwhPerKwp,
+  panelCount,
+  panelAssumption,
+}) {
+  const yieldPerKwp = toNumber(annualKwhPerKwp, null);
+  const panels = toNumber(panelCount);
+  const panelKwp = getAssumedPanelKwp(panelAssumption);
+
+  if (yieldPerKwp === null || !panels || !panelKwp) {
+    return null;
+  }
+
+  return yieldPerKwp * panels * panelKwp;
+}
+
+function getPanelAssumptionSummary(panelAssumption) {
+  return {
+    key: panelAssumption.key,
+    label: panelAssumption.label,
+    panelWatts: panelAssumption.panelWatts,
+    widthMm: panelAssumption.widthMm,
+    heightMm: panelAssumption.heightMm,
+    areaM2: round3(getPanelAreaM2(panelAssumption)),
+  };
 }
 
 function getFirstBuildingAudit(googleSolarApi = {}, key) {
@@ -82,7 +205,9 @@ function isNorthOrVeryLow(segment) {
 }
 
 function classifyRoofSegment(segment, scoredSegment = {}) {
-  const maxPanels = toNumber(segment.maxConfigPanels);
+  const maxPanels = toNumber(
+    segment.realisticMaxPanels ?? segment.maxPanels ?? segment.maxConfigPanels
+  );
   const areaM2 = toNumber(segment.areaM2);
   const orientation = normalise(segment.orientationClass);
   const sunshine = normalise(segment.sunshineClass);
@@ -352,6 +477,9 @@ function buildRoofSelectionModelFromGoogleSolarApi(
   );
 
   const practicalPanelEstimate = googleSolarApi.practicalPanelEstimate || {};
+  const panelAssumption = getPanelAssumption(options.panelAssumption);
+  const panelCountAdjustmentFactor =
+    getPanelCountAdjustmentFactor(panelAssumption);
 
   const segmentRows = Array.isArray(segmentPanelAudit.segmentRows)
     ? segmentPanelAudit.segmentRows
@@ -367,8 +495,25 @@ function buildRoofSelectionModelFromGoogleSolarApi(
 
   const segments = segmentRows.map((segment) => {
     const scoredSegment = scoredByIndex[segment.segmentIndex] || {};
-    const classification = classifyRoofSegment(segment, scoredSegment);
+    const googleMaxConfigPanels = toNumber(segment.maxConfigPanels);
+    const realisticMaxPanels = convertGooglePanelCountToAssumedPanelCount(
+      googleMaxConfigPanels,
+      panelAssumption
+    );
     const annualKwhPerKwp = calculateSegmentAnnualKwhPerKwp(segment);
+    const estimatedAnnualKwh = calculateAssumedAnnualKwh({
+      annualKwhPerKwp,
+      panelCount: realisticMaxPanels,
+      panelAssumption,
+    });
+
+    const classification = classifyRoofSegment(
+      {
+        ...segment,
+        realisticMaxPanels,
+      },
+      scoredSegment
+    );
 
     return {
       segmentIndex: segment.segmentIndex,
@@ -387,9 +532,17 @@ function buildRoofSelectionModelFromGoogleSolarApi(
       score: scoredSegment.baseScore ?? null,
       scoreReasons: scoredSegment.reasons || [],
 
-      maxPanels: toNumber(segment.maxConfigPanels),
-      maxConfigAnnualKwh: round1(segment.maxConfigAnnualKwh),
+      maxPanels: realisticMaxPanels,
+      maxConfigAnnualKwh: round1(estimatedAnnualKwh),
       annualKwhPerKwp: round1(annualKwhPerKwp),
+
+      googleMaxConfigPanels,
+      googleMaxConfigAnnualKwh: round1(segment.maxConfigAnnualKwh),
+
+      panelAssumption: getPanelAssumptionSummary(panelAssumption),
+      googlePanelAssumption: getPanelAssumptionSummary(GOOGLE_PANEL_ASSUMPTION),
+      panelCountAdjustmentFactor: round3(panelCountAdjustmentFactor),
+      panelCountMethod: "google_capacity_area_adjusted",
 
       currentClosestInstallerConfigPanels: toNumber(
         segment.closestInstallerConfigPanels
@@ -568,13 +721,20 @@ function buildRoofSelectionModelFromGoogleSolarApi(
         : "high";
 
   return {
-    source: "zeyzer_roof_selection_model_v5_target_capped_default_selection",
+    source: "zeyzer_roof_selection_model_v6_area_adjusted_panel_assumption",
     status: "complete",
 
     thresholds: YIELD_THRESHOLDS,
+    panelAssumption: getPanelAssumptionSummary(panelAssumption),
+    googlePanelAssumption: getPanelAssumptionSummary(GOOGLE_PANEL_ASSUMPTION),
+    panelCountMethod: "google_capacity_area_adjusted",
 
     summary: {
       googleMaxPanels,
+      panelAssumption: getPanelAssumptionSummary(panelAssumption),
+      googlePanelAssumption: getPanelAssumptionSummary(GOOGLE_PANEL_ASSUMPTION),
+      panelCountAdjustmentFactor: round3(panelCountAdjustmentFactor),
+      panelCountMethod: "google_capacity_area_adjusted",
       currentAutoExpectedPanels,
       recommendedCapacityPanels,
       optionalCapacityPanels,
@@ -858,4 +1018,6 @@ module.exports = {
   buildRoofSelectionModelFromGoogleSolarApi,
   buildRoofSelectionModelFromBuildingModel,
   calculateSegmentAnnualKwhPerKwp,
+  getPanelAssumption,
+  convertGooglePanelCountToAssumedPanelCount,
 };
