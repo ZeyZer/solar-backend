@@ -321,6 +321,40 @@ function shouldSkipLeadStorageForTest(input) {
   return input?._testMode?.skipLeadStorage === true;
 }
 
+function normalisePropertyType(value) {
+  const raw = String(value || "unknown").trim().toLowerCase();
+
+  const aliases = {
+    detached: "detached",
+    detached_house: "detached",
+    semi: "semi_detached",
+    semi_detached_house: "semi_detached",
+    semi_detached: "semi_detached",
+    mid_terrace_house: "mid_terrace",
+    mid_terrace: "mid_terrace",
+    terrace: "mid_terrace",
+    terraced: "mid_terrace",
+    terraced_house: "mid_terrace",
+    end_terrace_house: "end_terrace",
+    end_terrace: "end_terrace",
+    bungalow: "bungalow",
+    commercial: "commercial_or_other",
+    commercial_or_other: "commercial_or_other",
+    other: "commercial_or_other",
+    unknown: "unknown",
+  };
+
+  return aliases[raw] || "unknown";
+}
+
+function requiresPropertyBoundary(propertyType) {
+  return [
+    "semi_detached",
+    "mid_terrace",
+    "end_terrace",
+  ].includes(propertyType);
+}
+
 router.post("/", async (req, res) => {
   try {
     const input = req.body || {};
@@ -362,6 +396,8 @@ router.post("/", async (req, res) => {
     // ✅ Normalise panelOption no matter what arrives
     input.panelOption = input.panelOption || input.PanelOption || "value";
     delete input.PanelOption;
+
+    input.propertyType = normalisePropertyType(input.propertyType);
 
     // ✅ Normalise postcode
     try {
@@ -528,6 +564,13 @@ router.post("/", async (req, res) => {
 
       // ✅ keep backward compatibility with your existing QuotePage UI
       tariff: input.tariffAfter || input.tariff || null,
+
+      propertyContext: {
+        propertyType: input.propertyType || "unknown",
+        boundaryModeRequired: requiresPropertyBoundary(input.propertyType),
+        boundaryDataProvided: !!input?.roofGeometry?.propertyBoundary,
+        boundaryFilterApplied: false,
+      },
     };
 
 
