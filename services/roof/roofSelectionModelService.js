@@ -226,13 +226,51 @@ function buildDefaultSelectedSegments({
   optionalSegments = [],
   targetPanels = 0,
 }) {
-  const selected = recommendedSegments.slice();
-  const selectedIds = new Set(selected.map((segment) => segment.segmentIndex));
+  const rawTargetPanels = toNumber(targetPanels);
+  const target = rawTargetPanels
+    ? Math.max(0, Math.round(rawTargetPanels))
+    : 0;
 
-  let selectedCapacity = selected.reduce(
-    (sum, segment) => sum + toNumber(segment.maxPanels),
-    0
-  );
+  const selected = [];
+  const selectedIds = new Set();
+  let selectedCapacity = 0;
+
+  function getSegmentKey(segment) {
+    return String(
+      segment?.segmentIndex ??
+        segment?.segmentId ??
+        segment?.id ??
+        selected.length
+    );
+  }
+
+  function addSegment(segment) {
+    const key = getSegmentKey(segment);
+
+    if (!key || selectedIds.has(key)) {
+      return false;
+    }
+
+    selected.push(segment);
+    selectedIds.add(key);
+    selectedCapacity += toNumber(segment?.maxPanels) || 0;
+
+    return true;
+  }
+
+  const sortedRecommendedSegments = recommendedSegments
+    .slice()
+    .sort(compareSegmentsByYieldAndCapacity);
+
+  for (const segment of sortedRecommendedSegments) {
+    if (target > 0 && selectedCapacity >= target) {
+      break;
+    }
+
+    addSegment(segment);
+  }
+
+  const recommendedSelectedCount = selected.length;
 
   if (selected.length === 0) {
     const bestOptional = optionalSegments
@@ -250,19 +288,19 @@ function buildDefaultSelectedSegments({
     .sort(compareSegmentsByYieldAndCapacity);
 
   for (const segment of sortedOptionalSegments) {
-    if (selectedCapacity >= targetPanels) break;
-    if (selectedIds.has(segment.segmentIndex)) continue;
+    if (target > 0 && selectedCapacity >= target) {
+      break;
+    }
 
-    selected.push(segment);
-    selectedIds.add(segment.segmentIndex);
-    selectedCapacity += toNumber(segment.maxPanels);
+    addSegment(segment);
   }
 
+  const usedOptionalSegments = selected.length > recommendedSelectedCount;
+
   return {
-    defaultSelectionMode:
-      selected.length > recommendedSegments.length
-        ? "recommended_plus_optional_to_reach_target"
-        : "recommended_segments",
+    defaultSelectionMode: usedOptionalSegments
+      ? "recommended_plus_optional_to_reach_target"
+      : "recommended_segments",
     defaultSelectedSegments: selected,
   };
 }
@@ -530,7 +568,7 @@ function buildRoofSelectionModelFromGoogleSolarApi(
         : "high";
 
   return {
-    source: "zeyzer_roof_selection_model_v4_yield_filtered_default_selection",
+    source: "zeyzer_roof_selection_model_v5_target_capped_default_selection",
     status: "complete",
 
     thresholds: YIELD_THRESHOLDS,
