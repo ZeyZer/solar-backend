@@ -115,6 +115,77 @@ function orientationToPvgisAspect(orientation) {
   return mapWords[key] ?? 0;
 }
 
+function numberOrNull(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function normalisePvgisAspect(value) {
+  const n = numberOrNull(value);
+  if (n === null) return null;
+
+  let aspect = n;
+  while (aspect > 180) aspect -= 360;
+  while (aspect <= -180) aspect += 360;
+
+  return aspect;
+}
+
+function googleAzimuthToPvgisAspect(azimuthDegrees) {
+  const azimuth = numberOrNull(azimuthDegrees);
+  if (azimuth === null) return null;
+
+  return normalisePvgisAspect(azimuth - 180);
+}
+
+function getRoofPanelWatt(roof = {}, fallbackPanelWatt = 0) {
+  const aiPanelWatt = numberOrNull(roof?.aiRoofData?.panelAssumption?.panelWatts);
+  if (aiPanelWatt && aiPanelWatt > 0) return aiPanelWatt;
+
+  const directPanelWatt = numberOrNull(
+    roof?.panelWatt ??
+      roof?.panelWatts ??
+      roof?.moduleWatt ??
+      roof?.moduleWatts
+  );
+
+  if (directPanelWatt && directPanelWatt > 0) return directPanelWatt;
+
+  const fallback = numberOrNull(fallbackPanelWatt);
+  return fallback && fallback > 0 ? fallback : 0;
+}
+
+function getRoofPvgisInput({ roof = {}, fallbackPanelWatt = 0 } = {}) {
+  const panels = Math.max(0, Number(roof?.panels || 0));
+  const aiRoofData = roof?.aiRoofData || null;
+
+  const aiTilt = numberOrNull(aiRoofData?.pitchDegrees);
+  const legacyTilt = numberOrNull(roof?.tilt);
+  const tiltDeg = aiTilt !== null ? aiTilt : legacyTilt;
+
+  const aiAspect = googleAzimuthToPvgisAspect(aiRoofData?.azimuthDegrees);
+  const legacyAspect = orientationToPvgisAspect(roof?.orientation);
+  const aspectDeg = aiAspect !== null ? aiAspect : legacyAspect;
+
+  const panelWatt = getRoofPanelWatt(roof, fallbackPanelWatt);
+  const peakPowerKwp = panelWatt > 0 ? (panels * panelWatt) / 1000 : 0;
+
+  const usesAiRoofData =
+    aiTilt !== null ||
+    aiAspect !== null ||
+    !!aiRoofData?.panelAssumption?.panelWatts;
+
+  return {
+    panels,
+    panelWatt,
+    tiltDeg,
+    aspectDeg,
+    peakPowerKwp,
+    inputSource: usesAiRoofData ? "ai_roof_data" : "legacy_roof_card",
+    aiRoofData,
+  };
+}
+
 async function getLatLonFromUkPostcode(postcodeRaw) {
   const postcode = String(postcodeRaw || "").trim();
   if (!postcode) throw new Error("Missing postcode for PVGIS lookup.");
@@ -174,19 +245,19 @@ async function getTotalPvgisMonthlyKWh({ postcode, roofs, panelWatt }) {
   const totalMonthly = Array(12).fill(0);
 
   for (const roof of roofs) {
-    const panels = Number(roof?.panels || 0);
-    if (panels <= 0) continue;
+    const roofInput = getRoofPvgisInput({
+      roof,
+      fallbackPanelWatt: watt,
+    });
 
-    const tilt = Number(roof?.tilt);
-    const aspect = orientationToPvgisAspect(roof?.orientation);
-    const peakPowerKwp = (panels * watt) / 1000;
+    if (roofInput.panels <= 0 || roofInput.peakPowerKwp <= 0) continue;
 
     const roofMonthly = await getPvgisMonthlyKWhForRoof({
       lat,
       lon,
-      tiltDeg: tilt,
-      aspectDeg: aspect,
-      peakPowerKwp,
+      tiltDeg: roofInput.tiltDeg,
+      aspectDeg: roofInput.aspectDeg,
+      peakPowerKwp: roofInput.peakPowerKwp,
     });
 
     const shadingKey = String(roof?.shading || "none");
@@ -271,19 +342,19 @@ async function getTotalPvgisAnnualKWh({ postcode, roofs, panelWatt }) {
   const watt = Number(panelWatt || 0);
 
   for (const roof of roofs) {
-    const panels = Number(roof?.panels || 0);
-    if (panels <= 0) continue;
+    const roofInput = getRoofPvgisInput({
+      roof,
+      fallbackPanelWatt: watt,
+    });
 
-    const tilt = Number(roof?.tilt);
-    const aspect = orientationToPvgisAspect(roof?.orientation);
-    const peakPowerKwp = (panels * watt) / 1000;
+    if (roofInput.panels <= 0 || roofInput.peakPowerKwp <= 0) continue;
 
     const roofAnnual = await getPvgisAnnualKWhForRoof({
       lat,
       lon,
-      tiltDeg: tilt,
-      aspectDeg: aspect,
-      peakPowerKwp,
+      tiltDeg: roofInput.tiltDeg,
+      aspectDeg: roofInput.aspectDeg,
+      peakPowerKwp: roofInput.peakPowerKwp,
     });
 
     const shadingKey = String(roof?.shading || "none");
@@ -389,19 +460,19 @@ async function getTotalPvgisHourlyKWh({ postcode, roofs, panelWatt, year = 2023 
   for (let roofIndex = 0; roofIndex < roofs.length; roofIndex++) {
     const roof = roofs[roofIndex];
 
-    const panels = Number(roof?.panels || 0);
-    if (panels <= 0) continue;
+    const roofInput = getRoofPvgisInput({
+      roof,
+      fallbackPanelWatt: watt,
+    });
 
-    const tilt = Number(roof?.tilt);
-    const aspect = orientationToPvgisAspect(roof?.orientation);
-    const peakPowerKwp = (panels * watt) / 1000;
+    if (roofInput.panels <= 0 || roofInput.peakPowerKwp <= 0) continue;
 
     const roofRes = await getPvgisHourlyKWhForRoof({
       lat,
       lon,
-      tiltDeg: tilt,
-      aspectDeg: aspect,
-      peakPowerKwp,
+      tiltDeg: roofInput.tiltDeg,
+      aspectDeg: roofInput.aspectDeg,
+      peakPowerKwp: roofInput.peakPowerKwp,
       year,
     });
 
@@ -433,20 +504,25 @@ async function getTotalPvgisHourlyKWh({ postcode, roofs, panelWatt, year = 2023 
       index: roofIndex,
       year,
 
-      source: "pvgis_hourly_roof_array",
+      source:
+        roofInput.inputSource === "ai_roof_data"
+          ? "pvgis_hourly_ai_roof_data"
+          : "pvgis_hourly_roof_array",
+      pvgisInputSource: roofInput.inputSource,
       postcode,
       latitude: lat,
       longitude: lon,
 
       orientation: roof?.orientation || null,
-      tilt,
-      aspectDeg: aspect,
+      tilt: roofInput.tiltDeg,
+      aspectDeg: roofInput.aspectDeg,
       shading: shadingKey,
       shadingDerate: derate,
 
-      panelWatt: watt,
-      panelCount: panels,
-      baseSystemSizeKwp: Math.round(peakPowerKwp * 100) / 100,
+      panelWatt: roofInput.panelWatt,
+      panelCount: roofInput.panels,
+      baseSystemSizeKwp: Math.round(roofInput.peakPowerKwp * 1000) / 1000,
+      aiRoofData: roofInput.aiRoofData || null,
 
       hourlyGenerationKWh: deratedRoofHourly,
       monthIdx: roofRes.monthIdx,
@@ -581,6 +657,8 @@ async function runHourlyModelForYear({ input, panelWatt, year, includeHourlyArra
 module.exports = {
   PVGIS,
   orientationToPvgisAspect,
+  googleAzimuthToPvgisAspect,
+  getRoofPvgisInput,
   getLatLonFromUkPostcode,
   getPvgisAnnualKWhForRoof,
   getTotalPvgisMonthlyKWh,

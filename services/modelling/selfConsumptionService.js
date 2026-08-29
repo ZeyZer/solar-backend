@@ -4,7 +4,7 @@ const MCS_TABLES = require("../../data/mcs_self_consumption_tables.json")?.table
 const {
   PVGIS,
   getLatLonFromUkPostcode,
-  orientationToPvgisAspect,
+  getRoofPvgisInput,
   getPvgisAnnualKWhForRoof,
 } = require("../integrations/pvgisService");
 
@@ -198,9 +198,14 @@ async function getMcsRoofGroupData({ postcode, roofs, panelWatt }) {
         };
       }
 
-      const tilt = Number(roof?.tilt);
-      const aspect = orientationToPvgisAspect(roof?.orientation);
-      const kwp = (panels * watt) / 1000;
+      const roofInput = getRoofPvgisInput({
+        roof,
+        fallbackPanelWatt: watt,
+      });
+
+      const tilt = roofInput.tiltDeg;
+      const aspect = roofInput.aspectDeg;
+      const kwp = roofInput.peakPowerKwp;
 
       // PRE-SHADE annual PVGIS generation
       const annualPreShadeKWh = await getPvgisAnnualKWhForRoof({
