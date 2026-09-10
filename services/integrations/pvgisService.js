@@ -138,21 +138,53 @@ function googleAzimuthToPvgisAspect(azimuthDegrees) {
   return normalisePvgisAspect(azimuth - 180);
 }
 
-function getRoofPanelWatt(roof = {}, fallbackPanelWatt = 0) {
-  const aiPanelWatt = numberOrNull(roof?.aiRoofData?.panelAssumption?.panelWatts);
-  if (aiPanelWatt && aiPanelWatt > 0) return aiPanelWatt;
-
+function getRoofPanelWattInfo(roof = {}, fallbackPanelWatt = 0) {
   const directPanelWatt = numberOrNull(
-    roof?.panelWatt ??
+    roof?.calculationPanelWatt ??
+      roof?.selectedPanelWatt ??
+      roof?.panelWatt ??
       roof?.panelWatts ??
       roof?.moduleWatt ??
       roof?.moduleWatts
   );
 
-  if (directPanelWatt && directPanelWatt > 0) return directPanelWatt;
+  if (directPanelWatt && directPanelWatt > 0) {
+    return {
+      panelWatt: directPanelWatt,
+      source: "roof_explicit_panel_watt",
+    };
+  }
 
+  // Prefer the quote-level panel option wattage.
+  // AI roof panel assumptions describe the physical footprint used for
+  // panel-count estimation; the selected quote option controls output.
   const fallback = numberOrNull(fallbackPanelWatt);
-  return fallback && fallback > 0 ? fallback : 0;
+  if (fallback && fallback > 0) {
+    return {
+      panelWatt: fallback,
+      source: "quote_panel_option",
+    };
+  }
+
+  // Last resort only: use the AI assumption wattage if no quote panel option
+  // was provided. This keeps old/debug calls working but avoids locking
+  // premium/standard quotes to the AI fit-assumption wattage.
+  const aiPanelWatt = numberOrNull(roof?.aiRoofData?.panelAssumption?.panelWatts);
+  if (aiPanelWatt && aiPanelWatt > 0) {
+    return {
+      panelWatt: aiPanelWatt,
+      source: "ai_panel_assumption_fallback",
+    };
+  }
+
+  return {
+    panelWatt: 0,
+    source: "unavailable",
+  };
+}
+
+function getRoofPanelWatt(roof = {}, fallbackPanelWatt = 0) {
+  return getRoofPanelWattInfo(roof, fallbackPanelWatt).panelWatt;
 }
 
 function getRoofPvgisInput({ roof = {}, fallbackPanelWatt = 0 } = {}) {
@@ -167,7 +199,8 @@ function getRoofPvgisInput({ roof = {}, fallbackPanelWatt = 0 } = {}) {
   const legacyAspect = orientationToPvgisAspect(roof?.orientation);
   const aspectDeg = aiAspect !== null ? aiAspect : legacyAspect;
 
-  const panelWatt = getRoofPanelWatt(roof, fallbackPanelWatt);
+  const panelWattInfo = getRoofPanelWattInfo(roof, fallbackPanelWatt);
+  const panelWatt = panelWattInfo.panelWatt;
   const peakPowerKwp = panelWatt > 0 ? (panels * panelWatt) / 1000 : 0;
 
   const usesAiRoofData =
@@ -178,6 +211,7 @@ function getRoofPvgisInput({ roof = {}, fallbackPanelWatt = 0 } = {}) {
   return {
     panels,
     panelWatt,
+    panelWattSource: panelWattInfo.source,
     tiltDeg,
     aspectDeg,
     peakPowerKwp,
@@ -371,7 +405,15 @@ async function getTotalPvgisAnnualKWh({ postcode, roofs, panelWatt }) {
  * PVGIS seriescalc returns hourly power P [W]. We convert to kWh by: (P / 1000) * 1 hour.
  * Times are returned as UTC strings e.g. "20230101:0000".
  */
-async function getPvgisHourlyKWhForRoof({ lat, lon, tiltDeg, aspectDeg, peakPowerKwp, year = 2023 }) {
+async function getPvgisHourlyKWhForRoof({
+  lat,
+  lon,
+  tiltDeg,
+  aspectDeg,
+  peakPowerKwp,
+  year = 2023,
+  includeIrradianceComponents = false,
+}) {
   const angle = Number.isFinite(tiltDeg) ? tiltDeg : 30;
   const aspect = Number.isFinite(aspectDeg) ? aspectDeg : 0;
   const peakpower = Number.isFinite(peakPowerKwp) ? peakPowerKwp : 0;
@@ -396,6 +438,11 @@ async function getPvgisHourlyKWhForRoof({ lat, lon, tiltDeg, aspectDeg, peakPowe
     aspect: String(aspect),
 
     usehorizon: String(PVGIS.useHorizon),
+
+    // Optional irradiance decomposition for Google shade modelling.
+    // PVGIS returns Gb(i), Gd(i) and Gr(i) when components=1.
+    components: includeIrradianceComponents ? "1" : "0",
+
     outputformat: "json",
   });
 
@@ -418,6 +465,21 @@ async function getPvgisHourlyKWhForRoof({ lat, lon, tiltDeg, aspectDeg, peakPowe
   const monthIdx = new Array(hourly.length);
   const hourOfDay = new Array(hourly.length);
 
+  const beamInPlaneWm2 =
+    includeIrradianceComponents
+      ? new Array(hourly.length)
+      : null;
+
+  const diffuseInPlaneWm2 =
+    includeIrradianceComponents
+      ? new Array(hourly.length)
+      : null;
+
+  const reflectedInPlaneWm2 =
+    includeIrradianceComponents
+      ? new Array(hourly.length)
+      : null;
+
   for (let i = 0; i < hourly.length; i++) {
     const row = hourly[i];
 
@@ -425,7 +487,28 @@ async function getPvgisHourlyKWhForRoof({ lat, lon, tiltDeg, aspectDeg, peakPowe
     const P = Number(row?.P);
     kWh[i] = Number.isFinite(P) ? Math.max(0, P / 1000) : 0;
 
-    // PVGIS time is typically like "YYYYMMDD:HHMM" in local time.
+    if (includeIrradianceComponents) {
+      const beam = Number(row?.["Gb(i)"]);
+      const diffuse = Number(row?.["Gd(i)"]);
+      const reflected = Number(row?.["Gr(i)"]);
+
+      beamInPlaneWm2[i] =
+        Number.isFinite(beam)
+          ? Math.max(0, beam)
+          : 0;
+
+      diffuseInPlaneWm2[i] =
+        Number.isFinite(diffuse)
+          ? Math.max(0, diffuse)
+          : 0;
+
+      reflectedInPlaneWm2[i] =
+        Number.isFinite(reflected)
+          ? Math.max(0, reflected)
+          : 0;
+    }
+
+    // PVGIS time is UTC, e.g. "YYYYMMDD:HHMM".
     const t = String(row?.time || "");
     // month is chars 4-6 (01..12), hour is chars 9-11 (00..23)
     const mm = Number(t.slice(4, 6));  // 1..12
@@ -435,7 +518,20 @@ async function getPvgisHourlyKWhForRoof({ lat, lon, tiltDeg, aspectDeg, peakPowe
     hourOfDay[i] = (hh >= 0 && hh <= 23) ? hh : 0;
   }
 
-  return { kWh, monthIdx, hourOfDay };
+  return {
+    kWh,
+    monthIdx,
+    hourOfDay,
+
+    irradianceComponents:
+      includeIrradianceComponents
+        ? {
+            beamInPlaneWm2,
+            diffuseInPlaneWm2,
+            reflectedInPlaneWm2,
+          }
+        : null,
+  };
 }
 
 
@@ -520,6 +616,7 @@ async function getTotalPvgisHourlyKWh({ postcode, roofs, panelWatt, year = 2023 
       shadingDerate: derate,
 
       panelWatt: roofInput.panelWatt,
+      panelWattSource: roofInput.panelWattSource,
       panelCount: roofInput.panels,
       baseSystemSizeKwp: Math.round(roofInput.peakPowerKwp * 1000) / 1000,
       aiRoofData: roofInput.aiRoofData || null,
@@ -658,6 +755,7 @@ module.exports = {
   PVGIS,
   orientationToPvgisAspect,
   googleAzimuthToPvgisAspect,
+  getRoofPanelWattInfo,
   getRoofPvgisInput,
   getLatLonFromUkPostcode,
   getPvgisAnnualKWhForRoof,
