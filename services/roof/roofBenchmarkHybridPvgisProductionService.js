@@ -371,6 +371,7 @@ async function buildHybridPvgisProductionBenchmark({
   segmentSelectorAudit,
   practicalPanelEstimate,
   years = [2021, 2022, 2023],
+  segmentInputsOverride = null,
 }) {
   const postcode = getBenchmarkPostcode(benchmarkItem);
   const panelWattage = getInstallerPanelWattage(
@@ -394,11 +395,18 @@ async function buildHybridPvgisProductionBenchmark({
     };
   }
 
-  const segmentInputs = buildSegmentInputs({
-    segmentSelectorAudit,
-    practicalPanelEstimate,
-    panelWattage,
-  });
+  const hasSegmentInputsOverride =
+    Array.isArray(segmentInputsOverride) &&
+    segmentInputsOverride.length > 0;
+
+  const segmentInputs =
+    hasSegmentInputsOverride
+      ? segmentInputsOverride
+      : buildSegmentInputs({
+          segmentSelectorAudit,
+          practicalPanelEstimate,
+          panelWattage,
+        });
 
   if (!segmentInputs.length) {
     return {
@@ -481,6 +489,11 @@ async function buildHybridPvgisProductionBenchmark({
     latitude: lat,
     longitude: lon,
     years,
+
+    segmentInputMode:
+      hasSegmentInputsOverride
+        ? "fixed_reference_override"
+        : "automatic_practical_panel_estimate",
 
     segmentInputs,
     allocatedPanelTotal: segmentInputs.reduce(

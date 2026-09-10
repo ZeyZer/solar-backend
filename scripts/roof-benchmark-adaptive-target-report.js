@@ -22,15 +22,41 @@ const data = JSON.parse(fs.readFileSync(latestFile.fullPath, "utf8"));
 
 console.log("Reading:", latestFile.fullPath);
 
-const rows = data.results.map((result) => {
-  const summary = result.summary;
-  const adaptive = summary?.googleSolarApi?.adaptiveTargetEvaluation;
-  const adjusted =
-    summary?.googleSolarApi?.segmentShadeAdjustedPvgisProductionBenchmark;
+if (!Array.isArray(data.results)) {
+  console.log("Result file keys:", Object.keys(data));
+  throw new Error("Latest benchmark file does not contain data.results array.");
+}
+
+const rows = data.results.map((result, index) => {
+  const summary = result?.summary || result || {};
+  const google = summary?.googleSolarApi || result?.googleSolarApi || {};
+
+  const adaptive = google?.adaptiveTargetEvaluation;
+  const adjusted = google?.segmentShadeAdjustedPvgisProductionBenchmark;
 
   return {
-    id: summary.id,
-    label: summary.label,
+    index,
+    id:
+      summary?.id ||
+      result?.id ||
+      result?.benchmarkId ||
+      result?.benchmarkItem?.id ||
+      `row_${index}`,
+
+    label:
+      summary?.label ||
+      result?.label ||
+      result?.benchmarkItem?.label ||
+      result?.benchmarkItem?.property?.address ||
+      "",
+
+    hasSummary: Boolean(result?.summary),
+    rowStatus:
+      result?.status ||
+      summary?.status ||
+      google?.status ||
+      adjusted?.status ||
+      "",
 
     policyReason: adjusted?.adaptivePolicy?.reason,
     floor: adjusted?.adaptivePolicy?.diffuseFloor,
@@ -54,6 +80,17 @@ const rows = data.results.map((result) => {
 
     overallPass: adaptive?.overallPass,
     warnings: JSON.stringify(adaptive?.warnings || []),
+
+    error:
+      String(
+        result?.error ||
+          summary?.error ||
+          google?.error ||
+          adjusted?.error ||
+          ""
+      ).slice(0, 180),
+
+    resultKeys: Object.keys(result || {}).join(",").slice(0, 120),
   };
 });
 
@@ -62,14 +99,21 @@ console.table(rows);
 const totals = rows.reduce(
   (acc, row) => {
     acc.count += 1;
-    if (row.panelWithin10) acc.panelWithin10 += 1;
-    if (row.annualWithin15) acc.annualWithin15 += 1;
-    if (row.monthlyWithin15) acc.monthlyWithin15 += 1;
-    if (row.overallPass) acc.overallPass += 1;
+
+    if (row.hasSummary) acc.hasSummary += 1;
+    if (row.error) acc.rowsWithError += 1;
+
+    if (row.panelWithin10 === true) acc.panelWithin10 += 1;
+    if (row.annualWithin15 === true) acc.annualWithin15 += 1;
+    if (row.monthlyWithin15 === true) acc.monthlyWithin15 += 1;
+    if (row.overallPass === true) acc.overallPass += 1;
+
     return acc;
   },
   {
     count: 0,
+    hasSummary: 0,
+    rowsWithError: 0,
     panelWithin10: 0,
     annualWithin15: 0,
     monthlyWithin15: 0,
@@ -79,3 +123,12 @@ const totals = rows.reduce(
 
 console.log("\nTotals");
 console.table([totals]);
+
+const failedOrIncomplete = rows.filter(
+  (row) => !row.hasSummary || row.error || row.overallPass === false
+);
+
+if (failedOrIncomplete.length) {
+  console.log("\nFailed or incomplete rows");
+  console.table(failedOrIncomplete);
+}
