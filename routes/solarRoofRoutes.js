@@ -186,6 +186,11 @@ router.post("/building-insights/batch", async (req, res) => {
       requiredQuality: body.requiredQuality,
       includeDetectedArrays: Boolean(body.includeDetectedArrays),
       maxTargets: body.maxTargets,
+      propertyType: body.propertyType || body?.roofGeometry?.propertyType || "unknown",
+      propertyBoundary:
+        body.propertyBoundary ||
+        body?.roofGeometry?.propertyBoundary ||
+        null,
     });
 
     return res.json(result);

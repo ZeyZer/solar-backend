@@ -119,6 +119,7 @@ function buildTargetFromBenchmark(item) {
     source: "benchmark_property_target",
     latitude: coords.latitude,
     longitude: coords.longitude,
+    propertyType: item?.property?.propertyType || null,
   };
 }
 
@@ -463,10 +464,21 @@ async function runBenchmark(items) {
       longitude: target.longitude,
     });
 
+    const propertyType =
+      item?.property?.propertyType ||
+      target?.propertyType ||
+      "unknown";
+
+    const propertyBoundary =
+      item?.roofModelInput?.propertyBoundary ||
+      null;
+
     const analysis = await analyseSolarTargetBuildings([target], {
       requiredQuality: process.env.SOLAR_API_REQUIRED_QUALITY || "BASE",
       includeDetectedArrays: false,
       maxTargets: 1,
+      propertyType,
+      propertyBoundary,
     });
 
     const summary = await summariseBenchmarkResult(item, analysis);

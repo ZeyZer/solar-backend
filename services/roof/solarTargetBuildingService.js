@@ -1,4 +1,8 @@
 const {
+  applyPropertyBoundaryFilter,
+} = require("../propertyBoundaryFilterService");
+
+const {
   findClosestBuildingInsights,
 } = require("./googleSolarApiService");
 
@@ -153,10 +157,28 @@ async function analyseSingleTarget(target, options = {}) {
       includeDetectedArrays: Boolean(options.includeDetectedArrays),
     });
 
-    const buildingModel = normaliseGoogleSolarBuildingInsights(providerResponse, {
+    let buildingModel = normaliseGoogleSolarBuildingInsights(providerResponse, {
       id: options.nextBuildingId,
       target,
     });
+
+    console.log("Solar target service boundary context:", {
+      propertyType: options.propertyType || "unknown",
+      hasPropertyBoundary: !!options.propertyBoundary,
+      boundaryLineCount: options.propertyBoundary?.boundaryLines?.length || 0,
+    });
+
+    buildingModel = applyPropertyBoundaryFilter(buildingModel, {
+      propertyBoundary: options.propertyBoundary || null,
+      propertyType: options.propertyType || "unknown",
+      referencePoint: target,
+    });
+
+    console.log("Solar target service boundary filter result:", {
+      applied: buildingModel?.propertyBoundaryFilter?.applied || false,
+      propertyBoundaryFilter: buildingModel?.propertyBoundaryFilter || null,
+    });
+
 
     buildingModel.roofSelectionModel = buildRoofSelectionModelFromBuildingModel(
       buildingModel,
