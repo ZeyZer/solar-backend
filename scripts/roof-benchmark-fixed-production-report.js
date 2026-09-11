@@ -26,6 +26,13 @@ const {
   "../services/roof/roofBenchmarkSegmentShadeAdjustedPvgisProductionService"
 );
 
+const {
+  buildShadeStrengthV2Benchmark,
+  blendProduction,
+} = require(
+  "../services/roof/roofBenchmarkShadeStrengthV2Service"
+);
+
 function numberOrNull(value) {
   if (
     value === null ||
@@ -197,22 +204,78 @@ function buildReferenceSegmentInputs({
   item,
   model,
 }) {
-  const roofSpaces =
+  const legacyRoofSpaces =
     item.installerDesignTruth
       ?.roofSpacesUsed;
 
-  const panelWattage =
+  const newerRoofGroups =
+    item.installerDesignTruth
+      ?.roofGroups;
+
+  const roofSpaces =
+    Array.isArray(legacyRoofSpaces) &&
+    legacyRoofSpaces.length
+      ? legacyRoofSpaces
+      : Array.isArray(newerRoofGroups)
+      ? newerRoofGroups.map(
+          (group, index) => ({
+            ...group,
+
+            label:
+              group.label ||
+              group.name ||
+              `Roof group ${index + 1}`,
+
+            panelCount:
+              group.panelCount,
+
+            azimuthDegreesFromProposal:
+              group.azimuthDegreesFromProposal ??
+              group.azimuthDeg,
+
+            pitchDegrees:
+              group.pitchDegrees ??
+              group.tiltDeg,
+          })
+        )
+      : [];
+
+  const installerTruth =
+    item.installerDesignTruth || {};
+
+  const explicitPanelWattage =
     numberOrNull(
-      item.installerDesignTruth
-        ?.panelWattage
+      installerTruth.panelWattage ??
+      installerTruth.panel?.wattage
     );
 
-  if (
-    !Array.isArray(roofSpaces) ||
-    !roofSpaces.length
-  ) {
+  const referenceSystemSizeKwp =
+    numberOrNull(
+      installerTruth.systemSizeKwp
+    );
+
+  const referencePanelCountTotal =
+    numberOrNull(
+      installerTruth.panelCount
+    );
+
+  const derivedPanelWattage =
+    referenceSystemSizeKwp &&
+    referencePanelCountTotal
+      ? (
+          referenceSystemSizeKwp *
+          1000
+        ) /
+        referencePanelCountTotal
+      : null;
+
+  const panelWattage =
+    explicitPanelWattage ||
+    derivedPanelWattage;
+
+  if (!roofSpaces.length) {
     throw new Error(
-      "Installer reference has no roofSpacesUsed."
+      "Installer reference has no roofSpacesUsed or roofGroups."
     );
   }
 
@@ -231,252 +294,797 @@ function buildReferenceSegmentInputs({
     );
   }
 
-  const usedSegmentIndexes =
-    new Set();
+  const REFERENCE_CLUSTER_AZIMUTH_TOLERANCE_DEG =
+    10;
 
-  return roofSpaces.map(
-    (referenceRoof) => {
-      const referenceAzimuth =
-        numberOrNull(
-          referenceRoof
-            .azimuthDegreesFromProposal
-        );
+  const REFERENCE_CLUSTER_PITCH_TOLERANCE_DEG =
+    8;
 
-      const referencePitch =
-        numberOrNull(
-          referenceRoof.pitchDegrees
-        );
+  const MAX_GOOGLE_AZIMUTH_DELTA_DEG =
+    30;
 
-      const referencePanels =
-        numberOrNull(
-          referenceRoof.panelCount
-        );
+  const MAX_GOOGLE_PITCH_DELTA_DEG =
+    20;
 
-      if (
-        referenceAzimuth === null ||
-        referencePanels === null ||
-        referencePanels <= 0
-      ) {
-        throw new Error(
-          `Invalid installer roof group: ${
-            referenceRoof.label ||
-            "unnamed"
-          }`
-        );
-      }
-
-      const unusedCandidates =
-        candidates.filter((segment) => {
-          const index =
-            numberOrNull(
-              segment.segmentIndex
-            );
-
-          return (
-            index !== null &&
-            !usedSegmentIndexes.has(
-              index
-            )
-          );
-        });
-
-      const capacityCompatibleCandidates =
-        unusedCandidates.filter(
-          (segment) => {
-            const capacityPanels =
-              numberOrNull(
-                segment.maxPanels ??
-                segment.googleMaxConfigPanels
-              ) || 0;
-
-            return (
-              capacityPanels >=
-              referencePanels
-            );
-          }
-        );
-
-      // Prefer a roof segment that can physically represent
-      // the installer reference panel group. Only fall back
-      // to an undersized segment when no compatible segment
-      // exists at all.
-      const rankingPool =
-        capacityCompatibleCandidates.length
-          ? capacityCompatibleCandidates
-          : unusedCandidates;
-
-      const ranked =
-        rankingPool
-          .map((segment) => {
-            const azimuthDelta =
-              circularDistanceDegrees(
-                referenceAzimuth,
-                segment.azimuthDegrees
-              );
-
-            const pitchDelta =
-              referencePitch === null
-                ? 0
-                : Math.abs(
-                    referencePitch -
-                    Number(
-                      segment.pitchDegrees ||
-                      0
-                    )
-                  );
-
-            const availableCapacityPanels =
-              numberOrNull(
-                segment.maxPanels ??
-                segment.googleMaxConfigPanels
-              ) || 0;
-
-            const capacityShortfallPanels =
-              Math.max(
-                0,
-                referencePanels -
-                  availableCapacityPanels
-              );
-
-            return {
-              segment,
-              azimuthDelta,
-              pitchDelta,
-              availableCapacityPanels,
-              capacityShortfallPanels,
-
-              matchScore:
-                Number(
-                  azimuthDelta || 0
-                ) +
-                Number(
-                  pitchDelta || 0
-                ) * 0.5,
-            };
-          })
-          .sort(
-            (a, b) =>
-              a.matchScore -
-              b.matchScore
+  const referenceRoofs =
+    roofSpaces.map(
+      (referenceRoof, index) => {
+        const referenceAzimuth =
+          numberOrNull(
+            referenceRoof
+              .azimuthDegreesFromProposal
           );
 
-      const best = ranked[0];
+        const referencePitch =
+          numberOrNull(
+            referenceRoof.pitchDegrees
+          );
 
-      if (!best) {
-        throw new Error(
-          `Could not match installer roof group: ${
+        const referencePanels =
+          numberOrNull(
+            referenceRoof.panelCount
+          );
+
+        if (
+          referenceAzimuth === null ||
+          referencePanels === null ||
+          referencePanels <= 0
+        ) {
+          throw new Error(
+            `Invalid installer roof group: ${
+              referenceRoof.label ||
+              "unnamed"
+            }`
+          );
+        }
+
+        return {
+          sourceIndex: index,
+
+          label:
             referenceRoof.label ||
-            "unnamed"
-          }`
-        );
-      }
+            `Roof group ${index + 1}`,
 
-      const segment = best.segment;
-
-      usedSegmentIndexes.add(
-        Number(segment.segmentIndex)
-      );
-
-      const peakPowerKwp =
-        (
-          referencePanels *
-          panelWattage
-        ) / 1000;
-
-      return {
-        segmentIndex:
-          Number(
-            segment.segmentIndex
-          ),
-
-        allocatedPanels:
+          referenceAzimuth,
+          referencePitch,
           referencePanels,
+        };
+      }
+    );
 
-        capacityPanels:
+  const candidateRows =
+    candidates
+      .map((segment) => {
+        const segmentIndex =
+          numberOrNull(
+            segment.segmentIndex
+          );
+
+        const azimuthDegrees =
+          numberOrNull(
+            segment.azimuthDegrees
+          );
+
+        const pitchDegrees =
+          numberOrNull(
+            segment.pitchDegrees
+          );
+
+        const capacityPanels =
           numberOrNull(
             segment.maxPanels ??
             segment.googleMaxConfigPanels
+          ) || 0;
+
+        if (
+          segmentIndex === null ||
+          azimuthDegrees === null ||
+          capacityPanels <= 0
+        ) {
+          return null;
+        }
+
+        return {
+          segment,
+          segmentIndex,
+          azimuthDegrees,
+          pitchDegrees,
+          capacityPanels,
+        };
+      })
+      .filter(Boolean);
+
+  if (!candidateRows.length) {
+    throw new Error(
+      "No Google roof segments with usable shade-sample panel capacity."
+    );
+  }
+
+  function weightedCircularMeanDegrees(
+    rows = []
+  ) {
+    let x = 0;
+    let y = 0;
+
+    for (const row of rows) {
+      const radians =
+        (
+          Number(
+            row.referenceAzimuth
+          ) *
+          Math.PI
+        ) / 180;
+
+      const weight =
+        Number(
+          row.referencePanels || 0
+        );
+
+      x +=
+        Math.cos(radians) *
+        weight;
+
+      y +=
+        Math.sin(radians) *
+        weight;
+    }
+
+    let degrees =
+      (
+        Math.atan2(y, x) *
+        180
+      ) / Math.PI;
+
+    if (degrees < 0) {
+      degrees += 360;
+    }
+
+    return degrees;
+  }
+
+  function weightedPitchDegrees(
+    rows = []
+  ) {
+    const valid =
+      rows.filter(
+        (row) =>
+          row.referencePitch !== null
+      );
+
+    if (!valid.length) {
+      return null;
+    }
+
+    const totalWeight =
+      valid.reduce(
+        (sum, row) =>
+          sum +
+          Number(
+            row.referencePanels || 0
           ),
+        0
+      );
 
-        capacityAnnualKwh:
-          numberOrNull(
-            segment.maxConfigAnnualKwh
+    if (!totalWeight) {
+      return null;
+    }
+
+    return (
+      valid.reduce(
+        (sum, row) =>
+          sum +
+          Number(
+            row.referencePitch
+          ) *
+          Number(
+            row.referencePanels || 0
           ),
+        0
+      ) /
+      totalWeight
+    );
+  }
 
-        tiltDeg:
-          referencePitch ??
-          numberOrNull(
-            segment.pitchDegrees
+  function getClusterGeometry(
+    cluster
+  ) {
+    return {
+      azimuthDegrees:
+        weightedCircularMeanDegrees(
+          cluster.referenceRoofs
+        ),
+
+      pitchDegrees:
+        weightedPitchDegrees(
+          cluster.referenceRoofs
+        ),
+    };
+  }
+
+  const referenceClusters = [];
+
+  for (
+    const referenceRoof
+    of referenceRoofs
+  ) {
+    let bestCluster = null;
+
+    for (
+      const cluster
+      of referenceClusters
+    ) {
+      const geometry =
+        getClusterGeometry(
+          cluster
+        );
+
+      const azimuthDelta =
+        circularDistanceDegrees(
+          referenceRoof.referenceAzimuth,
+          geometry.azimuthDegrees
+        );
+
+      const pitchDelta =
+        referenceRoof.referencePitch ===
+          null ||
+        geometry.pitchDegrees === null
+          ? 0
+          : Math.abs(
+              referenceRoof.referencePitch -
+              geometry.pitchDegrees
+            );
+
+      if (
+        azimuthDelta >
+          REFERENCE_CLUSTER_AZIMUTH_TOLERANCE_DEG ||
+        pitchDelta >
+          REFERENCE_CLUSTER_PITCH_TOLERANCE_DEG
+      ) {
+        continue;
+      }
+
+      const score =
+        azimuthDelta +
+        pitchDelta * 0.5;
+
+      if (
+        !bestCluster ||
+        score <
+          bestCluster.score
+      ) {
+        bestCluster = {
+          cluster,
+          score,
+        };
+      }
+    }
+
+    if (bestCluster) {
+      bestCluster
+        .cluster
+        .referenceRoofs
+        .push(
+          referenceRoof
+        );
+    } else {
+      referenceClusters.push({
+        clusterIndex:
+          referenceClusters.length,
+
+        referenceRoofs: [
+          referenceRoof,
+        ],
+      });
+    }
+  }
+
+  const sampledPanelsBySegment =
+    new Map();
+
+  const segmentInputs = [];
+
+  for (
+    const cluster
+    of referenceClusters
+  ) {
+    const clusterGeometry =
+      getClusterGeometry(
+        cluster
+      );
+
+    const clusterReferencePanels =
+      cluster.referenceRoofs.reduce(
+        (sum, roof) =>
+          sum +
+          Number(
+            roof.referencePanels || 0
           ),
+        0
+      );
 
-        googleAzimuthDegrees:
-          referenceAzimuth,
+    const compatibleRows =
+      candidateRows
+        .map((row) => {
+          const alreadySampled =
+            sampledPanelsBySegment.get(
+              row.segmentIndex
+            ) || 0;
 
-        pvgisAspectDeg:
-          googleAzimuthToPvgisAspect(
-            referenceAzimuth
-          ),
+          const remainingCapacityPanels =
+            Math.max(
+              0,
+              row.capacityPanels -
+              alreadySampled
+            );
 
-        panelWattage,
+          const azimuthDelta =
+            circularDistanceDegrees(
+              clusterGeometry
+                .azimuthDegrees,
+              row.azimuthDegrees
+            );
 
-        peakPowerKwp:
-          Math.round(
-            peakPowerKwp * 1000
-          ) / 1000,
+          const pitchDelta =
+            clusterGeometry
+                .pitchDegrees ===
+                null ||
+            row.pitchDegrees === null
+              ? 0
+              : Math.abs(
+                  clusterGeometry
+                    .pitchDegrees -
+                  row.pitchDegrees
+                );
 
-        orientationClass:
-          segment.orientationClass ||
-          null,
+          return {
+            ...row,
 
-        sunshineClass:
-          segment.sunshineClass ||
-          null,
+            alreadySampled,
+            remainingCapacityPanels,
+            azimuthDelta,
+            pitchDelta,
 
-        referenceMapping: {
-          referenceLabel:
-            referenceRoof.label ||
+            matchScore:
+              Number(
+                azimuthDelta || 0
+              ) +
+              Number(
+                pitchDelta || 0
+              ) *
+              0.5,
+          };
+        })
+        .filter(
+          (row) =>
+            row
+              .remainingCapacityPanels >
+              0 &&
+            row.azimuthDelta <=
+              MAX_GOOGLE_AZIMUTH_DELTA_DEG &&
+            row.pitchDelta <=
+              MAX_GOOGLE_PITCH_DELTA_DEG
+        )
+        .sort(
+          (a, b) =>
+            a.matchScore -
+            b.matchScore
+        );
+
+    if (!compatibleRows.length) {
+      const labels =
+        cluster.referenceRoofs
+          .map(
+            (roof) =>
+              roof.label
+          )
+          .join(", ");
+
+      throw new Error(
+        `No geometry-compatible Google segment for installer roof group(s): ${labels}`
+      );
+    }
+
+    const selectedRows = [];
+
+    let selectedCapacity = 0;
+
+    for (
+      const row
+      of compatibleRows
+    ) {
+      selectedRows.push(
+        row
+      );
+
+      selectedCapacity +=
+        row.remainingCapacityPanels;
+
+      if (
+        selectedCapacity >=
+        clusterReferencePanels
+      ) {
+        break;
+      }
+    }
+
+    const shadeSampleTarget =
+      Math.min(
+        Math.round(
+          clusterReferencePanels
+        ),
+        selectedCapacity
+      );
+
+    const totalSelectedCapacity =
+      selectedRows.reduce(
+        (sum, row) =>
+          sum +
+          row.remainingCapacityPanels,
+        0
+      );
+
+    const provisionalAllocations =
+      selectedRows.map(
+        (row) => {
+          const exactSamples =
+            (
+              shadeSampleTarget *
+              row.remainingCapacityPanels
+            ) /
+            totalSelectedCapacity;
+
+          const baseSamples =
+            Math.min(
+              row
+                .remainingCapacityPanels,
+              Math.floor(
+                exactSamples
+              )
+            );
+
+          return {
+            ...row,
+
+            exactSamples,
+
+            shadeSamplePanels:
+              baseSamples,
+
+            remainder:
+              exactSamples -
+              baseSamples,
+          };
+        }
+      );
+
+    let allocatedSamplePanels =
+      provisionalAllocations.reduce(
+        (sum, row) =>
+          sum +
+          row.shadeSamplePanels,
+        0
+      );
+
+    const byRemainder =
+      [
+        ...provisionalAllocations,
+      ].sort(
+        (a, b) =>
+          b.remainder -
+            a.remainder ||
+          a.matchScore -
+            b.matchScore
+      );
+
+    while (
+      allocatedSamplePanels <
+      shadeSampleTarget
+    ) {
+      let changed = false;
+
+      for (
+        const row
+        of byRemainder
+      ) {
+        if (
+          allocatedSamplePanels >=
+          shadeSampleTarget
+        ) {
+          break;
+        }
+
+        if (
+          row.shadeSamplePanels >=
+          row
+            .remainingCapacityPanels
+        ) {
+          continue;
+        }
+
+        row.shadeSamplePanels +=
+          1;
+
+        allocatedSamplePanels +=
+          1;
+
+        changed = true;
+      }
+
+      if (!changed) {
+        break;
+      }
+    }
+
+    const allocations =
+      provisionalAllocations.filter(
+        (row) =>
+          row.shadeSamplePanels >
+          0
+      );
+
+    const actualShadeSamplePanels =
+      allocations.reduce(
+        (sum, row) =>
+          sum +
+          row.shadeSamplePanels,
+        0
+      );
+
+    if (!actualShadeSamplePanels) {
+      throw new Error(
+        "Geometry-compatible Google segments had no usable shade sample positions."
+      );
+    }
+
+    for (
+      const allocation
+      of allocations
+    ) {
+      sampledPanelsBySegment.set(
+        allocation.segmentIndex,
+        (
+          sampledPanelsBySegment.get(
+            allocation.segmentIndex
+          ) || 0
+        ) +
+        allocation
+          .shadeSamplePanels
+      );
+    }
+
+    const sampleCoverageRatio =
+      actualShadeSamplePanels /
+      clusterReferencePanels;
+
+    for (
+      let roofIndex = 0;
+      roofIndex <
+      cluster.referenceRoofs
+        .length;
+      roofIndex += 1
+    ) {
+      const referenceRoof =
+        cluster.referenceRoofs[
+          roofIndex
+        ];
+
+      for (
+        const allocation
+        of allocations
+      ) {
+        const sampleShare =
+          allocation
+            .shadeSamplePanels /
+          actualShadeSamplePanels;
+
+        const referenceEquivalentPanels =
+          referenceRoof
+            .referencePanels *
+          sampleShare;
+
+        const peakPowerKwp =
+          (
+            referenceEquivalentPanels *
+            panelWattage
+          ) /
+          1000;
+
+        segmentInputs.push({
+          segmentIndex:
+            allocation
+              .segmentIndex,
+
+          allocatedPanels:
+            referenceEquivalentPanels,
+
+          referenceEquivalentPanels,
+
+          shadeSamplePanels:
+            roofIndex === 0
+              ? allocation
+                  .shadeSamplePanels
+              : 0,
+
+          capacityPanels:
+            allocation
+              .capacityPanels,
+
+          capacityAnnualKwh:
+            numberOrNull(
+              allocation
+                .segment
+                .maxConfigAnnualKwh
+            ),
+
+          tiltDeg:
+            referenceRoof
+              .referencePitch ??
+            allocation
+              .pitchDegrees,
+
+          googleAzimuthDegrees:
+            referenceRoof
+              .referenceAzimuth,
+
+          pvgisAspectDeg:
+            googleAzimuthToPvgisAspect(
+              referenceRoof
+                .referenceAzimuth
+            ),
+
+          panelWattage,
+
+          peakPowerKwp:
+            Math.round(
+              peakPowerKwp *
+              1000000
+            ) /
+            1000000,
+
+          orientationClass:
+            allocation
+              .segment
+              .orientationClass ||
             null,
 
-          referenceAzimuthDegrees:
-            referenceAzimuth,
+          sunshineClass:
+            allocation
+              .segment
+              .sunshineClass ||
+            null,
 
-          googleSegmentAzimuthDegrees:
-            numberOrNull(
-              segment.azimuthDegrees
-            ),
+          referenceMapping: {
+            referenceLabel:
+              referenceRoof.label,
 
-          azimuthDeltaDegrees:
-            round1(
-              best.azimuthDelta
-            ),
+            referenceClusterIndex:
+              cluster
+                .clusterIndex,
 
-          referencePitchDegrees:
-            referencePitch,
+            clusterReferencePanels:
+              clusterReferencePanels,
 
-          googleSegmentPitchDegrees:
-            numberOrNull(
-              segment.pitchDegrees
-            ),
+            referenceEquivalentPanels:
+              round2(
+                referenceEquivalentPanels
+              ),
 
-          pitchDeltaDegrees:
-            round1(
-              best.pitchDelta
-            ),
+            shadeSamplePanels:
+              roofIndex === 0
+                ? allocation
+                    .shadeSamplePanels
+                : 0,
 
-          matchScore:
-            round1(
-              best.matchScore
-            ),
+            clusterShadeSamplePanels:
+              actualShadeSamplePanels,
 
-          googleSegmentCapacityPanels:
-            best.availableCapacityPanels,
+            sampleCoveragePercent:
+              round1(
+                sampleCoverageRatio *
+                100
+              ),
 
-          capacityShortfallPanels:
-            best.capacityShortfallPanels,
-        },
-      };
+            referenceAzimuthDegrees:
+              referenceRoof
+                .referenceAzimuth,
+
+            googleSegmentAzimuthDegrees:
+              allocation
+                .azimuthDegrees,
+
+            azimuthDeltaDegrees:
+              round1(
+                circularDistanceDegrees(
+                  referenceRoof
+                    .referenceAzimuth,
+                  allocation
+                    .azimuthDegrees
+                )
+              ),
+
+            referencePitchDegrees:
+              referenceRoof
+                .referencePitch,
+
+            googleSegmentPitchDegrees:
+              allocation
+                .pitchDegrees,
+
+            pitchDeltaDegrees:
+              referenceRoof
+                  .referencePitch ===
+                  null ||
+              allocation
+                  .pitchDegrees ===
+                  null
+                ? null
+                : round1(
+                    Math.abs(
+                      referenceRoof
+                        .referencePitch -
+                      allocation
+                        .pitchDegrees
+                    )
+                  ),
+
+            matchScore:
+              round1(
+                allocation
+                  .matchScore
+              ),
+
+            googleSegmentCapacityPanels:
+              allocation
+                .capacityPanels,
+
+            googleSegmentRemainingCapacityBeforeSampling:
+              allocation
+                .remainingCapacityPanels,
+
+            capacityShortfallPanels:
+              Math.max(
+                0,
+                clusterReferencePanels -
+                actualShadeSamplePanels
+              ),
+          },
+        });
+      }
     }
-  );
+  }
+
+  const mappedReferencePanels =
+    segmentInputs.reduce(
+      (sum, segment) =>
+        sum +
+        Number(
+          segment
+            .referenceEquivalentPanels ||
+          0
+        ),
+      0
+    );
+
+  const expectedReferencePanels =
+    referenceRoofs.reduce(
+      (sum, roof) =>
+        sum +
+        roof.referencePanels,
+      0
+    );
+
+  if (
+    Math.abs(
+      mappedReferencePanels -
+      expectedReferencePanels
+    ) > 0.001
+  ) {
+    throw new Error(
+      "Reference panel-equivalent allocation did not preserve total system capacity."
+    );
+  }
+
+  return segmentInputs;
 }
 
 function monthlyWapePercent(
@@ -765,6 +1373,64 @@ async function main() {
         ?.annualKwh
     );
 
+  const componentAwareShadeMonthly =
+    shadeAdjusted
+      ?.pvgisComponentAwareShadeAdjusted
+      ?.monthlyKwh ||
+    null;
+
+  const componentAwareShadeAnnual =
+    numberOrNull(
+      shadeAdjusted
+        ?.pvgisComponentAwareShadeAdjusted
+        ?.annualKwh
+    );
+
+  const shadeStrengthV2 =
+    buildShadeStrengthV2Benchmark({
+      baselineMonthlyKwh:
+        hybrid.pvgis
+          ?.monthlyKwh,
+
+      directMonthlyKwh:
+        directShadeMonthly,
+
+      componentAwareMonthlyKwh:
+        componentAwareShadeMonthly,
+
+      directAnnualShadeLossPercentOverride:
+        shadeAdjusted
+          ?.shadeImpact
+          ?.directAnnualShadeLossPercent,
+
+      componentAnnualShadeLossPercentOverride:
+        shadeAdjusted
+          ?.shadeImpact
+          ?.componentAwareAnnualShadeLossPercent,
+    });
+
+  const shadeStrengthV2Annual =
+    blendProduction({
+      baselineKwh: [
+        hybrid.pvgis
+          ?.annualKwh,
+      ],
+
+      directShadeKwh: [
+        directShadeAnnual,
+      ],
+
+      shadeStrength:
+        shadeStrengthV2
+          .prediction
+          .shadeStrength,
+    })[0];
+
+  const shadeStrengthV2Monthly =
+    shadeStrengthV2
+      .monthly
+      .blendedKwh;
+
   const output = {
     id: item.id,
     label: item.label,
@@ -787,6 +1453,10 @@ async function main() {
       panelWattage:
         numberOrNull(
           item.installerDesignTruth
+            ?.panelWattage ??
+          item.installerDesignTruth
+            ?.panel?.wattage ??
+          segmentInputsOverride?.[0]
             ?.panelWattage
         ),
 
@@ -804,7 +1474,20 @@ async function main() {
             segment.segmentIndex,
 
           allocatedPanels:
-            segment.allocatedPanels,
+            round2(
+              segment.allocatedPanels
+            ),
+
+          referenceEquivalentPanels:
+            round2(
+              segment.referenceEquivalentPanels ??
+              segment.allocatedPanels
+            ),
+
+          shadeSamplePanels:
+            numberOrNull(
+              segment.shadeSamplePanels
+            ),
 
           peakPowerKwp:
             segment.peakPowerKwp,
@@ -906,6 +1589,13 @@ async function main() {
             ?.adaptiveAnnualShadeLossPercent
         ),
 
+      componentAwareAnnualShadeLossPercent:
+        numberOrNull(
+          shadeAdjusted
+            ?.shadeImpact
+            ?.componentAwareAnnualShadeLossPercent
+        ),
+
       adaptivePolicy:
         shadeAdjusted
           ?.adaptivePolicy ??
@@ -955,6 +1645,118 @@ async function main() {
       monthlyShareMaePercentagePoints:
         monthlyShareMaePercentagePoints(
           directShadeMonthly,
+          referenceMonthly
+        ),
+    },
+
+    fixedReferencePvgisPlusGoogleComponentAwareShade: {
+      status:
+        shadeAdjusted.status,
+
+      annualKwh:
+        componentAwareShadeAnnual,
+
+      annualDeltaPercent:
+        percentDelta(
+          componentAwareShadeAnnual,
+          referenceAnnual
+        ),
+
+      monthlyKwh:
+        componentAwareShadeMonthly,
+
+      monthlyDeltaPercent:
+        Array.isArray(
+          componentAwareShadeMonthly
+        ) &&
+        Array.isArray(
+          referenceMonthly
+        )
+          ? componentAwareShadeMonthly.map(
+              (value, index) =>
+                percentDelta(
+                  value,
+                  referenceMonthly[
+                    index
+                  ]
+                )
+            )
+          : null,
+
+      monthlyWapePercent:
+        monthlyWapePercent(
+          componentAwareShadeMonthly,
+          referenceMonthly
+        ),
+
+      monthlyShareMaePercentagePoints:
+        monthlyShareMaePercentagePoints(
+          componentAwareShadeMonthly,
+          referenceMonthly
+        ),
+
+      componentAwareAnnualShadeLossPercent:
+        numberOrNull(
+          shadeAdjusted
+            ?.shadeImpact
+            ?.componentAwareAnnualShadeLossPercent
+        ),
+
+      hourOffset: 0,
+    },
+
+    fixedReferencePvgisPlusGoogleShadeStrengthV2: {
+      status:
+        shadeStrengthV2.status,
+
+      modelVersion:
+        shadeStrengthV2.modelVersion,
+
+      runtimeSignals:
+        shadeStrengthV2.runtimeSignals,
+
+      prediction:
+        shadeStrengthV2.prediction,
+
+      annualKwh:
+        shadeStrengthV2Annual,
+
+      annualDeltaPercent:
+        percentDelta(
+          shadeStrengthV2Annual,
+          referenceAnnual
+        ),
+
+      monthlyKwh:
+        shadeStrengthV2Monthly,
+
+      monthlyDeltaPercent:
+        Array.isArray(
+          shadeStrengthV2Monthly
+        ) &&
+        Array.isArray(
+          referenceMonthly
+        )
+          ? shadeStrengthV2Monthly.map(
+              (value, index) =>
+                percentDelta(
+                  value,
+                  referenceMonthly[
+                    index
+                  ]
+                )
+            )
+          : null,
+
+      monthlyWapePercent:
+        monthlyWapePercent(
+          shadeStrengthV2Monthly,
+          referenceMonthly
+        ),
+
+      monthlyShareMaePercentagePoints:
+        monthlyShareMaePercentagePoints(
+          shadeStrengthV2Monthly,
           referenceMonthly
         ),
     },

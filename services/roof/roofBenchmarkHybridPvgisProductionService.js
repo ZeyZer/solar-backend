@@ -78,11 +78,49 @@ function getBenchmarkPostcode(benchmarkItem = {}) {
   );
 }
 
-function getInstallerPanelWattage(benchmarkItem = {}, panelAssumptionAudit = {}) {
-  return numberOrNull(
-    benchmarkItem?.installerDesignTruth?.panelWattage ??
-      panelAssumptionAudit?.firstBuilding?.installerPanel?.wattage
-  );
+function getInstallerPanelWattage(
+  benchmarkItem = {},
+  panelAssumptionAudit = {}
+) {
+  const truth =
+    benchmarkItem?.installerDesignTruth || {};
+
+  const explicit =
+    numberOrNull(
+      truth.panelWattage ??
+      truth.panel?.wattage ??
+      panelAssumptionAudit
+        ?.firstBuilding
+        ?.installerPanel
+        ?.wattage
+    );
+
+  if (explicit && explicit > 0) {
+    return explicit;
+  }
+
+  const systemSizeKwp =
+    numberOrNull(
+      truth.systemSizeKwp
+    );
+
+  const panelCount =
+    numberOrNull(
+      truth.panelCount
+    );
+
+  if (
+    systemSizeKwp &&
+    panelCount &&
+    panelCount > 0
+  ) {
+    return (
+      systemSizeKwp *
+      1000
+    ) / panelCount;
+  }
+
+  return null;
 }
 
 function getInstallerAnnualKwh(benchmarkItem = {}) {

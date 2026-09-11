@@ -200,33 +200,130 @@ function getSegmentInputs(hybridPvgisProductionBenchmark = {}) {
     : [];
 }
 
-function chooseSamplePanelPositions({ analysis, hybridPvgisProductionBenchmark }) {
-  const allPanels = getGooglePanelPositions(analysis);
-  const segmentInputs = getSegmentInputs(hybridPvgisProductionBenchmark);
+function chooseSamplePanelPositions({
+  analysis,
+  hybridPvgisProductionBenchmark,
+}) {
+  const allPanels =
+    getGooglePanelPositions(
+      analysis
+    );
+
+  const segmentInputs =
+    getSegmentInputs(
+      hybridPvgisProductionBenchmark
+    );
 
   const selected = [];
 
-  for (const segment of segmentInputs) {
-    const segmentIndex = numberOrNull(segment.segmentIndex);
-    const requiredCount = numberOrNull(segment.allocatedPanels) || 0;
+  const requiredPanelsBySegment =
+    new Map();
 
-    if (segmentIndex === null || requiredCount <= 0) {
+  for (
+    const segment
+    of segmentInputs
+  ) {
+    const segmentIndex =
+      numberOrNull(
+        segment.segmentIndex
+      );
+
+    const explicitShadeSamplePanels =
+      numberOrNull(
+        segment.shadeSamplePanels
+      );
+
+    const requiredCount =
+      explicitShadeSamplePanels !==
+        null
+        ? explicitShadeSamplePanels
+        : (
+            numberOrNull(
+              segment
+                .allocatedPanels
+            ) || 0
+          );
+
+    if (
+      segmentIndex === null ||
+      requiredCount <= 0
+    ) {
       continue;
     }
 
-    const candidates = allPanels
-      .filter((panel) => getPanelSegmentIndex(panel) === segmentIndex)
-      .map((panel) => ({
-        panel,
-        lat: getPanelLatitude(panel),
-        lon: getPanelLongitude(panel),
-        segmentIndex,
-        annualKwh: getPanelAnnualKwh(panel),
-      }))
-      .filter((row) => row.lat !== null && row.lon !== null)
-      .sort((a, b) => Number(b.annualKwh || 0) - Number(a.annualKwh || 0));
+    requiredPanelsBySegment.set(
+      segmentIndex,
+      (
+        requiredPanelsBySegment.get(
+          segmentIndex
+        ) || 0
+      ) +
+      requiredCount
+    );
+  }
 
-    selected.push(...candidates.slice(0, requiredCount));
+  for (
+    const [
+      segmentIndex,
+      requiredCount,
+    ]
+    of requiredPanelsBySegment
+      .entries()
+  ) {
+    const candidates =
+      allPanels
+        .filter(
+          (panel) =>
+            getPanelSegmentIndex(
+              panel
+            ) ===
+            segmentIndex
+        )
+        .map(
+          (panel) => ({
+            panel,
+
+            lat:
+              getPanelLatitude(
+                panel
+              ),
+
+            lon:
+              getPanelLongitude(
+                panel
+              ),
+
+            segmentIndex,
+
+            annualKwh:
+              getPanelAnnualKwh(
+                panel
+              ),
+          })
+        )
+        .filter(
+          (row) =>
+            row.lat !== null &&
+            row.lon !== null
+        )
+        .sort(
+          (a, b) =>
+            Number(
+              b.annualKwh || 0
+            ) -
+            Number(
+              a.annualKwh || 0
+            )
+        );
+
+    selected.push(
+      ...candidates.slice(
+        0,
+        Math.round(
+          requiredCount
+        )
+      )
+    );
   }
 
   return selected;

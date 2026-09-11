@@ -124,6 +124,92 @@ function applyShadeToHourly({
   return { adjusted, factors };
 }
 
+function applyComponentAwareShadeToHourly({
+  hourlyKwh,
+  monthIdx,
+  hourOfDay,
+  shadeMatrix,
+  irradianceComponents,
+  hourOffset = 0,
+}) {
+  const adjusted = [];
+  const factors = [];
+
+  const beam =
+    irradianceComponents?.beamInPlaneWm2 || [];
+
+  const diffuse =
+    irradianceComponents?.diffuseInPlaneWm2 || [];
+
+  const reflected =
+    irradianceComponents?.reflectedInPlaneWm2 || [];
+
+  for (let i = 0; i < hourlyKwh.length; i += 1) {
+    const original =
+      Number(hourlyKwh[i] || 0);
+
+    const shadeFactor =
+      getShadeFactor({
+        matrix: shadeMatrix,
+        monthIdx: monthIdx[i],
+        hourOfDay: hourOfDay[i],
+        hourOffset,
+      });
+
+    const gb =
+      Math.max(
+        0,
+        Number(beam[i] || 0)
+      );
+
+    const gd =
+      Math.max(
+        0,
+        Number(diffuse[i] || 0)
+      );
+
+    const gr =
+      Math.max(
+        0,
+        Number(reflected[i] || 0)
+      );
+
+    const totalIrradiance =
+      gb + gd + gr;
+
+    // Google shade represents direct-sun visibility.
+    // Suppress the beam component only; preserve
+    // diffuse and reflected irradiance.
+    const effectiveIrradiance =
+      gb * shadeFactor +
+      gd +
+      gr;
+
+    const multiplier =
+      totalIrradiance > 0
+        ? clampShadeFactor(
+            effectiveIrradiance /
+              totalIrradiance
+          ) ?? 1
+        : 1;
+
+    adjusted.push(
+      round2(
+        original * multiplier
+      )
+    );
+
+    factors.push(
+      round2(multiplier)
+    );
+  }
+
+  return {
+    adjusted,
+    factors,
+  };
+}
+
 function monthlyFromHourly(kwh = [], monthIdx = []) {
   const monthly = Array(12).fill(0);
 
@@ -198,6 +284,7 @@ function buildYearlyAdjustedResult({
   segmentMatrices,
   diffuseFloor,
   hourOffset,
+  componentAware = false,
 }) {
   const adjustedSegmentProfiles = [];
 
@@ -205,14 +292,31 @@ function buildYearlyAdjustedResult({
     const segmentKey = String(baseProfile.segmentIndex);
     const shadeMatrix = segmentMatrices[segmentKey];
 
-    const adjusted = applyShadeToHourly({
-      hourlyKwh: baseProfile.unshadedHourlyKwh,
-      monthIdx: baseProfile.monthIdx,
-      hourOfDay: baseProfile.hourOfDay,
-      shadeMatrix,
-      diffuseFloor,
-      hourOffset,
-    });
+    const adjusted =
+      componentAware
+        ? applyComponentAwareShadeToHourly({
+            hourlyKwh:
+              baseProfile.unshadedHourlyKwh,
+            monthIdx:
+              baseProfile.monthIdx,
+            hourOfDay:
+              baseProfile.hourOfDay,
+            shadeMatrix,
+            irradianceComponents:
+              baseProfile.irradianceComponents,
+            hourOffset,
+          })
+        : applyShadeToHourly({
+            hourlyKwh:
+              baseProfile.unshadedHourlyKwh,
+            monthIdx:
+              baseProfile.monthIdx,
+            hourOfDay:
+              baseProfile.hourOfDay,
+            shadeMatrix,
+            diffuseFloor,
+            hourOffset,
+          });
 
     const unshadedAnnualKwh = round1(
       baseProfile.unshadedHourlyKwh.reduce(
@@ -351,6 +455,7 @@ async function buildBaseSegmentProfilesForYear({
       aspectDeg: numberOrNull(segment.pvgisAspectDeg),
       peakPowerKwp,
       year,
+      includeIrradianceComponents: true,
     });
 
     baseSegmentProfiles.push({
@@ -364,6 +469,8 @@ async function buildBaseSegmentProfilesForYear({
       unshadedHourlyKwh: pvgisProfile.kWh,
       monthIdx: pvgisProfile.monthIdx,
       hourOfDay: pvgisProfile.hourOfDay,
+      irradianceComponents:
+        pvgisProfile.irradianceComponents,
     });
   }
 
@@ -494,6 +601,26 @@ async function buildSegmentShadeAdjustedPvgisProductionBenchmark({
 
   const adaptiveAggregate = aggregateYearlyResults(adaptiveYearlyResults);
 
+  const componentAwareYearlyResults =
+    baseYearlyProfiles
+      .map((yearData) =>
+        buildYearlyAdjustedResult({
+          year: yearData.year,
+          baseSegmentProfiles:
+            yearData.baseSegmentProfiles,
+          segmentMatrices,
+          diffuseFloor: 0,
+          hourOffset: 0,
+          componentAware: true,
+        })
+      )
+      .filter(Boolean);
+
+  const componentAwareAggregate =
+    aggregateYearlyResults(
+      componentAwareYearlyResults
+    );
+
   const installerAnnualKwh = numberOrNull(
     hybridPvgisProductionBenchmark?.installerReference?.annualKwh
   );
@@ -531,12 +658,22 @@ async function buildSegmentShadeAdjustedPvgisProductionBenchmark({
       hourOffset: 0,
     },
 
-    // New adaptive policy output.
+    // Existing adaptive diffuse-floor policy output.
     pvgisAdaptiveShadeAdjusted: {
       annualKwh: adaptiveAggregate.adjustedAnnualKwh,
       monthlyKwh: adaptiveAggregate.adjustedMonthlyKwh,
       diffuseFloor: adaptivePolicy.diffuseFloor,
       hourOffset: adaptivePolicy.hourOffset,
+    },
+
+    // Component-aware Google shading:
+    // Google visibility affects beam irradiance only.
+    pvgisComponentAwareShadeAdjusted: {
+      annualKwh:
+        componentAwareAggregate.adjustedAnnualKwh,
+      monthlyKwh:
+        componentAwareAggregate.adjustedMonthlyKwh,
+      hourOffset: 0,
     },
 
     installerReference: {
@@ -569,6 +706,18 @@ async function buildSegmentShadeAdjustedPvgisProductionBenchmark({
         adaptiveAggregate.adjustedMonthlyKwh,
         installerMonthlyKwh
       ),
+
+      componentAwareShadeAdjustedAnnualDeltaPercent:
+        percentDelta(
+          componentAwareAggregate.adjustedAnnualKwh,
+          installerAnnualKwh
+        ),
+
+      componentAwareShadeAdjustedMonthlyDeltaPercent:
+        monthlyDeltaPercent(
+          componentAwareAggregate.adjustedMonthlyKwh,
+          installerMonthlyKwh
+        ),
     },
 
     shadeImpact: {
@@ -577,11 +726,19 @@ async function buildSegmentShadeAdjustedPvgisProductionBenchmark({
 
       adaptiveAnnualShadeLossKwh: adaptiveAggregate.shadeLossKwh,
       adaptiveAnnualShadeLossPercent: adaptiveAggregate.shadeLossPercent,
+
+      componentAwareAnnualShadeLossKwh:
+        componentAwareAggregate.shadeLossKwh,
+
+      componentAwareAnnualShadeLossPercent:
+        componentAwareAggregate.shadeLossPercent,
     },
 
     yearlyResults: {
       directGoogleShade: directYearlyResults,
       adaptiveShadePolicy: adaptiveYearlyResults,
+      componentAwareGoogleShade:
+        componentAwareYearlyResults,
     },
   };
 }

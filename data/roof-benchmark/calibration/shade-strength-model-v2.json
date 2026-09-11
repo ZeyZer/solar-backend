@@ -1,0 +1,60 @@
+{
+  "status": "benchmark_candidate_locked_not_live",
+  "modelVersion": "shade-strength-v2",
+  "modelType": "linear_two_feature_latent_strength_with_bounded_output",
+  "features": [
+    "R",
+    "winterR"
+  ],
+  "definitions": {
+    "R": "componentAwareAnnualShadeLossPercent / directAnnualShadeLossPercent",
+    "winterR": "componentAwareWinterShadeLossPercent / directWinterShadeLossPercent",
+    "winterMonths": [
+      "November",
+      "December",
+      "January",
+      "February"
+    ],
+    "latentTrainingTarget": "referenceShadeLossPercent / directAnnualShadeLossPercent",
+    "runtimeShadeStrength": "clamp(latentPrediction, 0, 1)"
+  },
+  "coefficients": {
+    "intercept": -0.36126,
+    "RCoefficient": 4.2994,
+    "winterRCoefficient": -1.346025
+  },
+  "limits": {
+    "minStrength": 0,
+    "maxStrength": 1
+  },
+  "developmentBenchmarks": [
+    "benchmark-001",
+    "benchmark-002",
+    "benchmark-003",
+    "benchmark-004",
+    "benchmark-005",
+    "benchmark-006",
+    "benchmark-007",
+    "benchmark-008"
+  ],
+  "leaveOneOutResults": {
+    "shadeLossMAEPercentagePoints": 1.46,
+    "annualMAEPercent": 2.61,
+    "monthlyWAPEPercent": 9.27,
+    "worstAnnualErrorPercent": 3.4
+  },
+  "designDecisions": [
+    "Shade strength is physically bounded between 0 and 1.",
+    "Training may use latent target values above 1 as evidence that a site requires full Google-direct shading.",
+    "Runtime output never extrapolates beyond the Google-direct shade profile.",
+    "Installer shade is benchmark-only and is not a live model input.",
+    "Installer production is benchmark-only and is used only for validation.",
+    "Candidate v2 is not approved for live Zeyzer use yet."
+  ],
+  "knownLimitations": [
+    "Only eight development benchmarks.",
+    "Benchmark-002 remains influential and relatively difficult to predict when held out.",
+    "Heavy-shade sites show significant monthly timing/profile error even when annual shade magnitude is accurate.",
+    "A new independent benchmark is required before final production approval."
+  ]
+}
