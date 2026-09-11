@@ -338,6 +338,47 @@ function buildReferenceSegmentInputs({
           );
         }
 
+        const explicitReferencePanelWattage =
+          numberOrNull(
+            referenceRoof.panelWattage ??
+            referenceRoof.panel?.wattage
+          );
+
+        const explicitReferencePeakPowerKwp =
+          numberOrNull(
+            referenceRoof.peakPowerKwp
+          );
+
+        const referencePanelWattage =
+          explicitReferencePanelWattage ||
+          (
+            explicitReferencePeakPowerKwp
+              ? (
+                  explicitReferencePeakPowerKwp *
+                  1000
+                ) /
+                referencePanels
+              : null
+          ) ||
+          panelWattage;
+
+        if (!referencePanelWattage) {
+          throw new Error(
+            `Installer roof group has no usable panel wattage: ${
+              referenceRoof.label ||
+              "unnamed"
+            }`
+          );
+        }
+
+        const referencePeakPowerKwp =
+          explicitReferencePeakPowerKwp ||
+          (
+            referencePanels *
+            referencePanelWattage
+          ) /
+          1000;
+
         return {
           sourceIndex: index,
 
@@ -348,6 +389,8 @@ function buildReferenceSegmentInputs({
           referenceAzimuth,
           referencePitch,
           referencePanels,
+          referencePanelWattage,
+          referencePeakPowerKwp,
         };
       }
     );
@@ -883,11 +926,9 @@ function buildReferenceSegmentInputs({
           sampleShare;
 
         const peakPowerKwp =
-          (
-            referenceEquivalentPanels *
-            panelWattage
-          ) /
-          1000;
+          referenceRoof
+            .referencePeakPowerKwp *
+          sampleShare;
 
         segmentInputs.push({
           segmentIndex:
@@ -932,7 +973,9 @@ function buildReferenceSegmentInputs({
                 .referenceAzimuth
             ),
 
-          panelWattage,
+          panelWattage:
+            referenceRoof
+              .referencePanelWattage,
 
           peakPowerKwp:
             Math.round(
@@ -968,6 +1011,14 @@ function buildReferenceSegmentInputs({
               round2(
                 referenceEquivalentPanels
               ),
+
+            referencePanelWattage:
+              referenceRoof
+                .referencePanelWattage,
+
+            referenceRoofPeakPowerKwp:
+              referenceRoof
+                .referencePeakPowerKwp,
 
             shadeSamplePanels:
               roofIndex === 0
@@ -1488,6 +1539,9 @@ async function main() {
             numberOrNull(
               segment.shadeSamplePanels
             ),
+
+          panelWattage:
+            segment.panelWattage,
 
           peakPowerKwp:
             segment.peakPowerKwp,

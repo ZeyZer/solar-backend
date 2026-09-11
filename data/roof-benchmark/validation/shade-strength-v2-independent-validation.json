@@ -1,0 +1,83 @@
+{
+  "model": "shade-strength-v2",
+  "status": "independent_validation_pass_live_integration_candidate",
+  "modelFrozen": true,
+  "validationSiteCount": 4,
+  "validationSites": [
+    {
+      "id": "benchmark-009",
+      "label": "independent-validation-site-009",
+      "targetSource": "existing_fixture_verified_equivalent_to_user_clicked_google_map",
+      "referenceShadeLossPercent": 10.8,
+      "predictedShadeLossPercent": 14.42,
+      "shadeLossErrorPercentagePoints": 3.62,
+      "annualProductionDeltaPercent": -3,
+      "monthlyWapePercent": 8.5,
+      "monthlyShareMaePercentagePoints": 0.68,
+      "shadeStrength": 0.9184254,
+      "wasClamped": false
+    },
+    {
+      "id": "benchmark-010",
+      "label": "independent-validation-site-010",
+      "targetSource": "existing_fixture_verified_equivalent_to_user_clicked_google_map",
+      "referenceShadeLossPercent": 12.9,
+      "predictedShadeLossPercent": 17.8,
+      "shadeLossErrorPercentagePoints": 4.9,
+      "annualProductionDeltaPercent": -3.7,
+      "monthlyWapePercent": 7.8,
+      "monthlyShareMaePercentagePoints": 0.6,
+      "shadeStrength": 1,
+      "wasClamped": true
+    },
+    {
+      "id": "benchmark-011",
+      "label": "independent-validation-site-011",
+      "targetSource": "user_clicked_google_map",
+      "referenceShadeLossPercent": 22.5,
+      "predictedShadeLossPercent": 20.1,
+      "shadeLossErrorPercentagePoints": -2.4,
+      "annualProductionDeltaPercent": 4.3,
+      "monthlyWapePercent": 10.4,
+      "monthlyShareMaePercentagePoints": 0.83,
+      "shadeStrength": 1,
+      "wasClamped": true
+    },
+    {
+      "id": "benchmark-012",
+      "label": "independent-validation-site-012",
+      "targetSource": "user_clicked_google_map",
+      "referenceShadeLossPercent": 8.8,
+      "predictedShadeLossPercent": 8.02,
+      "shadeLossErrorPercentagePoints": -0.78,
+      "annualProductionDeltaPercent": 4.1,
+      "monthlyWapePercent": 5.9,
+      "monthlyShareMaePercentagePoints": 0.48,
+      "shadeStrength": 0.5939770490106052,
+      "wasClamped": false
+    }
+  ],
+  "aggregateMetrics": {
+    "shadeLossMaePercentagePoints": 2.925,
+    "shadeLossMeanErrorPercentagePoints": 1.335,
+    "annualProductionMaePercent": 3.775,
+    "annualProductionMeanErrorPercent": 0.425,
+    "averageMonthlyWapePercent": 8.15,
+    "averageMonthlyShareMaePercentagePoints": 0.647,
+    "worstAbsoluteAnnualProductionErrorPercent": 4.3,
+    "worstAbsoluteShadeLossErrorPercentagePoints": 4.9
+  },
+  "interpretation": {
+    "annualProduction": "PASS. All four independent validation sites are within 5% absolute annual production error.",
+    "shadeLoss": "PASS WITH NORMAL ESTIMATE UNCERTAINTY. Shade-loss errors change direction across the independent set rather than showing a simple one-direction bias.",
+    "monthlyShape": "PASS as a broad seasonal diagnostic. Monthly values are not expected to reproduce OpenSolar exactly because weather and irradiance datasets differ.",
+    "caveat": "Annual production agreement can include cancellation between baseline PVGIS error and shade-model error, so aggregate annual MAE must not be treated as proof that every internal component is independently equally accurate."
+  },
+  "integrationRecommendation": "Keep v2 coefficients and features frozen. Proceed to runtime-input parity verification and controlled live/shadow integration. Do not retune from benchmarks 009-012.",
+  "modelConfig": {
+    "file": "data/roof-benchmark/calibration/shade-strength-model-v2.json",
+    "sha256": "f0a1e5ed7062b22aaec6702cc075eec1d28eed00c997297f6d5810dbdf2e0671",
+    "unchangedDuringIndependentValidation": true
+  },
+  "modelCoreCommit": "923bc44"
+}
