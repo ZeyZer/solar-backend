@@ -238,6 +238,7 @@ function buildYearlyAdjustedResult({
   diffuseFloor,
   hourOffset,
   componentAware = false,
+  includeHourly = false,
 }) {
   const adjustedSegmentProfiles = [];
 
@@ -342,6 +343,17 @@ function buildYearlyAdjustedResult({
 
     unshadedMonthlyKwh,
     adjustedMonthlyKwh,
+
+    ...(includeHourly
+      ? {
+          unshadedHourlyKwh: unshadedTotalHourly,
+          adjustedHourlyKwh: adjustedTotalHourly,
+          monthIdx: [...monthIdx],
+          hourOfDay: [
+            ...baseSegmentProfiles[0].hourOfDay,
+          ],
+        }
+      : {}),
 
     segmentProfiles: adjustedSegmentProfiles.map((profile) => ({
       segmentIndex: profile.segmentIndex,
