@@ -231,20 +231,6 @@ function averageMonthly(monthlySets = []) {
   return out.map((value) => round1(value / monthlySets.length));
 }
 
-function monthlyDeltaPercent(estimateMonthly, referenceMonthly) {
-  if (!Array.isArray(estimateMonthly) || !Array.isArray(referenceMonthly)) {
-    return null;
-  }
-
-  if (estimateMonthly.length !== 12 || referenceMonthly.length !== 12) {
-    return null;
-  }
-
-  return estimateMonthly.map((estimate, index) =>
-    percentDelta(estimate, referenceMonthly[index])
-  );
-}
-
 function buildYearlyAdjustedResult({
   year,
   baseSegmentProfiles,

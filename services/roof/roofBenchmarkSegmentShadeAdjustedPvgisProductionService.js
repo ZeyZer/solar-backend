@@ -65,6 +65,20 @@ const {
   buildBaseSegmentProfilesForYear,
 } = require("./googleShadePvgisCoreService");
 
+function monthlyDeltaPercent(estimateMonthly, referenceMonthly) {
+  if (!Array.isArray(estimateMonthly) || !Array.isArray(referenceMonthly)) {
+    return null;
+  }
+
+  if (estimateMonthly.length !== 12 || referenceMonthly.length !== 12) {
+    return null;
+  }
+
+  return estimateMonthly.map((estimate, index) =>
+    percentDelta(estimate, referenceMonthly[index])
+  );
+}
+
 async function buildSegmentShadeAdjustedPvgisProductionBenchmark({
   benchmarkItem,
   hybridPvgisProductionBenchmark,
