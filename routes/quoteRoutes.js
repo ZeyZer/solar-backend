@@ -58,6 +58,10 @@ const {
 } = require("../services/integrations/pvgisService");
 
 const {
+  buildQuoteShadeStrengthV2Shadow,
+} = require("../services/roof/shadeStrengthV2QuoteShadowService");
+
+const {
   normalizeTariff,
   isRetailRateTariff,
   computeHourlyBilling,
@@ -1279,6 +1283,71 @@ router.post("/", async (req, res) => {
       };
     }
 
+    // ------------------------------
+    // Shade strength v2 shadow
+    // Diagnostic only: never feeds canonical quote calculations.
+    // ------------------------------
+    let shadeStrengthV2Shadow = {
+      source: "zeyzer_shade_strength_v2_quote_shadow_v1",
+      mode: "shadow",
+      status: "disabled",
+      canonicalProduction: false,
+      reason: "feature_flag_disabled",
+    };
+
+    if (
+      process.env.SHADE_STRENGTH_V2_SHADOW_ENABLED ===
+      "true"
+    ) {
+      try {
+        shadeStrengthV2Shadow =
+          await buildQuoteShadeStrengthV2Shadow({
+            input,
+            panelWatt,
+            years: [2021, 2022, 2023],
+          });
+
+        console.log(
+          "Shade strength v2 quote shadow:",
+          {
+            status:
+              shadeStrengthV2Shadow?.status,
+            reason:
+              shadeStrengthV2Shadow?.reason ||
+              null,
+            sourceBuildingId:
+              shadeStrengthV2Shadow
+                ?.sourceBuildingId ||
+              null,
+            annualKwh:
+              shadeStrengthV2Shadow
+                ?.result
+                ?.productionProfile
+                ?.annualKwh ??
+              null,
+          }
+        );
+      } catch (shadowErr) {
+        console.warn(
+          "Shade strength v2 quote shadow failed:",
+          shadowErr.message
+        );
+
+        shadeStrengthV2Shadow = {
+          source:
+            "zeyzer_shade_strength_v2_quote_shadow_v1",
+          mode: "shadow",
+          status: "shadow_error",
+          canonicalProduction: false,
+          error:
+            process.env.NODE_ENV ===
+            "production"
+              ? "shadow_run_failed"
+              : shadowErr.message,
+        };
+      }
+    }
+
     const versionedQuote = attachQuoteEngineVersion({
       ...quote,
       leadId,
@@ -1288,6 +1357,7 @@ router.post("/", async (req, res) => {
       hardwareCatalogVersion: hardwareCatalog.version,
       designCompatibility,
       designCandidateSet,
+      shadeStrengthV2Shadow,
     });
 
     quote = versionedQuote;
