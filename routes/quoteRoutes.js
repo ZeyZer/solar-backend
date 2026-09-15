@@ -59,7 +59,12 @@ const {
 
 const {
   buildQuoteShadeStrengthV2Shadow,
+  compactLiveShadowResult,
 } = require("../services/roof/shadeStrengthV2QuoteShadowService");
+
+const {
+  buildQuoteShadeStrengthV2Candidate,
+} = require("../services/roof/shadeStrengthV2QuoteCandidateService");
 
 const {
   normalizeTariff,
@@ -428,6 +433,27 @@ router.post("/", async (req, res) => {
     let pvgisAnnualKWh = null;
     let hourlyModel = null;
 
+    // Shade strength v2 canonical-candidate state.
+    // Disabled by default. When enabled and eligible,
+    // the v2 8760 profile replaces the canonical PV
+    // profile before all downstream calculations.
+    let shadeStrengthV2Candidate = {
+      source:
+        "zeyzer_shade_strength_v2_quote_candidate_v1",
+      status:
+        "disabled",
+      applied:
+        false,
+      canonicalProduction:
+        false,
+      reason:
+        "feature_flag_disabled",
+    };
+
+    // Internal only. Never attach this full object to
+    // the quote because it contains the 8760 profile.
+    let shadeStrengthV2CandidateRuntime = null;
+
     // ------------------------------
     // 1) Try PVGIS HOURLY simulation (3-year average)
     // ------------------------------
@@ -545,6 +571,154 @@ router.post("/", async (req, res) => {
       } catch (e) {
         console.warn("PVGIS lookup failed, using fallback generation:", e.message);
         pvgisAnnualKWh = null;
+      }
+    }
+
+    // ------------------------------
+    // Shade strength v2 canonical candidate
+    //
+    // IMPORTANT:
+    // - feature-flagged and disabled by default
+    // - fail-open to the existing PVGIS hourly model
+    // - runs before calculateQuote() and therefore
+    //   before tariff, battery and financial modelling
+    // ------------------------------
+    if (
+      process.env
+        .SHADE_STRENGTH_V2_CANONICAL_CANDIDATE_ENABLED ===
+      "true"
+    ) {
+      try {
+        const candidate =
+          await buildQuoteShadeStrengthV2Candidate({
+            input,
+            panelWatt,
+            hourlyModel,
+            years: [2021, 2022, 2023],
+          });
+
+        shadeStrengthV2CandidateRuntime =
+          candidate?.runtime || null;
+
+        if (
+          candidate?.status === "complete" &&
+          candidate?.applied === true &&
+          candidate?.hourlyModel &&
+          Array.isArray(
+            candidate?.hourlyYearData
+          )
+        ) {
+          hourlyModel =
+            candidate.hourlyModel;
+
+          hourlyYearData =
+            candidate.hourlyYearData;
+
+          pvgisAnnualKWh =
+            candidate.annualGenerationKWh;
+
+          shadeStrengthV2Candidate = {
+            ...(candidate.diagnostic || {}),
+            source:
+              candidate?.diagnostic?.source ||
+              candidate?.source ||
+              "zeyzer_shade_strength_v2_quote_candidate_v1",
+            status:
+              "complete",
+            applied:
+              true,
+            canonicalProduction:
+              true,
+          };
+
+          console.log(
+            "Shade strength v2 canonical candidate applied:",
+            {
+              status:
+                shadeStrengthV2Candidate.status,
+              model:
+                candidate.model ||
+                null,
+              annualKwh:
+                pvgisAnnualKWh,
+              sourceBuildingId:
+                shadeStrengthV2Candidate
+                  .sourceBuildingId ||
+                null,
+              locationSource:
+                shadeStrengthV2Candidate
+                  .locationSource ||
+                null,
+              boundaryFilterApplied:
+                shadeStrengthV2Candidate
+                  .boundaryFilterApplied ===
+                true,
+            }
+          );
+        } else {
+          shadeStrengthV2Candidate = {
+            source:
+              candidate?.source ||
+              "zeyzer_shade_strength_v2_quote_candidate_v1",
+            status:
+              candidate?.status ||
+              "fallback",
+            applied:
+              false,
+            canonicalProduction:
+              false,
+            reason:
+              candidate?.reason ||
+              "candidate_not_applied",
+            runtimeStatus:
+              candidate?.runtime?.status ||
+              null,
+            sourceBuildingId:
+              candidate?.runtime
+                ?.sourceBuildingId ||
+              null,
+            locationSource:
+              candidate?.runtime
+                ?.locationSource ||
+              null,
+          };
+
+          console.log(
+            "Shade strength v2 canonical candidate fallback:",
+            {
+              status:
+                shadeStrengthV2Candidate.status,
+              reason:
+                shadeStrengthV2Candidate.reason,
+              runtimeStatus:
+                shadeStrengthV2Candidate
+                  .runtimeStatus,
+            }
+          );
+        }
+      } catch (candidateErr) {
+        console.warn(
+          "Shade strength v2 canonical candidate failed; using existing PVGIS profile:",
+          candidateErr.message
+        );
+
+        shadeStrengthV2Candidate = {
+          source:
+            "zeyzer_shade_strength_v2_quote_candidate_v1",
+          status:
+            "candidate_error",
+          applied:
+            false,
+          canonicalProduction:
+            false,
+          reason:
+            "candidate_run_failed",
+          error:
+            process.env.NODE_ENV ===
+            "production"
+              ? "candidate_run_failed"
+              : candidateErr.message,
+        };
       }
     }
 
@@ -1300,12 +1474,50 @@ router.post("/", async (req, res) => {
       "true"
     ) {
       try {
-        shadeStrengthV2Shadow =
-          await buildQuoteShadeStrengthV2Shadow({
-            input,
-            panelWatt,
-            years: [2021, 2022, 2023],
-          });
+        if (
+          shadeStrengthV2CandidateRuntime
+            ?.status === "complete" &&
+          shadeStrengthV2CandidateRuntime
+            ?.result
+            ?.status === "complete"
+        ) {
+          shadeStrengthV2Shadow = {
+            source:
+              "zeyzer_shade_strength_v2_quote_shadow_v1",
+            mode:
+              "shadow",
+            status:
+              "complete",
+            canonicalProduction:
+              false,
+            sourceBuildingId:
+              shadeStrengthV2CandidateRuntime
+                .sourceBuildingId ||
+              null,
+            locationSource:
+              shadeStrengthV2CandidateRuntime
+                .locationSource ||
+              null,
+            boundaryFilterApplied:
+              shadeStrengthV2CandidateRuntime
+                .boundaryFilterApplied ===
+              true,
+            reusedCandidateRuntime:
+              true,
+            result:
+              compactLiveShadowResult(
+                shadeStrengthV2CandidateRuntime
+                  .result
+              ),
+          };
+        } else {
+          shadeStrengthV2Shadow =
+            await buildQuoteShadeStrengthV2Shadow({
+              input,
+              panelWatt,
+              years: [2021, 2022, 2023],
+            });
+        }
 
         console.log(
           "Shade strength v2 quote shadow:",
@@ -1325,6 +1537,10 @@ router.post("/", async (req, res) => {
                 ?.productionProfile
                 ?.annualKwh ??
               null,
+            reusedCandidateRuntime:
+              shadeStrengthV2Shadow
+                ?.reusedCandidateRuntime ===
+              true,
           }
         );
       } catch (shadowErr) {
@@ -1357,6 +1573,7 @@ router.post("/", async (req, res) => {
       hardwareCatalogVersion: hardwareCatalog.version,
       designCompatibility,
       designCandidateSet,
+      shadeStrengthV2Candidate,
       shadeStrengthV2Shadow,
     });
 

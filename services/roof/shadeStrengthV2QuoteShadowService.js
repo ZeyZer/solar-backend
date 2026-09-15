@@ -362,7 +362,7 @@ function compactLiveShadowResult(
   };
 }
 
-async function buildQuoteShadeStrengthV2Shadow({
+async function buildQuoteShadeStrengthV2Runtime({
   input = {},
   panelWatt = 0,
   years = [2021, 2022, 2023],
@@ -379,13 +379,22 @@ async function buildQuoteShadeStrengthV2Shadow({
     "complete"
   ) {
     return {
-      source: SOURCE,
-      mode: "shadow",
-      status: "ineligible",
-      canonicalProduction: false,
+      source:
+        "zeyzer_shade_strength_v2_quote_runtime_v1",
+
+      mode:
+        "runtime",
+
+      status:
+        "ineligible",
+
+      canonicalProduction:
+        false,
+
       reason:
         resolved.reason ||
         "unknown",
+
       eligibility:
         resolved,
     };
@@ -416,8 +425,11 @@ async function buildQuoteShadeStrengthV2Shadow({
       });
 
     return {
-      source: SOURCE,
-      mode: "shadow",
+      source:
+        "zeyzer_shade_strength_v2_quote_runtime_v1",
+
+      mode:
+        "runtime",
 
       status:
         result?.status ===
@@ -441,17 +453,21 @@ async function buildQuoteShadeStrengthV2Shadow({
           .boundaryFilterApplied,
 
       result:
-        compactLiveShadowResult(
-          result
-        ),
+        result || null,
     };
   } catch (error) {
     return {
-      source: SOURCE,
-      mode: "shadow",
+      source:
+        "zeyzer_shade_strength_v2_quote_runtime_v1",
+
+      mode:
+        "runtime",
+
       status:
         "shadow_error",
-      canonicalProduction: false,
+
+      canonicalProduction:
+        false,
 
       sourceBuildingId:
         resolved
@@ -464,8 +480,42 @@ async function buildQuoteShadeStrengthV2Shadow({
   }
 }
 
+async function buildQuoteShadeStrengthV2Shadow({
+  input = {},
+  panelWatt = 0,
+  years = [2021, 2022, 2023],
+  dependencies = {},
+} = {}) {
+  const runtime =
+    await buildQuoteShadeStrengthV2Runtime({
+      input,
+      panelWatt,
+      years,
+      dependencies,
+    });
+
+  return {
+    ...runtime,
+
+    source:
+      SOURCE,
+
+    mode:
+      "shadow",
+
+    result:
+      runtime.status ===
+      "complete"
+        ? compactLiveShadowResult(
+            runtime.result
+          )
+        : runtime.result,
+  };
+}
+
 module.exports = {
   resolveQuoteShadowInputs,
   compactLiveShadowResult,
+  buildQuoteShadeStrengthV2Runtime,
   buildQuoteShadeStrengthV2Shadow,
 };
