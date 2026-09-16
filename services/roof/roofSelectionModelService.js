@@ -121,6 +121,36 @@ function getAssumedPanelKwp(panelAssumption) {
   return toNumber(panelAssumption?.panelWatts) / 1000;
 }
 
+function getPracticalPanelUtilisationFactor(panelCount) {
+  const panels = Math.max(0, Math.round(toNumber(panelCount)));
+
+  if (panels >= 18) {
+    return 0.74;
+  }
+
+  if (panels >= 12) {
+    return 0.82;
+  }
+
+  if (panels > 0) {
+    return 0.90;
+  }
+
+  return 0;
+}
+
+function getPracticalPanelCapacity(panelCount) {
+  const panels = Math.max(0, Math.round(toNumber(panelCount)));
+
+  if (!panels) {
+    return 0;
+  }
+
+  const factor = getPracticalPanelUtilisationFactor(panels);
+
+  return Math.max(1, Math.round(panels * factor));
+}
+
 function calculateAssumedAnnualKwh({
   annualKwhPerKwp,
   panelCount,
@@ -250,11 +280,29 @@ function classifyRoofSegment(segment, scoredSegment = {}) {
     };
   }
 
+  // Small roof planes can be technically usable but are less likely to be
+  // attractive in a real domestic installation once modern panel dimensions,
+  // roof-edge clearance and installation/scaffolding complexity are considered.
+  // Keep them available as Potential rather than including them automatically.
+  if (maxPanels > 0 && maxPanels < 4) {
+    return {
+      selectionStatus: "optional",
+      defaultSelected: false,
+      hideFromSimpleUi: false,
+      reasons: [
+        `Small roof area: estimated capacity is only ${maxPanels} panel${
+          maxPanels === 1 ? "" : "s"
+        }.`,
+        "May be less practical once panel dimensions, roof-edge clearance and installation complexity are confirmed.",
+      ],
+    };
+  }
+
   if (
     annualKwhPerKwp !== null &&
     annualKwhPerKwp >= YIELD_THRESHOLDS.strongKwhPerKwp &&
     score >= 70 &&
-    ["south", "east_west"].includes(orientation)
+    ["south", "east_west", "marginal_east_west"].includes(orientation)
   ) {
     reasons.push(
       `Strong roof-space yield: ${round1(annualKwhPerKwp)} kWh/kWp.`
@@ -348,84 +396,14 @@ function classifyRoofSegment(segment, scoredSegment = {}) {
 
 function buildDefaultSelectedSegments({
   recommendedSegments = [],
-  optionalSegments = [],
-  targetPanels = 0,
 }) {
-  const rawTargetPanels = toNumber(targetPanels);
-  const target = rawTargetPanels
-    ? Math.max(0, Math.round(rawTargetPanels))
-    : 0;
-
-  const selected = [];
-  const selectedIds = new Set();
-  let selectedCapacity = 0;
-
-  function getSegmentKey(segment) {
-    return String(
-      segment?.segmentIndex ??
-        segment?.segmentId ??
-        segment?.id ??
-        selected.length
-    );
-  }
-
-  function addSegment(segment) {
-    const key = getSegmentKey(segment);
-
-    if (!key || selectedIds.has(key)) {
-      return false;
-    }
-
-    selected.push(segment);
-    selectedIds.add(key);
-    selectedCapacity += toNumber(segment?.maxPanels) || 0;
-
-    return true;
-  }
-
-  const sortedRecommendedSegments = recommendedSegments
+  const selected = recommendedSegments
     .slice()
     .sort(compareSegmentsByYieldAndCapacity);
-
-  for (const segment of sortedRecommendedSegments) {
-    if (target > 0 && selectedCapacity >= target) {
-      break;
-    }
-
-    addSegment(segment);
-  }
-
-  const recommendedSelectedCount = selected.length;
-
-  if (selected.length === 0) {
-    const bestOptional = optionalSegments
-      .slice()
-      .sort(compareSegmentsByYieldAndCapacity)[0];
-
-    return {
-      defaultSelectionMode: bestOptional ? "best_optional_segment" : "none",
-      defaultSelectedSegments: bestOptional ? [bestOptional] : [],
-    };
-  }
-
-  const sortedOptionalSegments = optionalSegments
-    .slice()
-    .sort(compareSegmentsByYieldAndCapacity);
-
-  for (const segment of sortedOptionalSegments) {
-    if (target > 0 && selectedCapacity >= target) {
-      break;
-    }
-
-    addSegment(segment);
-  }
-
-  const usedOptionalSegments = selected.length > recommendedSelectedCount;
 
   return {
-    defaultSelectionMode: usedOptionalSegments
-      ? "recommended_plus_optional_to_reach_target"
-      : "recommended_segments",
+    defaultSelectionMode:
+      selected.length > 0 ? "recommended_segments" : "none",
     defaultSelectedSegments: selected,
   };
 }
@@ -496,21 +474,28 @@ function buildRoofSelectionModelFromGoogleSolarApi(
   const segments = segmentRows.map((segment) => {
     const scoredSegment = scoredByIndex[segment.segmentIndex] || {};
     const googleMaxConfigPanels = toNumber(segment.maxConfigPanels);
-    const realisticMaxPanels = convertGooglePanelCountToAssumedPanelCount(
+    const areaAdjustedMaxPanels = convertGooglePanelCountToAssumedPanelCount(
       googleMaxConfigPanels,
       panelAssumption
     );
+
+    const practicalPanelUtilisationFactor =
+      getPracticalPanelUtilisationFactor(areaAdjustedMaxPanels);
+
+    const practicalMaxPanels =
+      getPracticalPanelCapacity(areaAdjustedMaxPanels);
+
     const annualKwhPerKwp = calculateSegmentAnnualKwhPerKwp(segment);
     const estimatedAnnualKwh = calculateAssumedAnnualKwh({
       annualKwhPerKwp,
-      panelCount: realisticMaxPanels,
+      panelCount: practicalMaxPanels,
       panelAssumption,
     });
 
     const classification = classifyRoofSegment(
       {
         ...segment,
-        realisticMaxPanels,
+        realisticMaxPanels: practicalMaxPanels,
       },
       scoredSegment
     );
@@ -532,7 +517,15 @@ function buildRoofSelectionModelFromGoogleSolarApi(
       score: scoredSegment.baseScore ?? null,
       scoreReasons: scoredSegment.reasons || [],
 
-      maxPanels: realisticMaxPanels,
+      // Customer-facing/design capacity uses a practical allowance for
+      // edge clearance, setbacks and real-world layout constraints.
+      maxPanels: practicalMaxPanels,
+      practicalMaxPanels,
+      areaAdjustedMaxPanels,
+      practicalPanelUtilisationFactor: round3(
+        practicalPanelUtilisationFactor
+      ),
+
       maxConfigAnnualKwh: round1(estimatedAnnualKwh),
       annualKwhPerKwp: round1(annualKwhPerKwp),
 
@@ -588,28 +581,27 @@ function buildRoofSelectionModelFromGoogleSolarApi(
     toNumber(googleSolarApi.maxPanels, 0) ||
     segments.reduce((sum, segment) => sum + segment.maxPanels, 0);
 
+  // Customer-facing roof recommendation is defined by the capacity of
+  // Recommended roof segments only. Potential/optional roof segments are
+  // available for explicit user opt-in but never increase the default system.
   const rawAutoExpectedPanels = toNumber(
     practicalPanelEstimate?.practicalPanels?.expected
   );
 
-  const currentAutoExpectedPanels =
-    rawAutoExpectedPanels ||
-    (selectableCapacityPanels > 0
-      ? Math.round(selectableCapacityPanels * 0.7)
-      : 0);
+  const currentAutoExpectedPanels = recommendedCapacityPanels;
 
-  const suggestedPanelRange = buildSuggestedPanelRange({
-    selectableCapacityPanels,
-    currentAutoExpectedPanels,
-  });
+  const suggestedPanelRange = {
+    low: recommendedCapacityPanels,
+    expected: recommendedCapacityPanels,
+    high: recommendedCapacityPanels,
+  };
 
   const editableMin = selectableCapacityPanels > 0 ? 1 : 0;
   const editableMax = selectableCapacityPanels;
-  const editableDefault = clamp(
-    currentAutoExpectedPanels || suggestedPanelRange.expected,
-    editableMin,
-    editableMax
-  );
+  const editableDefault =
+    recommendedCapacityPanels > 0
+      ? recommendedCapacityPanels
+      : 0;
 
   const warnings = [];
 
@@ -662,38 +654,12 @@ function buildRoofSelectionModelFromGoogleSolarApi(
     }
   }
 
-  if (
-    selectableCapacityPanels > 0 &&
-    currentAutoExpectedPanels > 0 &&
-    Math.abs(currentAutoExpectedPanels - selectableCapacityPanels) /
-      selectableCapacityPanels >
-      0.35
-  ) {
-    warnings.push({
-      code: "auto_panel_count_differs_from_selectable_capacity",
-      level: "medium",
-      message:
-        "The current automatic panel estimate differs materially from the selectable roof capacity.",
-    });
-  }
-
   const defaultSelectionTargetPanels =
-    selectableCapacityPanels > 0
-      ? clamp(
-          Math.max(
-            currentAutoExpectedPanels,
-            Math.round(selectableCapacityPanels * 0.7)
-          ),
-          1,
-          selectableCapacityPanels
-        )
-      : 0;
+    recommendedCapacityPanels;
 
   const { defaultSelectionMode, defaultSelectedSegments } =
     buildDefaultSelectedSegments({
       recommendedSegments,
-      optionalSegments,
-      targetPanels: defaultSelectionTargetPanels,
     });
 
   const defaultSelectedCapacityPanels = defaultSelectedSegments.reduce(
@@ -721,7 +687,7 @@ function buildRoofSelectionModelFromGoogleSolarApi(
         : "high";
 
   return {
-    source: "zeyzer_roof_selection_model_v6_area_adjusted_panel_assumption",
+    source: "zeyzer_roof_selection_model_v9_segment_practical_capacity",
     status: "complete",
 
     thresholds: YIELD_THRESHOLDS,
@@ -738,7 +704,10 @@ function buildRoofSelectionModelFromGoogleSolarApi(
       currentAutoExpectedPanels,
       recommendedCapacityPanels,
       optionalCapacityPanels,
+      potentialCapacityPanels: optionalCapacityPanels,
       selectableCapacityPanels,
+      avoidSegmentCount:
+        notRecommendedSegments.length + hiddenSegments.length,
       defaultSelectionMode,
       defaultSelectionTargetPanels,
       defaultSelectedCapacityPanels,
