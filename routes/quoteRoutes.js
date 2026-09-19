@@ -93,6 +93,10 @@ const {
 } = require("../services/modelling/batteryRecommendationService");
 
 const {
+  buildBatteryScenario,
+} = require("../services/modelling/batteryScenarioService");
+
+const {
   extractDaySlice,
 } = require("../services/modelling/hourlyDebugService");
 
@@ -1242,28 +1246,109 @@ router.post("/", async (req, res) => {
           const lifetimeNetSavings = Math.round(Number(paybackSeries.lifetimeSavings || 0)); // net of system cost
           const lifetimeGrossBenefit = Math.round(lifetimeNetSavings + candidateMidPrice);
 
+          // Keep compact chart-ready data from this simulation so the
+          // frontend can switch battery sizes without another API call.
+          const pickScenarioDayStart = (targetMonth, scoreFn) => {
+            let bestStart = 0;
+            let bestScore = -Infinity;
+
+            for (
+              let start = 0;
+              start <= yd.monthIdx.length - 24;
+              start += 24
+            ) {
+              if (yd.monthIdx[start] !== targetMonth) continue;
+
+              let score = 0;
+              for (let j = 0; j < 24; j++) {
+                score += scoreFn(start + j);
+              }
+
+              if (score > bestScore) {
+                bestScore = score;
+                bestStart = start;
+              }
+            }
+
+            return bestStart;
+          };
+
+          const scenarioWinterStart = pickScenarioDayStart(
+            0,
+            (idx) =>
+              Number(
+                sim.hourly.battChargeFromGridKWh?.[idx] || 0
+              )
+          );
+
+          const scenarioSummerStart = pickScenarioDayStart(
+            5,
+            (idx) => Number(sim.hourly.pvKWh?.[idx] || 0)
+          );
+
+          const scenarioDebugWinterDay = extractDaySlice(
+            sim.hourly,
+            scenarioWinterStart
+          );
+
+          const scenarioDebugSummerDay = extractDaySlice(
+            sim.hourly,
+            scenarioSummerStart
+          );
+
           return {
-            annualBenefit: Math.round(avgBenefit),
+            // Keep financial inputs at 2dp so recommendation ranking
+            // and reusable scenarios use the same whole-system economics.
+            annualBenefit: round2(avgBenefit),
             paybackYears,
             annualSelfUsedKWh: Math.round(avgSelf),
             annualExportedKWh: Math.round(avgExp),
             annualImportedKWh: Math.round(avgImp),
-            candidateMidPrice: Math.round(candidateMidPrice),
+            candidateMidPrice: round2(candidateMidPrice),
 
             // Used for “max lifetime savings”
             lifetimeYears: 25,
             lifetimeGrossBenefit,
             lifetimeNetSavings,
+
+            // Internal only: consumed below when building battery
+            // scenarios. This object is deliberately removed before
+            // the public recommendation curve is created.
+            _scenarioSource: {
+              candidateBaseQuote,
+              billing,
+              monthly: sim.monthly,
+              debugWinterDay: scenarioDebugWinterDay,
+              debugSummerDay: scenarioDebugSummerDay,
+            },
           };
         }
 
 
         // BATTERY RECOMMENDATIONS
         const curve = [];
+        const batteryScenarioSources = new Map();
+
         for (let b = 0; b <= MAX_BAT; b += STEP) {
           try {
             const r = simulateForBatterySizeUsable(b);
-            curve.push({ batteryKWhUsable: b, ...r });
+
+            const {
+              _scenarioSource,
+              ...curveCandidate
+            } = r;
+
+            curve.push({
+              batteryKWhUsable: b,
+              ...curveCandidate,
+            });
+
+            if (_scenarioSource) {
+              batteryScenarioSources.set(
+                String(b),
+                _scenarioSource
+              );
+            }
           } catch (e) {
             console.warn(`Battery optimisation: failed for ${b} kWh:`, e);
           }
@@ -1285,6 +1370,70 @@ router.post("/", async (req, res) => {
             batteryModelAssumptions,
           })
         );
+
+        // Use the same unrounded-to-whole-pounds curve value
+        // that buildBatteryRecommendations() used internally.
+        // noBatteryComparison is display-oriented and rounds money.
+        const noBatteryCurveCandidate = curve.find(
+          (candidate) =>
+            Number(candidate.batteryKWhUsable || 0) === 0
+        );
+
+        const noBatteryAnnualBenefitForScenarios = Number(
+          noBatteryCurveCandidate?.annualBenefit ?? 0
+        );
+
+        const batteryScenarios = {};
+
+        for (
+          const [batteryKey, source]
+          of batteryScenarioSources.entries()
+        ) {
+          const scenario = buildBatteryScenario({
+            batteryKWhUsable: Number(batteryKey),
+
+            ...source,
+
+            monthlyLoadKWh,
+
+            noBatteryAnnualBenefit:
+              noBatteryAnnualBenefitForScenarios,
+
+            annualSolarGenerationKWh:
+              Number(pvgisAnnualKWh || 0) ||
+              Number(quote?.estAnnualGenerationKWh || 0),
+
+            lifetimeYears: 25,
+            panelOption: input?.panelOption || "",
+            energyInflationRate: Number(
+              CONFIG.energyInflationRate || 0.06
+            ),
+
+            batteryDegradationRate:
+              batteryModelAssumptions.degradationRate,
+
+            minBatteryCapacityFraction:
+              batteryModelAssumptions.minCapacityFraction,
+          });
+
+          if (scenario) {
+            batteryScenarios[batteryKey] = scenario;
+          }
+        }
+
+        quote.batteryRecommendations = {
+          ...quote.batteryRecommendations,
+
+          scenarioVersion: "battery_scenarios_v1",
+
+          availableBatterySizesKWh: Object.keys(
+            batteryScenarios
+          )
+            .map(Number)
+            .sort((a, b) => a - b),
+
+          scenarios: batteryScenarios,
+        };
 
         const noBatteryAnnualBenefitRaw =
           quote.batteryRecommendations?.noBatteryComparison?.noBattery?.annualBenefit;

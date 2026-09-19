@@ -143,6 +143,10 @@ function attachBatteryProductsToRecommendations(batteryRecommendations) {
       batteryRecommendations.bestPayback
     ),
 
+    balanced: attachBatteryProductToCandidate(
+      batteryRecommendations.balanced
+    ),
+
     bestLifetimeSavings: attachBatteryProductToCandidate(
       batteryRecommendations.bestLifetimeSavings
     ),

@@ -83,6 +83,106 @@ function selectBestLifetimeSavingsCandidate(candidates) {
   return bestLifetimeSavings;
 }
 
+function selectBalancedCandidate(candidates) {
+  const safeCandidates = Array.isArray(candidates) ? candidates : [];
+
+  const viable = safeCandidates.filter((candidate) => {
+    const paybackYears = Number(candidate?.paybackYears);
+    const lifetimeNetSavings = Number(candidate?.lifetimeNetSavings);
+
+    return (
+      Number.isFinite(paybackYears) &&
+      paybackYears > 0 &&
+      Number.isFinite(lifetimeNetSavings) &&
+      lifetimeNetSavings > 0
+    );
+  });
+
+  if (!viable.length) return null;
+  if (viable.length === 1) return viable[0];
+
+  const paybacks = viable.map((candidate) =>
+    Number(candidate.paybackYears)
+  );
+
+  const lifetimeSavings = viable.map((candidate) =>
+    Number(candidate.lifetimeNetSavings)
+  );
+
+  const minPayback = Math.min(...paybacks);
+  const maxPayback = Math.max(...paybacks);
+
+  const minLifetimeSavings = Math.min(...lifetimeSavings);
+  const maxLifetimeSavings = Math.max(...lifetimeSavings);
+
+  const paybackRange = maxPayback - minPayback;
+  const lifetimeSavingsRange =
+    maxLifetimeSavings - minLifetimeSavings;
+
+  const scored = viable.map((candidate) => {
+    const paybackYears = Number(candidate.paybackYears);
+    const savings = Number(candidate.lifetimeNetSavings);
+
+    // Normalise both whole-system outcomes to 0-1,
+    // where 1 represents the best result.
+    const paybackScore =
+      paybackRange > 0
+        ? (maxPayback - paybackYears) / paybackRange
+        : 1;
+
+    const lifetimeSavingsScore =
+      lifetimeSavingsRange > 0
+        ? (savings - minLifetimeSavings) / lifetimeSavingsRange
+        : 1;
+
+    // Distance from the ideal whole-system result:
+    // shortest payback + highest lifetime savings.
+    const distanceFromIdeal = Math.sqrt(
+      Math.pow(1 - paybackScore, 2) +
+      Math.pow(1 - lifetimeSavingsScore, 2)
+    );
+
+    return {
+      candidate,
+      paybackScore,
+      lifetimeSavingsScore,
+      distanceFromIdeal,
+    };
+  });
+
+  scored.sort((a, b) => {
+    if (a.distanceFromIdeal !== b.distanceFromIdeal) {
+      return a.distanceFromIdeal - b.distanceFromIdeal;
+    }
+
+    // Tie-break 1: shorter whole-system payback.
+    const paybackDifference =
+      Number(a.candidate.paybackYears) -
+      Number(b.candidate.paybackYears);
+
+    if (paybackDifference !== 0) {
+      return paybackDifference;
+    }
+
+    // Tie-break 2: greater whole-system lifetime savings.
+    const savingsDifference =
+      Number(b.candidate.lifetimeNetSavings) -
+      Number(a.candidate.lifetimeNetSavings);
+
+    if (savingsDifference !== 0) {
+      return savingsDifference;
+    }
+
+    // Final deterministic tie-break: smaller battery.
+    return (
+      Number(a.candidate.batteryKWhUsable || 0) -
+      Number(b.candidate.batteryKWhUsable || 0)
+    );
+  });
+
+  return scored[0].candidate;
+}
+
 function findBatteryCandidate(curve, targetBatteryKWh) {
   const safeCurve = Array.isArray(curve) ? curve : [];
 
@@ -277,6 +377,8 @@ function buildBatteryRecommendations({
   const bestLifetimeSavings =
     selectBestLifetimeSavingsCandidate(candidates);
 
+  const balanced = selectBalancedCandidate(candidates);
+
   const noBatteryComparison = buildNoBatteryComparison({
     curve: adjustedCurve,
     selectedBatteryKWh,
@@ -284,6 +386,7 @@ function buildBatteryRecommendations({
 
   return {
     bestPayback,
+    balanced,
     bestLifetimeSavings,
     noBatteryComparison,
     curve: adjustedCurve,
@@ -311,5 +414,6 @@ module.exports = {
   findBatteryCandidate,
   applyBatteryDegradationToCurve,
   selectBestPaybackCandidate,
+  selectBalancedCandidate,
   selectBestLifetimeSavingsCandidate,
 };

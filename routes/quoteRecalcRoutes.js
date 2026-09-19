@@ -60,6 +60,10 @@ const {
   buildBatteryRecommendations,
 } = require("../services/modelling/batteryRecommendationService");
 
+const {
+  buildBatteryScenario,
+} = require("../services/modelling/batteryScenarioService");
+
 const router = express.Router();
 
 router.post("/recalc", async (req, res) => {
@@ -249,6 +253,8 @@ router.post("/recalc", async (req, res) => {
     const MIN_RECOMMENDED_BAT = batteryModelAssumptions.recommendationMinBatteryKWh;
 
     const curve = [];
+    const batteryScenarioSources = new Map();
+
     for (let b = 0; b <= MAX_BAT; b += STEP) {
       const simB = simulateHourByHour({
         pvHourlyKWh: pv,
@@ -308,23 +314,86 @@ router.post("/recalc", async (req, res) => {
         energyInflationRate: Number(CONFIG.energyInflationRate || 0.06),
       });
 
-      const annualSelf = Math.round((simB?.monthly?.selfUsed || []).reduce((s, v) => s + Number(v || 0), 0));
-      const annualExp = Math.round((simB?.monthly?.exported || []).reduce((s, v) => s + Number(v || 0), 0));
-      const annualImp = Math.round((simB?.monthly?.imported || []).reduce((s, v) => s + Number(v || 0), 0));
-      const lifetimeNetSavings = Math.round(Number(pb.lifetimeSavings || 0));
-      const lifetimeGrossBenefit = Math.round(lifetimeNetSavings + candidateMidPrice);
+      const annualSelf = Math.round(
+        (simB?.monthly?.selfUsed || []).reduce(
+          (s, v) => s + Number(v || 0),
+          0
+        )
+      );
+
+      const annualExp = Math.round(
+        (simB?.monthly?.exported || []).reduce(
+          (s, v) => s + Number(v || 0),
+          0
+        )
+      );
+
+      const annualImp = Math.round(
+        (simB?.monthly?.imported || []).reduce(
+          (s, v) => s + Number(v || 0),
+          0
+        )
+      );
+
+      const lifetimeNetSavings = Math.round(
+        Number(pb.lifetimeSavings || 0)
+      );
+
+      const lifetimeGrossBenefit = Math.round(
+        lifetimeNetSavings + candidateMidPrice
+      );
+
+      // Reuse the already-calculated hourly simulation for the
+      // two representative chart days.
+      const scenarioWinterStart = pickDayStartBest(
+        0,
+        (idx) =>
+          Number(
+            simB.hourly.battChargeFromGridKWh?.[idx] || 0
+          )
+      );
+
+      const scenarioSummerStart = pickDayStartBest(
+        5,
+        (idx) => Number(simB.hourly.pvKWh?.[idx] || 0)
+      );
+
+      const scenarioDebugWinterDay = extractDaySlice(
+        simB.hourly,
+        scenarioWinterStart
+      );
+
+      const scenarioDebugSummerDay = extractDaySlice(
+        simB.hourly,
+        scenarioSummerStart
+      );
 
       curve.push({
         batteryKWhUsable: b,
-        annualBenefit: Math.round(benefitB),
+
+        // Match the precision used by initial quote scenarios.
+        annualBenefit: round2(benefitB),
+
         paybackYears: pb.paybackYear,
-        annualSelfUsedKWh: Math.round((simB?.monthly?.selfUsed || []).reduce((s, v) => s + Number(v || 0), 0)),
-        annualExportedKWh: Math.round((simB?.monthly?.exported || []).reduce((s, v) => s + Number(v || 0), 0)),
-        annualImportedKWh: Math.round((simB?.monthly?.imported || []).reduce((s, v) => s + Number(v || 0), 0)),
-        candidateMidPrice: Math.round(candidateMidPrice),
+        annualSelfUsedKWh: annualSelf,
+        annualExportedKWh: annualExp,
+        annualImportedKWh: annualImp,
+
+        candidateMidPrice: round2(candidateMidPrice),
+
         lifetimeYears: recommendationLifetimeYears,
-        lifetimeGrossBenefit: Math.round(Number(pb.lifetimeSavings || 0) + candidateMidPrice),
-        lifetimeNetSavings: Math.round(Number(pb.lifetimeSavings || 0)),
+        lifetimeGrossBenefit,
+        lifetimeNetSavings,
+      });
+
+      batteryScenarioSources.set(String(b), {
+        candidateBaseQuote,
+        billing: billingB,
+        monthly: simB.monthly,
+        debugWinterDay: scenarioDebugWinterDay,
+        debugSummerDay: scenarioDebugSummerDay,
+        annualSolarGenerationKWh:
+          annualGenerationForCandidate,
       });
     }
 
@@ -337,7 +406,7 @@ router.post("/recalc", async (req, res) => {
 
     const batteryCostPerKWh = batteryModelAssumptions.batteryCostPerKWh;
 
-    const batteryRecommendations = attachBatteryProductsToRecommendations(
+    let batteryRecommendations = attachBatteryProductsToRecommendations(
       buildBatteryRecommendations({
         curve,
         batteryCostPerKWh,
@@ -353,6 +422,86 @@ router.post("/recalc", async (req, res) => {
         batteryModelAssumptions,
       })
     );
+
+    const noBatteryCurveCandidate = curve.find(
+      (candidate) =>
+        Number(candidate.batteryKWhUsable || 0) === 0
+    );
+
+    const noBatteryAnnualBenefitForScenarios = Number(
+      noBatteryCurveCandidate?.annualBenefit ?? 0
+    );
+
+    const batteryScenarios = {};
+
+    for (
+      const [batteryKey, source]
+      of batteryScenarioSources.entries()
+    ) {
+      const scenario = buildBatteryScenario({
+        batteryKWhUsable: Number(batteryKey),
+
+        candidateBaseQuote:
+          source.candidateBaseQuote,
+
+        billing:
+          source.billing,
+
+        monthly:
+          source.monthly,
+
+        monthlyLoadKWh:
+          hm.monthlyLoadKWh || [],
+
+        debugWinterDay:
+          source.debugWinterDay,
+
+        debugSummerDay:
+          source.debugSummerDay,
+
+        noBatteryAnnualBenefit:
+          noBatteryAnnualBenefitForScenarios,
+
+        annualSolarGenerationKWh:
+          source.annualSolarGenerationKWh,
+
+        lifetimeYears:
+          recommendationLifetimeYears,
+
+        panelOption:
+          input?.panelOption ||
+          quote?.panelOption ||
+          "",
+
+        energyInflationRate:
+          Number(
+            CONFIG.energyInflationRate || 0.06
+          ),
+
+        batteryDegradationRate:
+          batteryModelAssumptions.degradationRate,
+
+        minBatteryCapacityFraction:
+          batteryModelAssumptions.minCapacityFraction,
+      });
+
+      if (scenario) {
+        batteryScenarios[batteryKey] = scenario;
+      }
+    }
+
+    batteryRecommendations = {
+      ...batteryRecommendations,
+
+      scenarioVersion: "battery_scenarios_v1",
+
+      availableBatterySizesKWh:
+        Object.keys(batteryScenarios)
+          .map(Number)
+          .sort((a, b) => a - b),
+
+      scenarios: batteryScenarios,
+    };
 
     const noBatteryAnnualBenefitRaw =
       batteryRecommendations?.noBatteryComparison?.noBattery?.annualBenefit;

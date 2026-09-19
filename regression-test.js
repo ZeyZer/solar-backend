@@ -1364,8 +1364,251 @@ function checkScenarioComparisons(quotesByName) {
   console.log("    ✓ East/west scenario panel count: 12");
 }
 
+function checkBatteryScenarioContract(quote, scenarioName) {
+  console.log(`\n▶ Battery scenario contract: ${scenarioName}`);
+
+  const recommendations = quote?.batteryRecommendations;
+
+  assert(
+    recommendations &&
+      typeof recommendations === "object",
+    `${scenarioName}: missing batteryRecommendations.`
+  );
+
+  assert(
+    recommendations.bestPayback,
+    `${scenarioName}: missing fastest-payback recommendation.`
+  );
+
+  assert(
+    recommendations.balanced,
+    `${scenarioName}: missing balanced recommendation.`
+  );
+
+  assert(
+    recommendations.bestLifetimeSavings,
+    `${scenarioName}: missing maximum-savings recommendation.`
+  );
+
+  assert(
+    recommendations.scenarioVersion ===
+      "battery_scenarios_v1",
+    `${scenarioName}: unexpected battery scenario version.`
+  );
+
+  const availableSizes =
+    recommendations.availableBatterySizesKWh;
+
+  const scenarios = recommendations.scenarios;
+
+  assert(
+    Array.isArray(availableSizes) &&
+      availableSizes.length > 0,
+    `${scenarioName}: no available battery scenario sizes.`
+  );
+
+  assert(
+    scenarios &&
+      typeof scenarios === "object",
+    `${scenarioName}: missing battery scenarios object.`
+  );
+
+  assert(
+    Object.keys(scenarios).length ===
+      availableSizes.length,
+    `${scenarioName}: scenario count does not match available battery sizes.`
+  );
+
+  for (const batteryKWh of availableSizes) {
+    const batteryScenario =
+      scenarios[String(batteryKWh)];
+
+    assert(
+      batteryScenario,
+      `${scenarioName}: missing ${batteryKWh} kWh scenario.`
+    );
+
+    assert(
+      Number(batteryScenario.batteryKWhUsable) ===
+        Number(batteryKWh),
+      `${scenarioName}: scenario battery size mismatch for ${batteryKWh} kWh.`
+    );
+
+    assert(
+      Number.isFinite(
+        Number(batteryScenario.priceLow)
+      ) &&
+        Number.isFinite(
+          Number(batteryScenario.priceHigh)
+        ) &&
+        Number(batteryScenario.priceLow) <=
+          Number(batteryScenario.priceHigh),
+      `${scenarioName}: invalid price range for ${batteryKWh} kWh scenario.`
+    );
+
+    assert(
+      Number.isFinite(
+        Number(batteryScenario.totalAnnualBenefit)
+      ),
+      `${scenarioName}: missing annual benefit for ${batteryKWh} kWh scenario.`
+    );
+
+    assert(
+      batteryScenario.financialSeries?.payback,
+      `${scenarioName}: missing payback series for ${batteryKWh} kWh scenario.`
+    );
+
+    assert(
+      Array.isArray(
+        batteryScenario.financialSeries.payback
+          .yearly
+      ) &&
+        batteryScenario.financialSeries.payback
+          .yearly.length === 25,
+      `${scenarioName}: expected 25 yearly rows for ${batteryKWh} kWh scenario.`
+    );
+
+    const hourly =
+      batteryScenario.hourlyModel || {};
+
+    const monthlyFields = [
+      "monthlyGenerationKWh",
+      "monthlySelfUsedKWh",
+      "monthlyExportedKWh",
+      "monthlyImportedKWh",
+      "monthlyBatteryChargeKWh",
+      "monthlyBatteryDischargeKWh",
+      "monthlyBatteryChargeFromPVKWh",
+      "monthlyBatteryChargeFromGridKWh",
+      "monthlyBatteryDischargeFromPVToLoadKWh",
+      "monthlyBatteryDischargeFromGridToLoadKWh",
+      "monthlyPVExportedDirectKWh",
+      "monthlyLoadKWh",
+    ];
+
+    for (const field of monthlyFields) {
+      assert(
+        Array.isArray(hourly[field]) &&
+          hourly[field].length === 12,
+        `${scenarioName}: ${field} should contain 12 values for ${batteryKWh} kWh scenario.`
+      );
+    }
+
+    assert(
+      hourly.debugWinterDay &&
+        typeof hourly.debugWinterDay === "object",
+      `${scenarioName}: missing winter day data for ${batteryKWh} kWh scenario.`
+    );
+
+    assert(
+      hourly.debugSummerDay &&
+        typeof hourly.debugSummerDay === "object",
+      `${scenarioName}: missing summer day data for ${batteryKWh} kWh scenario.`
+    );
+
+    // Scenario payloads should stay compact. The shared 8760
+    // arrays belong only on the parent quote.
+    assert(
+      hourly._pvHourlyKWh === undefined &&
+        hourly._loadHourlyKWh === undefined &&
+        hourly._monthIdx === undefined &&
+        hourly._hourOfDay === undefined,
+      `${scenarioName}: battery scenario unexpectedly contains shared 8760 arrays.`
+    );
+  }
+
+  const recommendationChecks = [
+    [
+      "Fastest payback",
+      recommendations.bestPayback,
+    ],
+    [
+      "Balanced",
+      recommendations.balanced,
+    ],
+    [
+      "Maximum savings",
+      recommendations.bestLifetimeSavings,
+    ],
+  ];
+
+  for (
+    const [label, recommendation]
+    of recommendationChecks
+  ) {
+    const batteryKWh = Number(
+      recommendation?.batteryKWhUsable
+    );
+
+    const batteryScenario =
+      scenarios[String(batteryKWh)];
+
+    assert(
+      batteryScenario,
+      `${scenarioName}: ${label} recommendation has no matching ${batteryKWh} kWh scenario.`
+    );
+
+    if (
+      Number.isFinite(
+        Number(recommendation.paybackYears)
+      ) &&
+      Number.isFinite(
+        Number(
+          batteryScenario.simplePaybackYears
+        )
+      )
+    ) {
+      checkApproxEqual(
+        `${scenarioName} ${label} scenario payback matches recommendation`,
+        Number(
+          batteryScenario.simplePaybackYears
+        ),
+        Number(recommendation.paybackYears),
+        0.11
+      );
+    }
+
+    if (
+      Number.isFinite(
+        Number(
+          recommendation.lifetimeNetSavings
+        )
+      ) &&
+      Number.isFinite(
+        Number(
+          batteryScenario.lifetimeNetSavings
+        )
+      )
+    ) {
+      checkApproxEqual(
+        `${scenarioName} ${label} lifetime savings match scenario`,
+        Number(
+          batteryScenario.lifetimeNetSavings
+        ),
+        Number(
+          recommendation.lifetimeNetSavings
+        ),
+        2
+      );
+    }
+  }
+
+  console.log(
+    `    ✓ ${availableSizes.length} reusable battery scenarios available`
+  );
+
+  console.log(
+    "    ✓ Fastest, balanced and maximum-savings recommendations map to matching scenarios"
+  );
+}
+
 function checkRecalcBehaviour(originalQuote, recalculatedQuote) {
   console.log("\n▶ Recalc behaviour checks");
+
+  checkBatteryScenarioContract(
+    recalculatedQuote,
+    "Recalculated quote"
+  );
 
   checkApproxEqual(
     "Recalc preserves annual generation",
@@ -1504,6 +1747,11 @@ async function main() {
 
     const quote = await runQuoteScenarioWithRetry(scenario);
     quotesByName.set(scenario.name, quote);
+
+    checkBatteryScenarioContract(
+      quote,
+      scenario.name
+    );
 
     console.log("  Quote OK:", {
       calculationVersion: quote.calculationVersion,
