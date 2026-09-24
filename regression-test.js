@@ -1390,6 +1390,20 @@ function checkBatteryScenarioContract(quote, scenarioName) {
     `${scenarioName}: missing maximum-savings recommendation.`
   );
 
+  for (const [label, recommendation] of [
+    ["Fastest payback", recommendations.bestPayback],
+    ["Balanced", recommendations.balanced],
+    [
+      "Maximum savings",
+      recommendations.bestLifetimeSavings,
+    ],
+  ]) {
+    assert(
+      Number(recommendation?.batteryKWhUsable || 0) > 0,
+      `${scenarioName}: ${label} must recommend an actual battery, not 0 kWh.`
+    );
+  }
+
   assert(
     recommendations.scenarioVersion ===
       "battery_scenarios_v1",

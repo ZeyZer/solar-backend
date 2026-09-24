@@ -368,9 +368,19 @@ function buildBatteryRecommendations({
 
   const minRecommended = Number(minRecommendedBatteryKWh || 0);
 
-  const candidates = adjustedCurve.filter(
-    (x) => Number(x.batteryKWhUsable || 0) >= minRecommended
-  );
+  // Battery recommendations must be actual battery options.
+  // The 0 kWh scenario remains available separately as the
+  // explicit "No battery" comparison/selection.
+  const candidates = adjustedCurve.filter((x) => {
+    const batteryKWh = Number(
+      x.batteryKWhUsable || 0
+    );
+
+    return (
+      batteryKWh > 0 &&
+      batteryKWh >= minRecommended
+    );
+  });
 
   const bestPayback = selectBestPaybackCandidate(candidates, adjustedCurve);
 
