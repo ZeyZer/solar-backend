@@ -148,7 +148,24 @@ function getPracticalPanelCapacity(panelCount) {
 
   const factor = getPracticalPanelUtilisationFactor(panels);
 
-  return Math.max(1, Math.round(panels * factor));
+  const practicalPanels = Math.max(
+    1,
+    Math.round(panels * factor)
+  );
+
+  // Small roof spaces are particularly sensitive to real-world
+  // layout constraints such as margins, vents, hips and panel spacing.
+  // Keep the customer-facing estimate slightly conservative so that
+  // an installer is more likely to increase the final panel count
+  // than reduce it after survey.
+  if (
+    practicalPanels > 1 &&
+    practicalPanels <= 8
+  ) {
+    return practicalPanels - 1;
+  }
+
+  return practicalPanels;
 }
 
 function calculateAssumedAnnualKwh({
@@ -687,7 +704,7 @@ function buildRoofSelectionModelFromGoogleSolarApi(
         : "high";
 
   return {
-    source: "zeyzer_roof_selection_model_v9_segment_practical_capacity",
+    source: "zeyzer_roof_selection_model_v10_small_segment_conservative_capacity",
     status: "complete",
 
     thresholds: YIELD_THRESHOLDS,
