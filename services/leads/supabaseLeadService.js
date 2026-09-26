@@ -1,5 +1,18 @@
 const { createClient } = require("@supabase/supabase-js");
 
+const {
+  getTenantById,
+  getCanonicalLeadRoutingForTenant,
+} = require("../../config/tenantConfig");
+
+const {
+  canPersistCustomerData,
+} = require("../../config/leadOwnerConfig");
+
+const {
+  sanitiseLeadForPersistence,
+} = require("./leadStorageService");
+
 let supabaseClient = null;
 
 function isSupabaseEnabled() {
@@ -77,17 +90,21 @@ function buildQuoteSummary(quote) {
 }
 
 function buildSupabaseLeadRow(lead) {
-  const form = lead?.form || {};
-  const quote = lead?.quote || {};
-  const roofs = Array.isArray(lead?.roofs) ? lead.roofs : [];
+  const persistentLead = sanitiseLeadForPersistence(lead);
+  const form = persistentLead?.form || {};
+  const quote = persistentLead?.quote || {};
+  const roofs = Array.isArray(persistentLead?.roofs)
+    ? persistentLead.roofs
+    : [];
   const quoteSummary = buildQuoteSummary(quote);
 
   return {
-    lead_id: lead.leadId,
-    tenant_id: lead.tenantId || null,
+    lead_id: persistentLead.leadId,
+    tenant_id: persistentLead.tenantId || null,
+    lead_owner: persistentLead.leadOwner || null,
 
-    status: lead.status || "new",
-    source: lead.source || "beta-calculator",
+    status: persistentLead.status || "new",
+    source: persistentLead.source || null,
 
     name: form.name || null,
     email: form.email || null,
@@ -125,7 +142,7 @@ function buildSupabaseLeadRow(lead) {
     quote_summary: quoteSummary,
     form,
     quote,
-    full_payload: lead,
+    full_payload: persistentLead,
   };
 }
 
@@ -210,6 +227,48 @@ function buildLeadActionUpdate(eventType) {
   return update;
 }
 
+function resolveStoredLeadRouting(owningLead) {
+  const tenantId = String(owningLead?.tenant_id || "").trim();
+  const tenant = getTenantById(tenantId);
+
+  if (!tenant) {
+    throw new Error(
+      `Cannot resolve lead routing for unknown tenant: ${tenantId || "missing"}.`
+    );
+  }
+
+  const canonical = getCanonicalLeadRoutingForTenant(tenant);
+
+  return {
+    tenantId: canonical.tenantId,
+    source: String(owningLead?.source || canonical.source).trim(),
+    leadOwner: String(
+      owningLead?.lead_owner || canonical.leadOwner
+    ).trim(),
+  };
+}
+
+function sanitiseLeadEventData({ leadOwner, email, phone, metadata }) {
+  if (canPersistCustomerData(leadOwner)) {
+    return {
+      email: email || null,
+      phone: phone || null,
+      metadata: metadata || {},
+    };
+  }
+
+  const safeMetadata = {
+    route: metadata?.route || null,
+    templateId: metadata?.templateId || null,
+  };
+
+  return {
+    email: null,
+    phone: null,
+    metadata: safeMetadata,
+  };
+}
+
 async function recordLeadEvent({
   leadId,
   eventType,
@@ -241,9 +300,6 @@ async function recordLeadEvent({
   // This keeps tenant routing authoritative for email, callback, PDF and
   // future lead actions that all pass through recordLeadEvent().
   const owningLead = await getLeadFromSupabaseByLeadId(leadId);
-  const tenantId = String(
-    owningLead?.tenant_id || ""
-  ).trim();
 
   if (!owningLead) {
     throw new Error(
@@ -251,19 +307,23 @@ async function recordLeadEvent({
     );
   }
 
-  if (!tenantId) {
-    throw new Error(
-      `Cannot record lead event: lead ${leadId} has no tenant ownership.`
-    );
-  }
+  const routing = resolveStoredLeadRouting(owningLead);
+  const eventData = sanitiseLeadEventData({
+    leadOwner: routing.leadOwner,
+    email,
+    phone,
+    metadata,
+  });
 
   const eventRow = {
     lead_id: leadId,
-    tenant_id: tenantId,
+    tenant_id: routing.tenantId,
+    source: routing.source,
+    lead_owner: routing.leadOwner,
     event_type: eventType,
-    email: email || null,
-    phone: phone || null,
-    metadata: metadata || {},
+    email: eventData.email,
+    phone: eventData.phone,
+    metadata: eventData.metadata,
   };
 
   const { error: insertError } = await supabase
@@ -297,4 +357,6 @@ module.exports = {
   getLeadFromSupabaseByLeadId,
   buildSupabaseLeadRow,
   recordLeadEvent,
+  resolveStoredLeadRouting,
+  sanitiseLeadEventData,
 };

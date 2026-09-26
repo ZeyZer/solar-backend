@@ -139,7 +139,11 @@ Behaviour:
 - A request that omits the `tenantId` field entirely temporarily falls back to `zion-energy` for backwards compatibility with older deployed clients.
 - The backwards-compatibility fallback should be removed once all live clients send an explicit tenant ID.
 - The backend stores canonical ownership on the lead and returns it as `quote.tenantId`.
+- The backend derives `source` and `leadOwner` from the resolved tenant rather than trusting browser values.
+- The current canonical route is `zion-energy` / `zion-website` / `zion-energy`.
 - Lead-event ownership is derived from the stored lead rather than trusting a browser-supplied tenant value.
+- Lead actions resolve the stored lead before selecting a server-side CRM/Brevo configuration.
+- For externally owned leads, persisted lead/event analytics omit name, email, phone and address while retaining postcode and quote/technical analytics. Contact data may still be processed transiently by the owner integration.
 
 Tenant ownership is intended to support future installer-specific CRM routing, pricing, hardware, email/PDF branding and analytics.
 
@@ -259,6 +263,8 @@ Important top-level fields:
 {
   "leadId": "lead_example",
   "tenantId": "zion-energy",
+  "source": "zion-website",
+  "leadOwner": "zion-energy",
   "systemSizeKwp": 4.3,
   "panelCount": 10,
   "panelWatt": 430,

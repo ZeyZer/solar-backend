@@ -2,6 +2,10 @@ const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 
+const {
+  canPersistCustomerData,
+} = require("../../config/leadOwnerConfig");
+
 const LEADS_FILE = path.join(__dirname, "..", "..", "leads.json");
 
 function createLeadId() {
@@ -38,18 +42,47 @@ function saveLeads(leads) {
   }
 }
 
+function sanitiseFormForPersistence(form = {}, leadOwner) {
+  if (canPersistCustomerData(leadOwner)) {
+    return { ...form };
+  }
+
+  const {
+    name,
+    email,
+    phone,
+    address,
+    houseNumber,
+    ...analyticsForm
+  } = form;
+
+  return analyticsForm;
+}
+
+function sanitiseLeadForPersistence(lead = {}) {
+  if (canPersistCustomerData(lead.leadOwner)) {
+    return lead;
+  }
+
+  return {
+    ...lead,
+    form: sanitiseFormForPersistence(lead.form, lead.leadOwner),
+  };
+}
+
 function saveLeadLocally(lead, options = {}) {
   const maxLeads = Number(options.maxLeads || 200);
 
   const leads = readLeads();
 
+  const persistentLead = sanitiseLeadForPersistence(lead);
   const leadRecord = {
-    ...lead,
+    ...persistentLead,
     leadId: lead.leadId || createLeadId(),
     createdAt: lead.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     status: lead.status || "new",
-    source: lead.source || "beta-calculator",
+    source: lead.source || null,
   };
 
   leads.push(leadRecord);
@@ -74,4 +107,6 @@ module.exports = {
   saveLeads,
   saveLeadLocally,
   getLeadById,
+  sanitiseFormForPersistence,
+  sanitiseLeadForPersistence,
 };

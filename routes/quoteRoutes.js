@@ -12,6 +12,7 @@ const { CONFIG } = require("../config/quoteConfig");
 
 const {
   resolveTenantFromInput,
+  getCanonicalLeadRoutingForTenant,
 } = require("../config/tenantConfig");
 
 const {
@@ -386,6 +387,9 @@ router.post("/", async (req, res) => {
     }
 
     const tenantId = tenantResolution.tenantId;
+    const leadRouting = getCanonicalLeadRoutingForTenant(
+      tenantResolution.tenant
+    );
 
     // Keep the canonical server-resolved tenant on the request input so any
     // downstream quote diagnostics see the same ownership context.
@@ -1736,6 +1740,8 @@ router.post("/", async (req, res) => {
       ...quote,
       leadId,
       tenantId,
+      source: leadRouting.source,
+      leadOwner: leadRouting.leadOwner,
       tariffModelAssumptions,
       tariffWarnings,
       hardwareCatalog,
@@ -1754,8 +1760,9 @@ router.post("/", async (req, res) => {
       const leadRecord = saveLeadLocally({
         leadId,
         tenantId,
+        leadOwner: leadRouting.leadOwner,
         status: "new",
-        source: "beta-calculator",
+        source: leadRouting.source,
         form: {
           ...leadForm,
           leadId,

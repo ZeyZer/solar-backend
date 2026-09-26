@@ -2,6 +2,8 @@ const API_BASE = process.env.API_BASE || "http://localhost:4000";
 
 const payload = {
   tenantId: "zion-energy",
+  source: "browser-must-not-control-source",
+  leadOwner: "browser-must-not-control-owner",
 
   name: "Test Customer",
   email: "test@example.com",
@@ -100,6 +102,20 @@ async function main() {
     process.exit(1);
   }
 
+  if (
+    quote.source !== "zion-website" ||
+    quote.leadOwner !== "zion-energy"
+  ) {
+    console.error("Quote API returned the wrong lead routing:");
+    console.error({
+      expectedSource: "zion-website",
+      actualSource: quote.source,
+      expectedLeadOwner: "zion-energy",
+      actualLeadOwner: quote.leadOwner,
+    });
+    process.exit(1);
+  }
+
   const invalidTenantRes = await fetch(`${API_BASE}/api/quote`, {
     method: "POST",
     headers: {
@@ -135,6 +151,7 @@ async function main() {
 
   console.log("Quote API smoke test passed.");
   console.log("Tenant ownership checks passed.");
+  console.log("Lead source and owner routing checks passed.");
   console.log({
     systemSizeKwp: quote.systemSizeKwp,
     panelCount: quote.panelCount,

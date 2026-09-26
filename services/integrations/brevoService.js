@@ -2,19 +2,6 @@ require("dotenv").config();
 
 const SibApiV3Sdk = require("sib-api-v3-sdk");
 
-const brevoClient = SibApiV3Sdk.ApiClient.instance;
-
-brevoClient.authentications["api-key"].apiKey =
-  process.env.BREVO_API_KEY || "";
-
-brevoClient.authentications["partner-key"].apiKey =
-  process.env.BREVO_API_KEY || "";
-
-console.log("BREVO key loaded:", (process.env.BREVO_API_KEY || "").slice(0, 8));
-
-const brevoContactsApi = new SibApiV3Sdk.ContactsApi();
-const brevoEmailApi = new SibApiV3Sdk.TransactionalEmailsApi();
-
 const BREVO_TEMPLATE_ID_QUOTE = process.env.BREVO_TEMPLATE_ID_QUOTE
   ? Number(process.env.BREVO_TEMPLATE_ID_QUOTE)
   : undefined;
@@ -35,6 +22,17 @@ const BREVO_MARKETING_LIST_ID = process.env.BREVO_MARKETING_LIST_ID
   ? Number(process.env.BREVO_MARKETING_LIST_ID)
   : undefined;
 
+function createBrevoApis(apiKey) {
+  const client = new SibApiV3Sdk.ApiClient();
+  client.authentications["api-key"].apiKey = apiKey;
+  client.authentications["partner-key"].apiKey = apiKey;
+
+  return {
+    contactsApi: new SibApiV3Sdk.ContactsApi(client),
+    emailApi: new SibApiV3Sdk.TransactionalEmailsApi(client),
+  };
+}
+
 function formatUkPhoneForBrevo(phone) {
   const raw = String(phone || "").replace(/\s+/g, "");
 
@@ -49,10 +47,15 @@ function formatUkPhoneForBrevo(phone) {
 
 async function upsertBrevoContact(
   contact,
-  { baseListId, marketingConsent = false, leadType = "" } = {}
+  {
+    brevoConfig = {},
+    baseListId,
+    marketingConsent = false,
+    leadType = "",
+  } = {}
 ) {
-  if (!process.env.BREVO_API_KEY) {
-    console.log("No BREVO_API_KEY set, skipping Brevo sync.");
+  if (!brevoConfig.apiKey) {
+    console.log("No routed Brevo API key set, skipping Brevo sync.");
     return;
   }
 
@@ -64,9 +67,11 @@ async function upsertBrevoContact(
   const listIds = [];
 
   if (baseListId) listIds.push(baseListId);
-  if (marketingConsent && BREVO_MARKETING_LIST_ID) {
-    listIds.push(BREVO_MARKETING_LIST_ID);
+  if (marketingConsent && brevoConfig.marketingListId) {
+    listIds.push(brevoConfig.marketingListId);
   }
+
+  const { contactsApi } = createBrevoApis(brevoConfig.apiKey);
 
   const attributes = {
     FIRSTNAME: contact.name || "",
@@ -82,8 +87,8 @@ async function upsertBrevoContact(
   createContact.listIds = listIds;
 
   try {
-    await brevoContactsApi.createContact(createContact);
-    console.log("Brevo contact created:", contact.email);
+    await contactsApi.createContact(createContact);
+    console.log("Brevo contact created for routed lead owner.");
   } catch (err) {
     if (
       err.response &&
@@ -94,8 +99,8 @@ async function upsertBrevoContact(
       updateContact.attributes = attributes;
       updateContact.listIds = listIds;
 
-      await brevoContactsApi.updateContact(contact.email, updateContact);
-      console.log("Brevo contact updated:", contact.email);
+      await contactsApi.updateContact(contact.email, updateContact);
+      console.log("Brevo contact updated for routed lead owner.");
     } else {
       throw err;
     }
@@ -107,10 +112,11 @@ async function sendQuoteEmailWithAttachment(
   quote,
   input,
   pdfBuffer,
-  templateId
+  templateId,
+  brevoConfig = {}
 ) {
-  if (!process.env.BREVO_API_KEY) {
-    console.log("No BREVO_API_KEY set, skipping Brevo email send.");
+  if (!brevoConfig.apiKey) {
+    console.log("No routed Brevo API key set, skipping Brevo email send.");
     return;
   }
 
@@ -125,6 +131,7 @@ async function sendQuoteEmailWithAttachment(
   }
 
   const pdfBase64 = Buffer.from(pdfBuffer).toString("base64");
+  const { emailApi } = createBrevoApis(brevoConfig.apiKey);
 
   console.log("PDF attachment bytes:", Buffer.from(pdfBuffer).length);
   console.log("PDF attachment base64 length:", pdfBase64.length);
@@ -169,12 +176,10 @@ async function sendQuoteEmailWithAttachment(
     },
   ];
 
-  await brevoEmailApi.sendTransacEmail(sendSmtpEmail);
+  await emailApi.sendTransacEmail(sendSmtpEmail);
 
   console.log(
-    "Brevo quote email sent to:",
-    contact.email,
-    "using template:",
+    "Brevo quote email sent using routed template:",
     templateId
   );
 }

@@ -4,6 +4,8 @@ const TENANTS = Object.freeze({
   [DEFAULT_TENANT_ID]: Object.freeze({
     id: DEFAULT_TENANT_ID,
     name: "Zion Energy",
+    defaultSource: "zion-website",
+    leadOwner: "zion-energy",
   }),
 });
 
@@ -41,7 +43,7 @@ function resolveTenantFromInput(input = {}) {
       ok: true,
       tenantId: DEFAULT_TENANT_ID,
       tenant: TENANTS[DEFAULT_TENANT_ID],
-      source: "legacy_default",
+      resolutionSource: "legacy_default",
     };
   }
 
@@ -53,7 +55,7 @@ function resolveTenantFromInput(input = {}) {
       ok: false,
       tenantId: null,
       tenant: null,
-      source: "request",
+      resolutionSource: "request",
       error: "tenantId is required.",
     };
   }
@@ -63,7 +65,7 @@ function resolveTenantFromInput(input = {}) {
       ok: false,
       tenantId,
       tenant: null,
-      source: "request",
+      resolutionSource: "request",
       error: `Unknown tenantId: ${tenantId}`,
     };
   }
@@ -72,7 +74,19 @@ function resolveTenantFromInput(input = {}) {
     ok: true,
     tenantId: tenant.id,
     tenant,
-    source: "request",
+    resolutionSource: "request",
+  };
+}
+
+function getCanonicalLeadRoutingForTenant(tenant) {
+  if (!tenant?.id || !tenant?.defaultSource || !tenant?.leadOwner) {
+    throw new Error("Tenant lead routing configuration is incomplete.");
+  }
+
+  return {
+    tenantId: tenant.id,
+    source: tenant.defaultSource,
+    leadOwner: tenant.leadOwner,
   };
 }
 
@@ -82,4 +96,5 @@ module.exports = {
   normaliseTenantId,
   getTenantById,
   resolveTenantFromInput,
+  getCanonicalLeadRoutingForTenant,
 };

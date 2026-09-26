@@ -5,13 +5,13 @@
 const express = require("express");
 
 const {
-  BREVO_TEMPLATE_ID_QUOTE,
-  BREVO_TEMPLATE_ID_CALL,
-  BREVO_QUOTE_LIST_ID,
-  BREVO_CALL_LIST_ID,
   upsertBrevoContact,
   sendQuoteEmailWithAttachment,
 } = require("../services/integrations/brevoService");
+
+const {
+  resolveLeadActionRouting,
+} = require("../services/leads/leadRoutingService");
 
 const {
   recordLeadEvent,
@@ -65,7 +65,7 @@ router.post("/email-quote", async (req, res) => {
   try {
     const { contact, quote, input, marketingConsent, leadId } = req.body || {};
 
-    console.log("✅ /api/lead/email-quote hit", req.body?.contact?.email);
+    console.log("✅ /api/lead/email-quote hit");
 
     if (!contact || !quote || !input) {
       return res.status(400).json({
@@ -88,8 +88,17 @@ router.post("/email-quote", async (req, res) => {
       });
     }
 
+    const actionLeadId = getLeadIdFromPayload({
+      leadId,
+      quote,
+      input,
+    });
+    const routing = await resolveLeadActionRouting(actionLeadId);
+    const brevoConfig = routing.integration.brevo;
+
     await upsertBrevoContact(contact, {
-      baseListId: BREVO_QUOTE_LIST_ID,
+      brevoConfig,
+      baseListId: brevoConfig.quoteListId,
       marketingConsent: !!marketingConsent,
       leadType: "email_quote",
     });
@@ -110,14 +119,9 @@ router.post("/email-quote", async (req, res) => {
       quote,
       emailInput,
       pdfBuffer,
-      BREVO_TEMPLATE_ID_QUOTE
+      brevoConfig.quoteTemplateId,
+      brevoConfig
     );
-
-    const actionLeadId = getLeadIdFromPayload({
-      leadId,
-      quote,
-      input: emailInput,
-    });
 
     await recordLeadEventSafely({
       leadId: actionLeadId,
@@ -126,7 +130,7 @@ router.post("/email-quote", async (req, res) => {
       metadata: {
         route: "/api/lead/email-quote",
         marketingConsent: !!marketingConsent,
-        templateId: BREVO_TEMPLATE_ID_QUOTE || null,
+        templateId: brevoConfig.quoteTemplateId || null,
       },
     });
 
@@ -150,7 +154,7 @@ router.post("/request-call", async (req, res) => {
   try {
     const { contact, quote, input, marketingConsent, leadId } = req.body || {};
 
-    console.log("✅ /api/lead/request-call hit", req.body?.contact?.email);
+    console.log("✅ /api/lead/request-call hit");
 
     if (!contact || !quote || !input) {
       return res.status(400).json({
@@ -180,8 +184,17 @@ router.post("/request-call", async (req, res) => {
       });
     }
 
+    const actionLeadId = getLeadIdFromPayload({
+      leadId,
+      quote,
+      input,
+    });
+    const routing = await resolveLeadActionRouting(actionLeadId);
+    const brevoConfig = routing.integration.brevo;
+
     await upsertBrevoContact(contact, {
-      baseListId: BREVO_CALL_LIST_ID,
+      brevoConfig,
+      baseListId: brevoConfig.callListId,
       marketingConsent: !!marketingConsent,
       leadType: "request_call",
     });
@@ -202,14 +215,9 @@ router.post("/request-call", async (req, res) => {
       quote,
       callInput,
       pdfBuffer,
-      BREVO_TEMPLATE_ID_CALL
+      brevoConfig.callTemplateId,
+      brevoConfig
     );
-
-    const actionLeadId = getLeadIdFromPayload({
-      leadId,
-      quote,
-      input: callInput,
-    });
 
     await recordLeadEventSafely({
       leadId: actionLeadId,
@@ -218,17 +226,13 @@ router.post("/request-call", async (req, res) => {
       metadata: {
         route: "/api/lead/request-call",
         marketingConsent: !!marketingConsent,
-        templateId: BREVO_TEMPLATE_ID_CALL || null,
-        address: contact.address || "",
+        templateId: brevoConfig.callTemplateId || null,
       },
     });
 
     console.log("Callback requested:", {
       leadId: actionLeadId || null,
-      name: contact.name,
-      email: contact.email,
-      phone: contact.phone,
-      address: contact.address || "",
+      leadOwner: routing.leadOwner,
       ts: new Date().toISOString(),
     });
 
