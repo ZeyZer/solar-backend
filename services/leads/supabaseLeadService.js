@@ -84,6 +84,7 @@ function buildSupabaseLeadRow(lead) {
 
   return {
     lead_id: lead.leadId,
+    tenant_id: lead.tenantId || null,
 
     status: lead.status || "new",
     source: lead.source || "beta-calculator",
@@ -141,6 +142,10 @@ async function saveLeadToSupabase(lead) {
 
   if (!row.lead_id) {
     throw new Error("Cannot save lead to Supabase without leadId.");
+  }
+
+  if (!row.tenant_id) {
+    throw new Error("Cannot save lead to Supabase without tenantId.");
   }
 
   const { data, error } = await supabase
@@ -232,8 +237,29 @@ async function recordLeadEvent({
 
   const supabase = getSupabaseClient();
 
+  // Event ownership comes from the stored lead, never from the browser.
+  // This keeps tenant routing authoritative for email, callback, PDF and
+  // future lead actions that all pass through recordLeadEvent().
+  const owningLead = await getLeadFromSupabaseByLeadId(leadId);
+  const tenantId = String(
+    owningLead?.tenant_id || ""
+  ).trim();
+
+  if (!owningLead) {
+    throw new Error(
+      `Cannot record lead event: lead ${leadId} was not found.`
+    );
+  }
+
+  if (!tenantId) {
+    throw new Error(
+      `Cannot record lead event: lead ${leadId} has no tenant ownership.`
+    );
+  }
+
   const eventRow = {
     lead_id: leadId,
+    tenant_id: tenantId,
     event_type: eventType,
     email: email || null,
     phone: phone || null,

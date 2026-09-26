@@ -40,6 +40,7 @@ Example:
 
 ```json
 {
+  "tenantId": "zion-energy",
   "name": "Test Customer",
   "email": "test@example.com",
   "phone": "07123456789",
@@ -91,6 +92,7 @@ Example:
 
 | Field | Type | Notes |
 |---|---:|---|
+| `tenantId` | string | Installer/tenant ownership ID. New clients must send this explicitly. |
 | `name` | string | Customer name |
 | `email` | string | Customer email |
 | `phone` | string | Customer phone |
@@ -112,6 +114,36 @@ Example:
 
 ---
 
+# Tenant ownership
+
+`POST /api/quote` resolves tenant ownership on the backend.
+
+Current tenant:
+
+```txt
+zion-energy
+```
+
+New frontend clients send:
+
+```json
+{
+  "tenantId": "zion-energy"
+}
+```
+
+Behaviour:
+
+- A recognised explicit `tenantId` is accepted and becomes the canonical owner of the quote and lead.
+- An explicit blank, `null`, or unknown `tenantId` is rejected with HTTP `400` and code `INVALID_TENANT`.
+- A request that omits the `tenantId` field entirely temporarily falls back to `zion-energy` for backwards compatibility with older deployed clients.
+- The backwards-compatibility fallback should be removed once all live clients send an explicit tenant ID.
+- The backend stores canonical ownership on the lead and returns it as `quote.tenantId`.
+- Lead-event ownership is derived from the stored lead rather than trusting a browser-supplied tenant value.
+
+Tenant ownership is intended to support future installer-specific CRM routing, pricing, hardware, email/PDF branding and analytics.
+
+---
 # Roof object
 
 ```json
@@ -225,6 +257,8 @@ Important top-level fields:
 
 ```json
 {
+  "leadId": "lead_example",
+  "tenantId": "zion-energy",
   "systemSizeKwp": 4.3,
   "panelCount": 10,
   "panelWatt": 430,

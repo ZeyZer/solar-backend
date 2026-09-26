@@ -1,6 +1,8 @@
 const API_BASE = process.env.API_BASE || "http://localhost:4000";
 
 const payload = {
+  tenantId: "zion-energy",
+
   name: "Test Customer",
   email: "test@example.com",
   phone: "07123456789",
@@ -89,7 +91,50 @@ async function main() {
     process.exit(1);
   }
 
+  if (quote.tenantId !== payload.tenantId) {
+    console.error("Quote API returned the wrong tenant ownership:");
+    console.error({
+      expectedTenantId: payload.tenantId,
+      actualTenantId: quote.tenantId,
+    });
+    process.exit(1);
+  }
+
+  const invalidTenantRes = await fetch(`${API_BASE}/api/quote`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      tenantId: "unknown-installer",
+    }),
+  });
+
+  const invalidTenantText = await invalidTenantRes.text();
+
+  let invalidTenantBody = {};
+
+  try {
+    invalidTenantBody = JSON.parse(invalidTenantText);
+  } catch {
+    // Keep the raw response available in the failure output below.
+  }
+
+  if (
+    invalidTenantRes.status !== 400 ||
+    invalidTenantBody.code !== "INVALID_TENANT"
+  ) {
+    console.error("Unknown tenant was not rejected as expected:");
+    console.error({
+      status: invalidTenantRes.status,
+      body: invalidTenantBody,
+      rawBody: invalidTenantText,
+    });
+    process.exit(1);
+  }
+
   console.log("Quote API smoke test passed.");
+  console.log("Tenant ownership checks passed.");
   console.log({
     systemSizeKwp: quote.systemSizeKwp,
     panelCount: quote.panelCount,

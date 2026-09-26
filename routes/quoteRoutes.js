@@ -11,6 +11,10 @@ const express = require("express");
 const { CONFIG } = require("../config/quoteConfig");
 
 const {
+  resolveTenantFromInput,
+} = require("../config/tenantConfig");
+
+const {
   getBatteryModelAssumptions,
 } = require("../config/batteryModelConfig");
 
@@ -371,6 +375,21 @@ function requiresPropertyBoundary(propertyType) {
 router.post("/", async (req, res) => {
   try {
     const input = req.body || {};
+
+    const tenantResolution = resolveTenantFromInput(input);
+
+    if (!tenantResolution.ok) {
+      return res.status(400).json({
+        error: tenantResolution.error,
+        code: "INVALID_TENANT",
+      });
+    }
+
+    const tenantId = tenantResolution.tenantId;
+
+    // Keep the canonical server-resolved tenant on the request input so any
+    // downstream quote diagnostics see the same ownership context.
+    input.tenantId = tenantId;
 
     const batteryModelAssumptions = getBatteryModelAssumptions();
     const tariffModelAssumptions = getTariffModelAssumptions();
@@ -1716,6 +1735,7 @@ router.post("/", async (req, res) => {
     const versionedQuote = attachQuoteEngineVersion({
       ...quote,
       leadId,
+      tenantId,
       tariffModelAssumptions,
       tariffWarnings,
       hardwareCatalog,
@@ -1733,6 +1753,7 @@ router.post("/", async (req, res) => {
     } else {
       const leadRecord = saveLeadLocally({
         leadId,
+        tenantId,
         status: "new",
         source: "beta-calculator",
         form: {
