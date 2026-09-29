@@ -7,6 +7,7 @@ const express = require("express");
 const {
   upsertBrevoContact,
   sendQuoteEmailWithAttachment,
+  sendCallbackNotification,
 } = require("../services/integrations/brevoService");
 
 const {
@@ -57,6 +58,32 @@ async function recordLeadEventSafely({
     }
   } catch (err) {
     console.error(`Lead event failed (${eventType}):`, err.message);
+  }
+}
+
+async function sendCallbackNotificationSafely({
+  contact,
+  quote,
+  input,
+  leadId,
+  routing,
+  brevoConfig,
+}) {
+  try {
+    const result = await sendCallbackNotification({
+      contact,
+      quote,
+      input,
+      leadId,
+      routing,
+      brevoConfig,
+    });
+
+    if (result?.skipped) {
+      console.log("Callback notification skipped:", result.reason);
+    }
+  } catch (err) {
+    console.error("Callback notification failed:", err.message);
   }
 }
 
@@ -218,6 +245,15 @@ router.post("/request-call", async (req, res) => {
       brevoConfig.callTemplateId,
       brevoConfig
     );
+
+    await sendCallbackNotificationSafely({
+      contact,
+      quote,
+      input: callInput,
+      leadId: actionLeadId,
+      routing,
+      brevoConfig,
+    });
 
     await recordLeadEventSafely({
       leadId: actionLeadId,

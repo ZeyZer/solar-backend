@@ -2,26 +2,6 @@ require("dotenv").config();
 
 const SibApiV3Sdk = require("sib-api-v3-sdk");
 
-const BREVO_TEMPLATE_ID_QUOTE = process.env.BREVO_TEMPLATE_ID_QUOTE
-  ? Number(process.env.BREVO_TEMPLATE_ID_QUOTE)
-  : undefined;
-
-const BREVO_TEMPLATE_ID_CALL = process.env.BREVO_TEMPLATE_ID_CALL
-  ? Number(process.env.BREVO_TEMPLATE_ID_CALL)
-  : undefined;
-
-const BREVO_QUOTE_LIST_ID = process.env.BREVO_QUOTE_LIST_ID
-  ? Number(process.env.BREVO_QUOTE_LIST_ID)
-  : undefined;
-
-const BREVO_CALL_LIST_ID = process.env.BREVO_CALL_LIST_ID
-  ? Number(process.env.BREVO_CALL_LIST_ID)
-  : undefined;
-
-const BREVO_MARKETING_LIST_ID = process.env.BREVO_MARKETING_LIST_ID
-  ? Number(process.env.BREVO_MARKETING_LIST_ID)
-  : undefined;
-
 function createBrevoApis(apiKey) {
   const client = new SibApiV3Sdk.ApiClient();
   client.authentications["api-key"].apiKey = apiKey;
@@ -55,18 +35,26 @@ async function upsertBrevoContact(
   } = {}
 ) {
   if (!brevoConfig.apiKey) {
-    console.log("No routed Brevo API key set, skipping Brevo sync.");
-    return;
+    throw new Error(
+      `Brevo API key is not configured for lead owner: ${
+        brevoConfig.leadOwner || "unknown"
+      }.`
+    );
   }
 
   if (!contact?.email) {
-    console.log("No email on contact, skipping Brevo sync.");
-    return;
+    throw new Error("Brevo contact sync requires a customer email.");
   }
 
-  const listIds = [];
+  if (!baseListId) {
+    throw new Error(
+      `Brevo contact list is not configured for lead owner: ${
+        brevoConfig.leadOwner || "unknown"
+      }.`
+    );
+  }
 
-  if (baseListId) listIds.push(baseListId);
+  const listIds = [baseListId];
   if (marketingConsent && brevoConfig.marketingListId) {
     listIds.push(brevoConfig.marketingListId);
   }
@@ -116,18 +104,27 @@ async function sendQuoteEmailWithAttachment(
   brevoConfig = {}
 ) {
   if (!brevoConfig.apiKey) {
-    console.log("No routed Brevo API key set, skipping Brevo email send.");
-    return;
+    throw new Error(
+      `Brevo API key is not configured for lead owner: ${
+        brevoConfig.leadOwner || "unknown"
+      }.`
+    );
+  }
+
+  if (!contact?.email) {
+    throw new Error("Brevo quote email requires a customer email.");
   }
 
   if (!templateId) {
-    console.log("No templateId provided, skipping Brevo email send.");
-    return;
+    throw new Error(
+      `Brevo quote email template is not configured for lead owner: ${
+        brevoConfig.leadOwner || "unknown"
+      }.`
+    );
   }
 
   if (!pdfBuffer) {
-    console.log("No pdfBuffer provided, skipping Brevo email send.");
-    return;
+    throw new Error("Brevo quote email requires a PDF attachment.");
   }
 
   const pdfBase64 = Buffer.from(pdfBuffer).toString("base64");
@@ -184,13 +181,82 @@ async function sendQuoteEmailWithAttachment(
   );
 }
 
+
+async function sendCallbackNotification({
+  contact,
+  quote,
+  input,
+  leadId,
+  routing,
+  brevoConfig = {},
+}) {
+  const recipientEmail = String(
+    brevoConfig.callbackNotifyEmail || ""
+  ).trim();
+
+  const templateId = brevoConfig.callbackNotifyTemplateId;
+
+  if (!recipientEmail || !templateId) {
+    return {
+      skipped: true,
+      reason: "Callback notification email/template is not configured.",
+    };
+  }
+
+  if (!brevoConfig.apiKey) {
+    throw new Error(
+      `Brevo API key is not configured for lead owner: ${
+        brevoConfig.leadOwner || "unknown"
+      }.`
+    );
+  }
+
+  const { emailApi } = createBrevoApis(brevoConfig.apiKey);
+  const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
+
+  sendSmtpEmail.to = [
+    {
+      email: recipientEmail,
+    },
+  ];
+
+  sendSmtpEmail.templateId = templateId;
+
+  sendSmtpEmail.params = {
+    lead_id: leadId || "",
+    lead_owner: routing?.leadOwner || brevoConfig.leadOwner || "",
+    source: routing?.source || "",
+
+    name: contact?.name || "",
+    email: contact?.email || "",
+    phone: formatUkPhoneForBrevo(contact?.phone),
+    address: contact?.address || "",
+    postcode: input?.postcode || "",
+
+    system_kwp: quote?.systemSizeKwp || "",
+    panel_count: quote?.panelCount || "",
+    panel_watt: quote?.panelWatt || "",
+    annual_kwh: quote?.estAnnualGenerationKWh || "",
+    battery_kwh: input?.batteryKWh || 0,
+    price_low: quote?.priceLow || "",
+    price_high: quote?.priceHigh || "",
+  };
+
+  await emailApi.sendTransacEmail(sendSmtpEmail);
+
+  console.log(
+    "Brevo callback notification sent for routed lead owner:",
+    routing?.leadOwner || brevoConfig.leadOwner || "unknown"
+  );
+
+  return {
+    skipped: false,
+  };
+}
+
 module.exports = {
-  BREVO_TEMPLATE_ID_QUOTE,
-  BREVO_TEMPLATE_ID_CALL,
-  BREVO_QUOTE_LIST_ID,
-  BREVO_CALL_LIST_ID,
-  BREVO_MARKETING_LIST_ID,
   formatUkPhoneForBrevo,
   upsertBrevoContact,
   sendQuoteEmailWithAttachment,
+  sendCallbackNotification,
 };

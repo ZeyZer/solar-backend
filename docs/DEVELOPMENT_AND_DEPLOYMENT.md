@@ -38,12 +38,25 @@ SUPABASE_ENABLED=true
 SUPABASE_URL=your-supabase-url
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 
-BREVO_API_KEY=your-brevo-api-key
-BREVO_TEMPLATE_ID_QUOTE=your-quote-template-id
-BREVO_TEMPLATE_ID_CALL=your-call-template-id
-BREVO_QUOTE_LIST_ID=your-quote-list-id
-BREVO_CALL_LIST_ID=your-call-list-id
-BREVO_MARKETING_LIST_ID=your-marketing-list-id
+# ZeyZer-owned leads / ZeyZer Brevo account
+BREVO_API_KEY=your-zeyzer-brevo-api-key
+BREVO_TEMPLATE_ID_QUOTE=your-zeyzer-quote-template-id
+BREVO_TEMPLATE_ID_CALL=your-zeyzer-call-template-id
+BREVO_QUOTE_LIST_ID=your-zeyzer-quote-list-id
+BREVO_CALL_LIST_ID=your-zeyzer-call-list-id
+BREVO_MARKETING_LIST_ID=your-zeyzer-marketing-list-id
+BREVO_CALLBACK_NOTIFY_EMAIL=your-zeyzer-callback-email
+BREVO_TEMPLATE_ID_CALLBACK_NOTIFY=your-zeyzer-callback-notification-template-id
+
+# Zion-owned leads / Zion Energy Brevo account
+ZION_BREVO_API_KEY=your-zion-brevo-api-key
+ZION_BREVO_TEMPLATE_ID_QUOTE=your-zion-quote-template-id
+ZION_BREVO_TEMPLATE_ID_CALL=your-zion-call-template-id
+ZION_BREVO_QUOTE_LIST_ID=your-zion-quote-list-id
+ZION_BREVO_CALL_LIST_ID=your-zion-call-list-id
+ZION_BREVO_MARKETING_LIST_ID=your-zion-marketing-list-id
+ZION_BREVO_CALLBACK_NOTIFY_EMAIL=your-zion-callback-email
+ZION_BREVO_TEMPLATE_ID_CALLBACK_NOTIFY=your-zion-callback-notification-template-id
 ```
 
 Never commit `.env`, `.env.local`, service role keys, API keys or private credentials.
@@ -108,13 +121,30 @@ SUPABASE_ENABLED=true
 SUPABASE_URL=your-supabase-url
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 
-BREVO_API_KEY=your-brevo-api-key
-BREVO_TEMPLATE_ID_QUOTE=your-quote-template-id
-BREVO_TEMPLATE_ID_CALL=your-call-template-id
-BREVO_QUOTE_LIST_ID=your-quote-list-id
-BREVO_CALL_LIST_ID=your-call-list-id
-BREVO_MARKETING_LIST_ID=your-marketing-list-id
+# ZeyZer-owned leads / ZeyZer Brevo account
+BREVO_API_KEY=your-zeyzer-brevo-api-key
+BREVO_TEMPLATE_ID_QUOTE=your-zeyzer-quote-template-id
+BREVO_TEMPLATE_ID_CALL=your-zeyzer-call-template-id
+BREVO_QUOTE_LIST_ID=your-zeyzer-quote-list-id
+BREVO_CALL_LIST_ID=your-zeyzer-call-list-id
+BREVO_MARKETING_LIST_ID=your-zeyzer-marketing-list-id
+BREVO_CALLBACK_NOTIFY_EMAIL=your-zeyzer-callback-email
+BREVO_TEMPLATE_ID_CALLBACK_NOTIFY=your-zeyzer-callback-notification-template-id
+
+# Zion-owned leads / Zion Energy Brevo account
+ZION_BREVO_API_KEY=your-zion-brevo-api-key
+ZION_BREVO_TEMPLATE_ID_QUOTE=your-zion-quote-template-id
+ZION_BREVO_TEMPLATE_ID_CALL=your-zion-call-template-id
+ZION_BREVO_QUOTE_LIST_ID=your-zion-quote-list-id
+ZION_BREVO_CALL_LIST_ID=your-zion-call-list-id
+ZION_BREVO_MARKETING_LIST_ID=your-zion-marketing-list-id
+ZION_BREVO_CALLBACK_NOTIFY_EMAIL=your-zion-callback-email
+ZION_BREVO_TEMPLATE_ID_CALLBACK_NOTIFY=your-zion-callback-notification-template-id
 ```
+
+Brevo routing is determined by the stored lead owner. `zion-energy`
+uses only `ZION_BREVO_*`; `zeyzer` uses the generic `BREVO_*` integration.
+A missing Zion credential must not fall back to the ZeyZer integration.
 
 The Supabase service role key must only be stored in the backend environment.
 

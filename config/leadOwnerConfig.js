@@ -2,10 +2,6 @@ const LEAD_OWNERS = Object.freeze({
   zeyzer: Object.freeze({
     id: "zeyzer",
     persistCustomerData: true,
-  }),
-  "zion-energy": Object.freeze({
-    id: "zion-energy",
-    persistCustomerData: false,
     brevo: Object.freeze({
       apiKeyEnv: "BREVO_API_KEY",
       quoteTemplateIdEnv: "BREVO_TEMPLATE_ID_QUOTE",
@@ -13,6 +9,22 @@ const LEAD_OWNERS = Object.freeze({
       quoteListIdEnv: "BREVO_QUOTE_LIST_ID",
       callListIdEnv: "BREVO_CALL_LIST_ID",
       marketingListIdEnv: "BREVO_MARKETING_LIST_ID",
+      callbackNotifyEmailEnv: "BREVO_CALLBACK_NOTIFY_EMAIL",
+      callbackNotifyTemplateIdEnv: "BREVO_TEMPLATE_ID_CALLBACK_NOTIFY",
+    }),
+  }),
+  "zion-energy": Object.freeze({
+    id: "zion-energy",
+    persistCustomerData: false,
+    brevo: Object.freeze({
+      apiKeyEnv: "ZION_BREVO_API_KEY",
+      quoteTemplateIdEnv: "ZION_BREVO_TEMPLATE_ID_QUOTE",
+      callTemplateIdEnv: "ZION_BREVO_TEMPLATE_ID_CALL",
+      quoteListIdEnv: "ZION_BREVO_QUOTE_LIST_ID",
+      callListIdEnv: "ZION_BREVO_CALL_LIST_ID",
+      marketingListIdEnv: "ZION_BREVO_MARKETING_LIST_ID",
+      callbackNotifyEmailEnv: "ZION_BREVO_CALLBACK_NOTIFY_EMAIL",
+      callbackNotifyTemplateIdEnv: "ZION_BREVO_TEMPLATE_ID_CALLBACK_NOTIFY",
     }),
   }),
 });
@@ -50,6 +62,11 @@ function getBrevoConfigForLeadOwner(leadOwner) {
     quoteListId: numberFromEnv(owner.brevo.quoteListIdEnv),
     callListId: numberFromEnv(owner.brevo.callListIdEnv),
     marketingListId: numberFromEnv(owner.brevo.marketingListIdEnv),
+    callbackNotifyEmail:
+      process.env[owner.brevo.callbackNotifyEmailEnv] || "",
+    callbackNotifyTemplateId: numberFromEnv(
+      owner.brevo.callbackNotifyTemplateIdEnv
+    ),
   };
 }
 
