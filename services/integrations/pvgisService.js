@@ -539,8 +539,43 @@ async function getPvgisHourlyKWhForRoof({
  * Get total hourly PV generation across all roofs for a single year.
  * IMPORTANT: shading derate is applied per-hour per-roof BEFORE summing (as requested).
  */
-async function getTotalPvgisHourlyKWh({ postcode, roofs, panelWatt, year = 2023 }) {
-  const { lat, lon } = await getLatLonFromUkPostcode(postcode);
+function normaliseResolvedLocation(resolvedLocation) {
+  if (resolvedLocation == null) return null;
+
+  const rawLat = resolvedLocation?.lat;
+  const rawLon = resolvedLocation?.lon;
+
+  if (rawLat === "" || rawLat == null || rawLon === "" || rawLon == null) {
+    throw new Error("Resolved PVGIS location requires valid lat and lon values.");
+  }
+
+  const lat = Number(rawLat);
+  const lon = Number(rawLon);
+
+  if (
+    !Number.isFinite(lat) ||
+    !Number.isFinite(lon) ||
+    lat < -90 ||
+    lat > 90 ||
+    lon < -180 ||
+    lon > 180
+  ) {
+    throw new Error("Resolved PVGIS location requires valid lat and lon values.");
+  }
+
+  return { lat, lon };
+}
+
+async function getTotalPvgisHourlyKWh({
+  postcode,
+  roofs,
+  panelWatt,
+  year = 2023,
+  resolvedLocation,
+}) {
+  const { lat, lon } =
+    normaliseResolvedLocation(resolvedLocation) ||
+    await getLatLonFromUkPostcode(postcode);
 
   if (!Array.isArray(roofs) || roofs.length === 0) return null;
 
@@ -645,12 +680,19 @@ async function getTotalPvgisHourlyKWh({ postcode, roofs, panelWatt, year = 2023 
   };
 }
 
-async function runHourlyModelForYear({ input, panelWatt, year, includeHourlyArrays = false }) {
+async function runHourlyModelForYear({
+  input,
+  panelWatt,
+  year,
+  includeHourlyArrays = false,
+  resolvedLocation,
+}) {
   const pvRes = await getTotalPvgisHourlyKWh({
     postcode: input.postcode,
     roofs: input.roofs,
     panelWatt,
     year,
+    resolvedLocation,
   });
 
   if (!pvRes || !Array.isArray(pvRes.pvHourly) || pvRes.pvHourly.length === 0) {
@@ -751,6 +793,33 @@ async function runHourlyModelForYear({ input, panelWatt, year, includeHourlyArra
   return result;
 }
 
+async function runHourlyModelsForYears({
+  years,
+  input,
+  panelWatt,
+  includeHourlyArrays = false,
+  resolvedLocation,
+  runYear = runHourlyModelForYear,
+}) {
+  return Promise.all(
+    years.map(async (year) => {
+      const startedAt = Date.now();
+
+      try {
+        return await runYear({
+          input,
+          panelWatt,
+          year,
+          includeHourlyArrays,
+          resolvedLocation,
+        });
+      } finally {
+        console.log(`[PERF] PVGIS ${year}: ${Date.now() - startedAt}ms`);
+      }
+    })
+  );
+}
+
 module.exports = {
   PVGIS,
   orientationToPvgisAspect,
@@ -765,4 +834,5 @@ module.exports = {
   getPvgisHourlyKWhForRoof,
   getTotalPvgisHourlyKWh,
   runHourlyModelForYear,
+  runHourlyModelsForYears,
 };

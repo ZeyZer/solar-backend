@@ -58,7 +58,8 @@ const {
 } = require("../services/candidates/designCandidateSetService");
 
 const {
-  runHourlyModelForYear,
+  getLatLonFromUkPostcode,
+  runHourlyModelsForYears,
   getTotalPvgisAnnualKWh,
 } = require("../services/integrations/pvgisService");
 
@@ -374,6 +375,8 @@ function requiresPropertyBoundary(propertyType) {
 }
 
 router.post("/", async (req, res) => {
+  const quoteStartedAt = Date.now();
+
   try {
     const input = req.body || {};
 
@@ -488,17 +491,32 @@ router.post("/", async (req, res) => {
     try {
       if (input.postcode && Array.isArray(input.roofs) && input.roofs.length > 0) {
         const years = [2021, 2022, 2023];
+        const pvgisStageStartedAt = Date.now();
+        let results;
 
-        const results = [];
-        for (const y of years) {
-          console.log(`Running PVGIS hourly simulation for year ${y}...`);
-          const r = await runHourlyModelForYear({
+        try {
+          const postcodeLookupStartedAt = Date.now();
+          let resolvedLocation;
+
+          try {
+            resolvedLocation = await getLatLonFromUkPostcode(input.postcode);
+          } finally {
+            console.log(
+              `[PERF] quote postcode lookup: ${Date.now() - postcodeLookupStartedAt}ms`
+            );
+          }
+
+          results = await runHourlyModelsForYears({
+            years,
             input,
             panelWatt,
-            year: y,
             includeHourlyArrays: true,
+            resolvedLocation,
           });
-          results.push(r);
+        } finally {
+          console.log(
+            `[PERF] PVGIS 3-year total: ${Date.now() - pvgisStageStartedAt}ms`
+          );
         }
 
         // ---- Monthly averages (for UI cards) ----
@@ -616,13 +634,21 @@ router.post("/", async (req, res) => {
       "true"
     ) {
       try {
-        const candidate =
-          await buildQuoteShadeStrengthV2Candidate({
+        const shadeCandidateStartedAt = Date.now();
+        let candidate;
+
+        try {
+          candidate = await buildQuoteShadeStrengthV2Candidate({
             input,
             panelWatt,
             hourlyModel,
             years: [2021, 2022, 2023],
           });
+        } finally {
+          console.log(
+            `[PERF] Shade V2 candidate: ${Date.now() - shadeCandidateStartedAt}ms`
+          );
+        }
 
         shadeStrengthV2CandidateRuntime =
           candidate?.runtime || null;
@@ -1349,6 +1375,7 @@ router.post("/", async (req, res) => {
 
 
         // BATTERY RECOMMENDATIONS
+        const batteryRecommendationStartedAt = Date.now();
         const curve = [];
         const batteryScenarioSources = new Map();
 
@@ -1502,6 +1529,10 @@ router.post("/", async (req, res) => {
 
         quote.simplePaybackYears =
           batteryAwarePayback.paybackYear ?? quote.simplePaybackYears;
+
+        console.log(
+          `[PERF] battery recommendation scan: ${Date.now() - batteryRecommendationStartedAt}ms`
+        );
 
       }
     } else {
@@ -1789,6 +1820,8 @@ router.post("/", async (req, res) => {
   } catch (err) {
     console.error("Error in /api/quote:", err);
     res.status(500).json({ error: "Something went wrong calculating and saving the quote." });
+  } finally {
+    console.log(`[PERF] quote total: ${Date.now() - quoteStartedAt}ms`);
   }
 });
 
