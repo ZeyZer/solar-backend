@@ -485,27 +485,12 @@ function daysInMonthIndex(monthIndex) {
   return [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][monthIndex] || 30;
 }
 
-async function readShadeFractionsForPoint({ image, lat, lon, monthIndex }) {
-  const pixelResult = pixelFromLatLon({ image, lat, lon });
-
-  if (!pixelResult.pixel) {
-    return {
-      fractions: null,
-      debug: pixelResult.debug,
-    };
-  }
-
-  const { x, y } = pixelResult.pixel;
+function decodeHourlyShadeFractions({ rasters, pixelIndex, monthIndex }) {
   const days = daysInMonthIndex(monthIndex);
-
-  const rasters = await image.readRasters({
-    window: [x, y, x + 1, y + 1],
-  });
-
   const hourlyFractions = Array(24).fill(null);
 
   for (let hour = 0; hour < 24; hour += 1) {
-    const raw = Number(rasters?.[hour]?.[0]);
+    const raw = Number(rasters?.[hour]?.[pixelIndex]);
 
     // Google stores invalid locations as -9999.
     if (!Number.isFinite(raw) || raw < 0) {
@@ -529,11 +514,92 @@ async function readShadeFractionsForPoint({ image, lat, lon, monthIndex }) {
 
   return {
     fractions: validHourCount > 0 ? hourlyFractions : null,
+    validHourCount,
+  };
+}
+
+async function readShadeFractionsForPoint({ image, lat, lon, monthIndex }) {
+  const pixelResult = pixelFromLatLon({ image, lat, lon });
+
+  if (!pixelResult.pixel) {
+    return {
+      fractions: null,
+      debug: pixelResult.debug,
+    };
+  }
+
+  const { x, y } = pixelResult.pixel;
+
+  const rasters = await image.readRasters({
+    window: [x, y, x + 1, y + 1],
+  });
+
+  const { fractions, validHourCount } = decodeHourlyShadeFractions({
+    rasters,
+    pixelIndex: 0,
+    monthIndex,
+  });
+
+  return {
+    fractions,
     debug: {
       ...pixelResult.debug,
       validHourCount,
     },
   };
+}
+
+async function readShadeFractionsForPoints({ image, points, monthIndex }) {
+  const pixelResults = points.map(({ lat, lon }) =>
+    pixelFromLatLon({ image, lat, lon })
+  );
+
+  const validPixels = pixelResults
+    .map((result) => result.pixel)
+    .filter(Boolean);
+
+  if (!validPixels.length) {
+    return pixelResults.map((pixelResult) => ({
+      fractions: null,
+      debug: pixelResult.debug,
+    }));
+  }
+
+  const minX = Math.min(...validPixels.map(({ x }) => x));
+  const minY = Math.min(...validPixels.map(({ y }) => y));
+  const maxX = Math.max(...validPixels.map(({ x }) => x));
+  const maxY = Math.max(...validPixels.map(({ y }) => y));
+  const windowWidth = maxX - minX + 1;
+
+  const rasters = await image.readRasters({
+    window: [minX, minY, maxX + 1, maxY + 1],
+  });
+
+  return pixelResults.map((pixelResult) => {
+    if (!pixelResult.pixel) {
+      return {
+        fractions: null,
+        debug: pixelResult.debug,
+      };
+    }
+
+    const localX = pixelResult.pixel.x - minX;
+    const localY = pixelResult.pixel.y - minY;
+    const pixelIndex = localY * windowWidth + localX;
+    const { fractions, validHourCount } = decodeHourlyShadeFractions({
+      rasters,
+      pixelIndex,
+      monthIndex,
+    });
+
+    return {
+      fractions,
+      debug: {
+        ...pixelResult.debug,
+        validHourCount,
+      },
+    };
+  });
 }
 
 function averageHourlyFractions(samples = []) {
@@ -601,6 +667,7 @@ module.exports = {
 
   pixelFromLatLon,
   readShadeFractionsForPoint,
+  readShadeFractionsForPoints,
   averageHourlyFractions,
   summariseMonthlyShadeFactors,
   summariseSegmentMonthlyShadeFactors,
