@@ -100,6 +100,44 @@ function resolveShadeRequestLocation({
   };
 }
 
+async function processGeoTiffMonthsInBatches({
+  hourlyShadeUrls,
+  apiKey,
+  fetchImage = fetchGeoTiff,
+  processImage,
+}) {
+  const batchSize = 3;
+
+  for (
+    let batchStart = 0;
+    batchStart < hourlyShadeUrls.length;
+    batchStart += batchSize
+  ) {
+    const monthIndexes = [];
+
+    for (
+      let monthIndex = batchStart;
+      monthIndex < Math.min(batchStart + batchSize, hourlyShadeUrls.length);
+      monthIndex += 1
+    ) {
+      monthIndexes.push(monthIndex);
+    }
+
+    const images = await Promise.all(
+      monthIndexes.map((monthIndex) =>
+        fetchImage(hourlyShadeUrls[monthIndex], apiKey)
+      )
+    );
+
+    for (let index = 0; index < monthIndexes.length; index += 1) {
+      await processImage({
+        image: images[index],
+        monthIndex: monthIndexes[index],
+      });
+    }
+  }
+}
+
 async function buildGoogleHourlyShadeFactorsRuntime({
   googlePanelPositions,
   segmentInputs,
@@ -186,9 +224,14 @@ async function buildGoogleHourlyShadeFactorsRuntime({
     };
   }
 
+  const runtimeStartedAt = Date.now();
+
   try {
-    const dataLayers =
-      await fetchDataLayers({
+    const dataLayersStartedAt = Date.now();
+    let dataLayers;
+
+    try {
+      dataLayers = await fetchDataLayers({
         lat:
           requestLocation.lat,
 
@@ -197,6 +240,11 @@ async function buildGoogleHourlyShadeFactorsRuntime({
 
         apiKey,
       });
+    } finally {
+      console.log(
+        `[PERF] Shade V2 Google Data Layers: ${Date.now() - dataLayersStartedAt}ms`
+      );
+    }
 
     const hourlyShadeUrls =
       Array.isArray(
@@ -263,120 +311,121 @@ async function buildGoogleHourlyShadeFactorsRuntime({
 
     const debugSamples = [];
 
-    for (
-      let monthIndex = 0;
-      monthIndex < 12;
-      monthIndex += 1
-    ) {
-      const image =
-        await fetchGeoTiff(
-          hourlyShadeUrls[
-            monthIndex
-          ],
-          apiKey
-        );
+    const geoTiffStageStartedAt = Date.now();
 
-      const pointSamples =
-        [];
+    try {
+      await processGeoTiffMonthsInBatches({
+        hourlyShadeUrls,
+        apiKey,
+        processImage: async ({ image, monthIndex }) => {
 
-      const pointSamplesBySegment =
-        new Map();
+          const pointSamples =
+            [];
 
-      for (
-        const panel
-        of samplePanels
-      ) {
-        const result =
-          await readShadeFractionsForPoint({
-            image,
+          const pointSamplesBySegment =
+            new Map();
 
-            lat:
-              panel.lat,
-
-            lon:
-              panel.lon,
-
-            monthIndex,
-          });
-
-        if (
-          result?.debug &&
-          debugSamples.length < 5
-        ) {
-          debugSamples.push({
-            monthIndex,
-
-            segmentIndex:
-              panel.segmentIndex,
-
-            ...result.debug,
-          });
-        }
-
-        if (
-          result?.fractions
-        ) {
-          pointSamples.push(
-            result.fractions
-          );
-
-          const segmentKey =
-            String(
-              panel.segmentIndex
-            );
-
-          if (
-            !pointSamplesBySegment.has(
-              segmentKey
-            )
+          for (
+            const panel
+            of samplePanels
           ) {
-            pointSamplesBySegment.set(
-              segmentKey,
-              []
-            );
+            const result =
+              await readShadeFractionsForPoint({
+                image,
+
+                lat:
+                  panel.lat,
+
+                lon:
+                  panel.lon,
+
+                monthIndex,
+              });
+
+            if (
+              result?.debug &&
+              debugSamples.length < 5
+            ) {
+              debugSamples.push({
+                monthIndex,
+
+                segmentIndex:
+                  panel.segmentIndex,
+
+                ...result.debug,
+              });
+            }
+
+            if (
+              result?.fractions
+            ) {
+              pointSamples.push(
+                result.fractions
+              );
+
+              const segmentKey =
+                String(
+                  panel.segmentIndex
+                );
+
+              if (
+                !pointSamplesBySegment.has(
+                  segmentKey
+                )
+              ) {
+                pointSamplesBySegment.set(
+                  segmentKey,
+                  []
+                );
+              }
+
+              pointSamplesBySegment
+                .get(segmentKey)
+                .push(
+                  result.fractions
+                );
+            }
           }
 
-          pointSamplesBySegment
-            .get(segmentKey)
-            .push(
-              result.fractions
+          monthlyValidPointSampleCounts.push(
+            pointSamples.length
+          );
+
+          monthlyByHourShadeFactor.push(
+            averageHourlyFractions(
+              pointSamples
+            )
+          );
+
+          for (
+            const segmentKey
+            of selectedSegmentKeys
+          ) {
+            const segmentSamples =
+              pointSamplesBySegment.get(
+                segmentKey
+              ) || [];
+
+            segmentMonthlyValidPointSampleCounts[
+              segmentKey
+            ].push(
+              segmentSamples.length
             );
-        }
-      }
 
-      monthlyValidPointSampleCounts.push(
-        pointSamples.length
+            segmentMonthlyByHourShadeFactor[
+              segmentKey
+            ].push(
+              averageHourlyFractions(
+                segmentSamples
+              )
+            );
+          }
+        },
+      });
+    } finally {
+      console.log(
+        `[PERF] Shade V2 GeoTIFF stage: ${Date.now() - geoTiffStageStartedAt}ms`
       );
-
-      monthlyByHourShadeFactor.push(
-        averageHourlyFractions(
-          pointSamples
-        )
-      );
-
-      for (
-        const segmentKey
-        of selectedSegmentKeys
-      ) {
-        const segmentSamples =
-          pointSamplesBySegment.get(
-            segmentKey
-          ) || [];
-
-        segmentMonthlyValidPointSampleCounts[
-          segmentKey
-        ].push(
-          segmentSamples.length
-        );
-
-        segmentMonthlyByHourShadeFactor[
-          segmentKey
-        ].push(
-          averageHourlyFractions(
-            segmentSamples
-          )
-        );
-      }
     }
 
     return {
@@ -449,11 +498,16 @@ async function buildGoogleHourlyShadeFactorsRuntime({
         error?.message ||
         String(error),
     };
+  } finally {
+    console.log(
+      `[PERF] Shade V2 Google shade total: ${Date.now() - runtimeStartedAt}ms`
+    );
   }
 }
 
 module.exports = {
   normaliseFallbackLocation,
   resolveShadeRequestLocation,
+  processGeoTiffMonthsInBatches,
   buildGoogleHourlyShadeFactorsRuntime,
 };

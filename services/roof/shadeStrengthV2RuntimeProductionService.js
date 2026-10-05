@@ -408,6 +408,48 @@ function buildShadeStrengthV2FromYearlyProfiles({
   };
 }
 
+async function buildBaseYearlyProfilesConcurrently({
+  years,
+  location,
+  segmentInputs,
+  buildYear = buildBaseSegmentProfilesForYear,
+}) {
+  const stageStartedAt = Date.now();
+
+  try {
+    const yearlyProfiles = await Promise.all(
+      years.map(async (year) => {
+        const yearStartedAt = Date.now();
+
+        try {
+          const baseSegmentProfiles = await buildYear({
+            year,
+            location,
+            segmentInputs,
+          });
+
+          return baseSegmentProfiles.length
+            ? {
+                year,
+                baseSegmentProfiles,
+              }
+            : null;
+        } finally {
+          console.log(
+            `[PERF] Shade V2 production ${year}: ${Date.now() - yearStartedAt}ms`
+          );
+        }
+      })
+    );
+
+    return yearlyProfiles.filter(Boolean);
+  } finally {
+    console.log(
+      `[PERF] Shade V2 production total: ${Date.now() - stageStartedAt}ms`
+    );
+  }
+}
+
 async function buildShadeStrengthV2RuntimeProduction({
   location,
   segmentInputs,
@@ -478,27 +520,16 @@ async function buildShadeStrengthV2RuntimeProduction({
           .filter(Number.isFinite)
       : DEFAULT_YEARS;
 
-  const baseYearlyProfiles = [];
-
-  for (const year of cleanYears) {
-    const baseSegmentProfiles =
-      await buildBaseSegmentProfilesForYear({
-        year,
-        location: {
-          lat,
-          lon,
-        },
-        segmentInputs:
-          cleanSegmentInputs,
-      });
-
-    if (baseSegmentProfiles.length) {
-      baseYearlyProfiles.push({
-        year,
-        baseSegmentProfiles,
-      });
-    }
-  }
+  const baseYearlyProfiles =
+    await buildBaseYearlyProfilesConcurrently({
+      years: cleanYears,
+      location: {
+        lat,
+        lon,
+      },
+      segmentInputs:
+        cleanSegmentInputs,
+    });
 
   const result =
     buildShadeStrengthV2FromYearlyProfiles({
@@ -531,5 +562,6 @@ module.exports = {
   averageHourlyArrays,
   validateMatchingTimeIndexes,
   buildShadeStrengthV2FromYearlyProfiles,
+  buildBaseYearlyProfilesConcurrently,
   buildShadeStrengthV2RuntimeProduction,
 };
