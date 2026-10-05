@@ -64,6 +64,7 @@ const {
 } = require("../services/integrations/pvgisService");
 
 const {
+  buildQuoteShadeStrengthV2Runtime,
   buildQuoteShadeStrengthV2Shadow,
   compactLiveShadowResult,
 } = require("../services/roof/shadeStrengthV2QuoteShadowService");
@@ -93,6 +94,55 @@ const {
 const {
   simulateHourByHour,
 } = require("../services/modelling/batterySimulationService");
+
+function startSettledShadeStrengthV2Runtime({
+  enabled,
+  input,
+  panelWatt,
+  years,
+  runtimeBuilder = buildQuoteShadeStrengthV2Runtime,
+}) {
+  if (
+    !enabled ||
+    !input?.postcode ||
+    !Array.isArray(input?.roofs) ||
+    input.roofs.length === 0
+  ) {
+    return null;
+  }
+
+  let runtimePromise;
+
+  try {
+    runtimePromise = Promise.resolve(
+      runtimeBuilder({
+        input,
+        panelWatt,
+        years,
+      })
+    );
+  } catch (error) {
+    runtimePromise = Promise.reject(error);
+  }
+
+  const settledPromise = runtimePromise.then(
+    (runtime) => ({ ok: true, runtime }),
+    (error) => ({ ok: false, error })
+  );
+
+  return {
+    settledPromise,
+    dependency: async () => {
+      const settled = await settledPromise;
+
+      if (!settled.ok) {
+        throw settled.error;
+      }
+
+      return settled.runtime;
+    },
+  };
+}
 
 const {
   buildBatteryRecommendations,
@@ -484,13 +534,35 @@ router.post("/", async (req, res) => {
     // the quote because it contains the 8760 profile.
     let shadeStrengthV2CandidateRuntime = null;
 
+    const quoteModelYears = [2021, 2022, 2023];
+    const shadeStrengthV2CandidateEnabled =
+      process.env
+        .SHADE_STRENGTH_V2_CANONICAL_CANDIDATE_ENABLED ===
+      "true";
+    const shadeOverlapStartedAt =
+      shadeStrengthV2CandidateEnabled &&
+      input.postcode &&
+      Array.isArray(input.roofs) &&
+      input.roofs.length > 0
+        ? Date.now()
+        : null;
+    const prestartedShadeRuntime =
+      startSettledShadeStrengthV2Runtime({
+        enabled:
+          shadeStrengthV2CandidateEnabled,
+        input,
+        panelWatt,
+        years:
+          quoteModelYears,
+      });
+
     // ------------------------------
     // 1) Try PVGIS HOURLY simulation (3-year average)
     // ------------------------------
     let hourlyYearData = null; // keep in outer scope for later use
     try {
       if (input.postcode && Array.isArray(input.roofs) && input.roofs.length > 0) {
-        const years = [2021, 2022, 2023];
+        const years = quoteModelYears;
         const pvgisStageStartedAt = Date.now();
         let results;
 
@@ -628,11 +700,7 @@ router.post("/", async (req, res) => {
     // - runs before calculateQuote() and therefore
     //   before tariff, battery and financial modelling
     // ------------------------------
-    if (
-      process.env
-        .SHADE_STRENGTH_V2_CANONICAL_CANDIDATE_ENABLED ===
-      "true"
-    ) {
+    if (shadeStrengthV2CandidateEnabled) {
       try {
         const shadeCandidateStartedAt = Date.now();
         let candidate;
@@ -642,12 +710,27 @@ router.post("/", async (req, res) => {
             input,
             panelWatt,
             hourlyModel,
-            years: [2021, 2022, 2023],
+            years:
+              quoteModelYears,
+            ...(prestartedShadeRuntime
+              ? {
+                  dependencies: {
+                    buildQuoteShadeStrengthV2Runtime:
+                      prestartedShadeRuntime.dependency,
+                  },
+                }
+              : {}),
           });
         } finally {
           console.log(
             `[PERF] Shade V2 candidate: ${Date.now() - shadeCandidateStartedAt}ms`
           );
+
+          if (shadeOverlapStartedAt !== null) {
+            console.log(
+              `[PERF] PVGIS + Shade V2 overlap window: ${Date.now() - shadeOverlapStartedAt}ms`
+            );
+          }
         }
 
         shadeStrengthV2CandidateRuntime =
@@ -1826,3 +1909,5 @@ router.post("/", async (req, res) => {
 });
 
 module.exports = router;
+module.exports.startSettledShadeStrengthV2Runtime =
+  startSettledShadeStrengthV2Runtime;
