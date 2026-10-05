@@ -167,7 +167,10 @@ router.post("/email-quote", async (req, res) => {
     });
 
   } catch (err) {
-    console.error("Error in /api/lead/email-quote:", err);
+    console.error(
+      "Error in /api/lead/email-quote:",
+      err?.message || "Unknown error"
+    );
 
     return res.status(500).json({
       ok: false,
@@ -279,7 +282,10 @@ router.post("/request-call", async (req, res) => {
 
     
   } catch (err) {
-    console.error("Error in /api/lead/request-call:", err);
+    console.error(
+      "Error in /api/lead/request-call:",
+      err?.message || "Unknown error"
+    );
 
     return res.status(500).json({
       ok: false,

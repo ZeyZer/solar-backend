@@ -25,6 +25,36 @@ function formatUkPhoneForBrevo(phone) {
   return raw;
 }
 
+function getBrevoErrorBody(err) {
+  return err?.response?.body || {};
+}
+
+function isDuplicateParameterError(err) {
+  return getBrevoErrorBody(err)?.code === "duplicate_parameter";
+}
+
+function isSmsDuplicateError(err) {
+  const body = getBrevoErrorBody(err);
+  const identifiers = Array.isArray(body?.metadata?.duplicate_identifiers)
+    ? body.metadata.duplicate_identifiers.map((value) =>
+        String(value || "").toUpperCase()
+      )
+    : [];
+
+  return (
+    body?.code === "duplicate_parameter" &&
+    (
+      identifiers.includes("SMS") ||
+      String(body?.message || "").toUpperCase().includes("SMS")
+    )
+  );
+}
+
+function withoutSmsAttribute(attributes = {}) {
+  const { SMS, ...safeAttributes } = attributes;
+  return safeAttributes;
+}
+
 async function upsertBrevoContact(
   contact,
   {
@@ -74,24 +104,67 @@ async function upsertBrevoContact(
   createContact.attributes = attributes;
   createContact.listIds = listIds;
 
+  async function updateExistingContact(updateAttributes) {
+    const updateContact = new SibApiV3Sdk.UpdateContact();
+    updateContact.attributes = updateAttributes;
+    updateContact.listIds = listIds;
+
+    try {
+      await contactsApi.updateContact(contact.email, updateContact);
+      console.log("Brevo contact updated for routed lead owner.");
+    } catch (updateErr) {
+      if (!isSmsDuplicateError(updateErr)) {
+        throw updateErr;
+      }
+
+      const updateWithoutSms = new SibApiV3Sdk.UpdateContact();
+      updateWithoutSms.attributes = withoutSmsAttribute(updateAttributes);
+      updateWithoutSms.listIds = listIds;
+
+      await contactsApi.updateContact(contact.email, updateWithoutSms);
+
+      console.warn(
+        "Brevo contact updated without SMS because that phone number is already associated with another contact."
+      );
+    }
+  }
+
   try {
     await contactsApi.createContact(createContact);
     console.log("Brevo contact created for routed lead owner.");
   } catch (err) {
-    if (
-      err.response &&
-      err.response.body &&
-      err.response.body.code === "duplicate_parameter"
-    ) {
-      const updateContact = new SibApiV3Sdk.UpdateContact();
-      updateContact.attributes = attributes;
-      updateContact.listIds = listIds;
-
-      await contactsApi.updateContact(contact.email, updateContact);
-      console.log("Brevo contact updated for routed lead owner.");
-    } else {
+    if (!isDuplicateParameterError(err)) {
       throw err;
     }
+
+    if (isSmsDuplicateError(err)) {
+      const createWithoutSms = new SibApiV3Sdk.CreateContact();
+      createWithoutSms.email = contact.email;
+      createWithoutSms.attributes = withoutSmsAttribute(attributes);
+      createWithoutSms.listIds = listIds;
+
+      try {
+        await contactsApi.createContact(createWithoutSms);
+
+        console.warn(
+          "Brevo contact created without SMS because that phone number is already associated with another contact."
+        );
+
+        return;
+      } catch (createWithoutSmsErr) {
+        if (!isDuplicateParameterError(createWithoutSmsErr)) {
+          throw createWithoutSmsErr;
+        }
+
+        await updateExistingContact(
+          withoutSmsAttribute(attributes)
+        );
+
+        return;
+      }
+    }
+
+    await updateExistingContact(attributes);
   }
 }
 
@@ -256,6 +329,9 @@ async function sendCallbackNotification({
 
 module.exports = {
   formatUkPhoneForBrevo,
+  isDuplicateParameterError,
+  isSmsDuplicateError,
+  withoutSmsAttribute,
   upsertBrevoContact,
   sendQuoteEmailWithAttachment,
   sendCallbackNotification,

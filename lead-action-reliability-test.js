@@ -4,6 +4,9 @@ const {
   upsertBrevoContact,
   sendQuoteEmailWithAttachment,
   sendCallbackNotification,
+  isDuplicateParameterError,
+  isSmsDuplicateError,
+  withoutSmsAttribute,
 } = require("./services/integrations/brevoService");
 
 const {
@@ -11,6 +14,61 @@ const {
 } = require("./config/leadOwnerConfig");
 
 async function main() {
+  const smsDuplicateError = {
+    response: {
+      body: {
+        code: "duplicate_parameter",
+        message:
+          "Unable to update contact, SMS is already associated with another Contact",
+        metadata: {
+          duplicate_identifiers: ["SMS"],
+        },
+      },
+    },
+  };
+
+  assert.strictEqual(
+    isDuplicateParameterError(smsDuplicateError),
+    true
+  );
+  assert.strictEqual(
+    isSmsDuplicateError(smsDuplicateError),
+    true
+  );
+
+  const emailDuplicateError = {
+    response: {
+      body: {
+        code: "duplicate_parameter",
+        message: "Contact already exist",
+        metadata: {
+          duplicate_identifiers: ["email"],
+        },
+      },
+    },
+  };
+
+  assert.strictEqual(
+    isDuplicateParameterError(emailDuplicateError),
+    true
+  );
+  assert.strictEqual(
+    isSmsDuplicateError(emailDuplicateError),
+    false
+  );
+
+  assert.deepStrictEqual(
+    withoutSmsAttribute({
+      FIRSTNAME: "Test Customer",
+      SMS: "+447123456789",
+      LEAD_TYPE: "request_call",
+    }),
+    {
+      FIRSTNAME: "Test Customer",
+      LEAD_TYPE: "request_call",
+    }
+  );
+
   await assert.rejects(
     () =>
       upsertBrevoContact(
