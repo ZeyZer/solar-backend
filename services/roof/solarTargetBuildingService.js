@@ -174,9 +174,35 @@ async function analyseSingleTarget(target, options = {}) {
       referencePoint: target,
     });
 
+    const propertyBoundaryFilter = buildingModel?.propertyBoundaryFilter || null;
+
     console.log("Solar target service boundary filter result:", {
-      applied: buildingModel?.propertyBoundaryFilter?.applied || false,
-      propertyBoundaryFilter: buildingModel?.propertyBoundaryFilter || null,
+      applied: propertyBoundaryFilter?.applied || false,
+      propertyBoundaryFilter: propertyBoundaryFilter
+        ? {
+            applied: Boolean(propertyBoundaryFilter.applied),
+            reason: propertyBoundaryFilter.reason || null,
+            source: propertyBoundaryFilter.source || null,
+            propertyType: propertyBoundaryFilter.propertyType || null,
+            geometryType: propertyBoundaryFilter.geometryType || null,
+            boundaryLineCount: propertyBoundaryFilter.boundaryLineCount || 0,
+            originalPanelCount:
+              propertyBoundaryFilter.originalPanelCount ?? null,
+            keptPanelCount: propertyBoundaryFilter.keptPanelCount ?? null,
+            excludedPanelCount:
+              propertyBoundaryFilter.excludedPanelCount ?? null,
+            originalPanelsBySegment:
+              propertyBoundaryFilter.originalPanelsBySegment || null,
+            keptPanelsBySegment:
+              propertyBoundaryFilter.keptPanelsBySegment || null,
+            filteringMethod: propertyBoundaryFilter.filteringMethod || null,
+            diagnosticLineCount: Array.isArray(
+              propertyBoundaryFilter.boundarySideDiagnostics
+            )
+              ? propertyBoundaryFilter.boundarySideDiagnostics.length
+              : 0,
+          }
+        : null,
     });
 
 

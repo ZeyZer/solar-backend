@@ -243,6 +243,17 @@ function buildBoundarySideDiagnostics({ panels = [], reference, lines = [] }) {
   });
 }
 
+function buildBoundarySideLogSummary(boundarySideDiagnostics = []) {
+  return boundarySideDiagnostics.map((diagnostic) => ({
+    lineIndex: diagnostic.lineIndex,
+    referenceSideSign: diagnostic.referenceSideSign,
+    positiveSideCount: diagnostic.positiveSideCount,
+    negativeSideCount: diagnostic.negativeSideCount,
+    zeroSideCount: diagnostic.zeroSideCount,
+    unclassifiedPanelCount: diagnostic.unclassifiedPanelCount,
+  }));
+}
+
 function applyPropertyBoundaryFilter(
   buildingModel = {},
   {
@@ -282,7 +293,7 @@ function applyPropertyBoundaryFilter(
 
   console.log(
     "Property boundary side diagnostic:",
-    JSON.stringify(boundarySideDiagnostics, null, 2)
+    buildBoundarySideLogSummary(boundarySideDiagnostics)
   );
 
   const keptPanels = originalPanels.filter((panel) => {
