@@ -82,6 +82,8 @@ function wait(ms) {
 async function waitForPdfPageToSettle(page) {
   await page.emulateMediaType("print");
 
+  const reactReadyStartedAt = Date.now();
+
   try {
     await page.waitForFunction(
       () =>
@@ -93,6 +95,8 @@ async function waitForPdfPageToSettle(page) {
     );
   } catch (err) {
     console.log("PDF ready flag wait timed out:", err.message);
+  } finally {
+    console.log(`[PERF] PDF React ready: ${Date.now() - reactReadyStartedAt}ms`);
   }
 
   const pdfStatus = await page.evaluate(() => ({
@@ -117,11 +121,17 @@ async function waitForPdfPageToSettle(page) {
     throw new Error(`PDF frontend navigated away from quote-pdf route: ${pdfStatus.href}`);
   }
 
+  const fontsStartedAt = Date.now();
+
   try {
     await page.evaluateHandle("document.fonts.ready");
   } catch (err) {
     console.log("Font readiness check skipped:", err.message);
+  } finally {
+    console.log(`[PERF] PDF fonts: ${Date.now() - fontsStartedAt}ms`);
   }
+
+  const imagesStartedAt = Date.now();
 
   try {
     await page.waitForFunction(
@@ -135,9 +145,17 @@ async function waitForPdfPageToSettle(page) {
     );
   } catch {
     console.log("Some images did not finish loading before PDF render");
+  } finally {
+    console.log(`[PERF] PDF images: ${Date.now() - imagesStartedAt}ms`);
   }
 
-  await wait(2000);
+  const fixedSettleStartedAt = Date.now();
+
+  try {
+    await wait(2000);
+  } finally {
+    console.log(`[PERF] PDF fixed settle: ${Date.now() - fixedSettleStartedAt}ms`);
+  }
 
   try {
     const bodyHeight = await page.evaluate(() => {
@@ -151,7 +169,7 @@ async function waitForPdfPageToSettle(page) {
   }
 }
 
-async function generateQuotePdfBuffer({ quote, form, roofs }) {
+async function generateQuotePdfBufferInternal({ quote, form, roofs }) {
   if (!quote || !form) {
     throw new Error("Missing quote or form data.");
   }
@@ -170,25 +188,33 @@ async function generateQuotePdfBuffer({ quote, form, roofs }) {
   console.log("PDF frontend URL:", getFrontendUrl());
   console.log("Launching Puppeteer...");
 
-  const browser = await puppeteer.launch({
-    headless: true,
-    protocolTimeout: 80000,
-    timeout: 80000,
-    args: [
-      "--no-sandbox",
-      "--disable-setuid-sandbox",
-      "--disable-dev-shm-usage",
-      "--disable-gpu",
-      "--font-render-hinting=none",
-      "--disable-background-timer-throttling",
-      "--disable-backgrounding-occluded-windows",
-      "--disable-renderer-backgrounding",
-    ],
-  });
+  const browserLaunchStartedAt = Date.now();
+  let browser;
+
+  try {
+    browser = await puppeteer.launch({
+      headless: true,
+      protocolTimeout: 80000,
+      timeout: 80000,
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-gpu",
+        "--font-render-hinting=none",
+        "--disable-background-timer-throttling",
+        "--disable-backgrounding-occluded-windows",
+        "--disable-renderer-backgrounding",
+      ],
+    });
+  } finally {
+    console.log(`[PERF] PDF browser launch: ${Date.now() - browserLaunchStartedAt}ms`);
+  }
 
   console.log("Puppeteer launched successfully");
 
   try {
+    const pageSetupStartedAt = Date.now();
     const page = await browser.newPage();
 
     await page.setCacheEnabled(false);
@@ -230,10 +256,19 @@ async function generateQuotePdfBuffer({ quote, form, roofs }) {
       deviceScaleFactor: 1,
     });
 
-    const response = await page.goto(pdfUrl, {
-      waitUntil: "domcontentloaded",
-      timeout: 80000,
-    });
+    console.log(`[PERF] PDF new page setup: ${Date.now() - pageSetupStartedAt}ms`);
+
+    const navigationStartedAt = Date.now();
+    let response;
+
+    try {
+      response = await page.goto(pdfUrl, {
+        waitUntil: "domcontentloaded",
+        timeout: 80000,
+      });
+    } finally {
+      console.log(`[PERF] PDF navigation: ${Date.now() - navigationStartedAt}ms`);
+    }
 
     const status = response?.status?.() || 0;
 
@@ -248,21 +283,37 @@ async function generateQuotePdfBuffer({ quote, form, roofs }) {
 
     console.log("/quote-pdf page loaded and settled");
 
-    const pdfBytes = await page.pdf({
-      format: "A4",
-      printBackground: true,
-      preferCSSPageSize: true,
-      margin: {
-        top: "0mm",
-        bottom: "0mm",
-        left: "0mm",
-        right: "0mm",
-      },
-    });
+    const renderStartedAt = Date.now();
+    let pdfBytes;
 
-    return Buffer.from(pdfBytes);
+    try {
+      pdfBytes = await page.pdf({
+        format: "A4",
+        printBackground: true,
+        preferCSSPageSize: true,
+        margin: {
+          top: "0mm",
+          bottom: "0mm",
+          left: "0mm",
+          right: "0mm",
+        },
+      });
+    } finally {
+      console.log(`[PERF] PDF render: ${Date.now() - renderStartedAt}ms`);
+    }
+
+    const pdfBuffer = Buffer.from(pdfBytes);
+    console.log(`[PERF] PDF bytes: ${pdfBuffer.length}`);
+
+    return pdfBuffer;
   } finally {
-    await browser.close();
+    const browserCloseStartedAt = Date.now();
+
+    try {
+      await browser.close();
+    } finally {
+      console.log(`[PERF] PDF browser close: ${Date.now() - browserCloseStartedAt}ms`);
+    }
 
     deletePdfQuoteDataById(pdfId);
 
@@ -270,6 +321,16 @@ async function generateQuotePdfBuffer({ quote, form, roofs }) {
       pdfId,
       storedPdfQuotes: pdfQuoteDataById.size,
     });
+  }
+}
+
+async function generateQuotePdfBuffer(options) {
+  const totalStartedAt = Date.now();
+
+  try {
+    return await generateQuotePdfBufferInternal(options);
+  } finally {
+    console.log(`[PERF] PDF total: ${Date.now() - totalStartedAt}ms`);
   }
 }
 
