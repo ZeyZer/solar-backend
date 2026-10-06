@@ -104,10 +104,13 @@ async function waitForPdfPageToSettle(page) {
     error: window.__QUOTE_PDF_ERROR__ || "",
     hash: window.location.hash || "",
     href: window.location.href || "",
-    bodyText: (document.body?.innerText || "").slice(0, 500),
   }));
 
-  console.log("PDF route browser status:", pdfStatus);
+  console.log("PDF route browser status:", {
+    ready: pdfStatus.ready,
+    hasError: Boolean(pdfStatus.error),
+    hash: pdfStatus.hash,
+  });
 
   if (pdfStatus.error) {
     throw new Error(`PDF frontend reported error: ${pdfStatus.error}`);
@@ -231,20 +234,6 @@ async function generateQuotePdfBufferInternal({ quote, form, roofs }) {
 
     page.on("pageerror", (err) => {
       console.error("PDF page error:", err.message);
-    });
-
-    page.on("console", (msg) => {
-      const text = msg.text();
-
-      if (
-        text.includes("Failed") ||
-        text.includes("Error") ||
-        text.includes("PDF") ||
-        text.includes("quote") ||
-        text.includes("lead")
-      ) {
-        console.log("PDF page console:", text);
-      }
     });
 
     const pdfUrl = buildPdfRouteUrl(pdfId);

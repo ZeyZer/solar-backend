@@ -480,8 +480,6 @@ router.post("/", async (req, res) => {
       tariffAfter.standingChargePerDay ?? CONFIG.standingChargePerDay ?? 0.60
     );
 
-    console.log("Received quote request with input:", input);
-
     // ✅ Normalise panelOption no matter what arrives
     input.panelOption = input.panelOption || input.PanelOption || "value";
     delete input.PanelOption;
@@ -858,7 +856,10 @@ router.post("/", async (req, res) => {
       }
     }
 
-    console.log("Incoming roofs:", input.roofs);
+    console.log(
+      "Incoming roof count:",
+      Array.isArray(input.roofs) ? input.roofs.length : 0
+    );
 
     // ------------------------------
     // 3) Base quote + fallback self-consumption/savings
