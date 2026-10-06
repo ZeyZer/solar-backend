@@ -61,34 +61,93 @@ async function recordLeadEventSafely({
   }
 }
 
-async function sendCallbackNotificationSafely({
+function snapshotLeadActionData(value) {
+  if (typeof structuredClone === "function") {
+    return structuredClone(value);
+  }
+
+  return JSON.parse(JSON.stringify(value));
+}
+
+function scheduleBestEffortBackground(task) {
+  // Best-effort in-process delivery: a restart or deploy after acknowledgement
+  // can interrupt the PDF email. Durable retries are intentionally out of scope.
+  setImmediate(() => {
+    Promise.resolve()
+      .then(task)
+      .catch((error) => {
+        console.error(
+          "Background PDF/email task failed unexpectedly:",
+          error?.name || "Error"
+        );
+      });
+  });
+}
+
+async function deliverQuotePdfEmailInBackground({
   contact,
   quote,
   input,
   leadId,
-  routing,
   brevoConfig,
+  templateId,
+  route,
+  generatePdf = generateQuotePdfBuffer,
+  sendQuoteEmail = sendQuoteEmailWithAttachment,
+  recordEvent = recordLeadEventSafely,
 }) {
   try {
-    const result = await sendCallbackNotification({
+    const pdfBuffer = await generatePdf({
+      quote,
+      form: input,
+      roofs: input.roofs || [],
+    });
+
+    await sendQuoteEmail(
       contact,
       quote,
       input,
-      leadId,
-      routing,
-      brevoConfig,
-    });
+      pdfBuffer,
+      templateId,
+      brevoConfig
+    );
 
-    if (result?.skipped) {
-      console.log("Callback notification skipped:", result.reason);
-    }
-  } catch (err) {
-    console.error("Callback notification failed:", err.message);
+    await recordEvent({
+      leadId,
+      eventType: "pdf_email_sent",
+      contact,
+      metadata: {
+        route,
+        templateId: templateId || null,
+      },
+    });
+  } catch (error) {
+    console.error(
+      "Background PDF/email delivery failed:",
+      error?.name || "Error"
+    );
+
+    await recordEvent({
+      leadId,
+      eventType: "pdf_email_failed",
+      contact,
+      metadata: {
+        route,
+        templateId: templateId || null,
+      },
+    });
   }
 }
 
-// POST /api/lead/email-quote
-router.post("/email-quote", async (req, res) => {
+function createEmailQuoteHandler({
+  resolveRouting = resolveLeadActionRouting,
+  upsertContact = upsertBrevoContact,
+  generatePdf = generateQuotePdfBuffer,
+  sendQuoteEmail = sendQuoteEmailWithAttachment,
+  recordEvent = recordLeadEventSafely,
+  scheduleBackground = scheduleBestEffortBackground,
+} = {}) {
+  return async (req, res) => {
   try {
     const { contact, quote, input, marketingConsent, leadId } = req.body || {};
 
@@ -120,10 +179,10 @@ router.post("/email-quote", async (req, res) => {
       quote,
       input,
     });
-    const routing = await resolveLeadActionRouting(actionLeadId);
+    const routing = await resolveRouting(actionLeadId);
     const brevoConfig = routing.integration.brevo;
 
-    await upsertBrevoContact(contact, {
+    await upsertContact(contact, {
       brevoConfig,
       baseListId: brevoConfig.quoteListId,
       marketingConsent: !!marketingConsent,
@@ -134,35 +193,39 @@ router.post("/email-quote", async (req, res) => {
       ...input,
       leadType: "email_quote",
     };
-
-    const pdfBuffer = await generateQuotePdfBuffer({
-      quote,
-      form: emailInput,
-      roofs: emailInput.roofs || [],
-    });
-
-    await sendQuoteEmailWithAttachment(
+    const snapshot = snapshotLeadActionData({
       contact,
       quote,
-      emailInput,
-      pdfBuffer,
-      brevoConfig.quoteTemplateId,
-      brevoConfig
-    );
+      input: emailInput,
+      leadId: actionLeadId,
+      brevoConfig,
+    });
 
-    await recordLeadEventSafely({
+    await recordEvent({
       leadId: actionLeadId,
       eventType: "pdf_email_requested",
       contact,
       metadata: {
         route: "/api/lead/email-quote",
-        marketingConsent: !!marketingConsent,
         templateId: brevoConfig.quoteTemplateId || null,
       },
     });
 
-    return res.json({
+    scheduleBackground(() =>
+      deliverQuotePdfEmailInBackground({
+        ...snapshot,
+        templateId:
+          snapshot.brevoConfig.quoteTemplateId,
+        route: "/api/lead/email-quote",
+        generatePdf,
+        sendQuoteEmail,
+        recordEvent,
+      })
+    );
+
+    return res.status(202).json({
       ok: true,
+      accepted: true,
       leadId: actionLeadId || null,
     });
 
@@ -177,10 +240,22 @@ router.post("/email-quote", async (req, res) => {
       error: "Server error sending quote email.",
     });
   }
-});
+  };
+}
 
-// POST /api/lead/request-call
-router.post("/request-call", async (req, res) => {
+// POST /api/lead/email-quote
+router.post("/email-quote", createEmailQuoteHandler());
+
+function createRequestCallHandler({
+  resolveRouting = resolveLeadActionRouting,
+  upsertContact = upsertBrevoContact,
+  sendCallback = sendCallbackNotification,
+  generatePdf = generateQuotePdfBuffer,
+  sendQuoteEmail = sendQuoteEmailWithAttachment,
+  recordEvent = recordLeadEventSafely,
+  scheduleBackground = scheduleBestEffortBackground,
+} = {}) {
+  return async (req, res) => {
   try {
     const { contact, quote, input, marketingConsent, leadId } = req.body || {};
 
@@ -219,10 +294,10 @@ router.post("/request-call", async (req, res) => {
       quote,
       input,
     });
-    const routing = await resolveLeadActionRouting(actionLeadId);
+    const routing = await resolveRouting(actionLeadId);
     const brevoConfig = routing.integration.brevo;
 
-    await upsertBrevoContact(contact, {
+    await upsertContact(contact, {
       brevoConfig,
       baseListId: brevoConfig.callListId,
       marketingConsent: !!marketingConsent,
@@ -233,23 +308,15 @@ router.post("/request-call", async (req, res) => {
       ...input,
       leadType: "request_call",
     };
-
-    const pdfBuffer = await generateQuotePdfBuffer({
-      quote,
-      form: callInput,
-      roofs: callInput.roofs || [],
-    });
-
-    await sendQuoteEmailWithAttachment(
+    const snapshot = snapshotLeadActionData({
       contact,
       quote,
-      callInput,
-      pdfBuffer,
-      brevoConfig.callTemplateId,
-      brevoConfig
-    );
+      input: callInput,
+      leadId: actionLeadId,
+      brevoConfig,
+    });
 
-    await sendCallbackNotificationSafely({
+    const callbackResult = await sendCallback({
       contact,
       quote,
       input: callInput,
@@ -258,14 +325,23 @@ router.post("/request-call", async (req, res) => {
       brevoConfig,
     });
 
-    await recordLeadEventSafely({
+    if (
+      callbackResult?.skipped &&
+      routing.leadOwner === "zion-energy"
+    ) {
+      throw new Error(
+        "Required Zion callback notification was skipped."
+      );
+    }
+
+    await recordEvent({
       leadId: actionLeadId,
       eventType: "call_requested",
       contact,
       metadata: {
         route: "/api/lead/request-call",
-        marketingConsent: !!marketingConsent,
-        templateId: brevoConfig.callTemplateId || null,
+        templateId:
+          brevoConfig.callbackNotifyTemplateId || null,
       },
     });
 
@@ -275,8 +351,21 @@ router.post("/request-call", async (req, res) => {
       ts: new Date().toISOString(),
     });
 
-    return res.json({
+    scheduleBackground(() =>
+      deliverQuotePdfEmailInBackground({
+        ...snapshot,
+        templateId:
+          snapshot.brevoConfig.callTemplateId,
+        route: "/api/lead/request-call",
+        generatePdf,
+        sendQuoteEmail,
+        recordEvent,
+      })
+    );
+
+    return res.status(202).json({
       ok: true,
+      accepted: true,
       leadId: actionLeadId || null,
     });
 
@@ -292,6 +381,15 @@ router.post("/request-call", async (req, res) => {
       error: "Server error requesting call.",
     });
   }
-});
+  };
+}
+
+// POST /api/lead/request-call
+router.post("/request-call", createRequestCallHandler());
 
 module.exports = router;
+module.exports.createEmailQuoteHandler = createEmailQuoteHandler;
+module.exports.createRequestCallHandler = createRequestCallHandler;
+module.exports.deliverQuotePdfEmailInBackground =
+  deliverQuotePdfEmailInBackground;
+module.exports.snapshotLeadActionData = snapshotLeadActionData;
