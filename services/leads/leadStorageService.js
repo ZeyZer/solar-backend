@@ -53,6 +53,7 @@ function sanitiseFormForPersistence(form = {}, leadOwner) {
     phone,
     address,
     houseNumber,
+    marketingConsent,
     ...analyticsForm
   } = form;
 

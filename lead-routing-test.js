@@ -25,6 +25,7 @@ function buildLead(overrides = {}) {
       houseNumber: "10",
       postcode: "SW1A 1AA",
       annualKWh: 3500,
+      marketingConsent: true,
     },
     quote: {
       panelCount: 10,
@@ -61,7 +62,12 @@ function main() {
   assert.strictEqual(externalRow.house_number, null);
   assert.strictEqual(externalRow.postcode, "SW1A 1AA");
   assert.strictEqual(externalRow.form.email, undefined);
+  assert.strictEqual(externalRow.form.marketingConsent, undefined);
   assert.strictEqual(externalRow.full_payload.form.address, undefined);
+  assert.strictEqual(
+    externalRow.full_payload.form.marketingConsent,
+    undefined
+  );
   assert.strictEqual(externalRow.form.annualKWh, 3500);
   assert.strictEqual(externalRow.quote.panelCount, 10);
 
@@ -95,6 +101,7 @@ function main() {
 
   assert.strictEqual(ownedRow.email, "test@example.com");
   assert.strictEqual(ownedRow.form.address, "10 Test Street, London");
+  assert.strictEqual(ownedRow.form.marketingConsent, true);
 
   const historicalRouting = resolveStoredLeadRouting({
     tenant_id: "zion-energy",
