@@ -3,6 +3,7 @@ const {
 } = require("../config/calculationVersions");
 
 const express = require("express");
+const { performance } = require("node:perf_hooks");
 
 const { CONFIG } = require("../config/quoteConfig");
 
@@ -67,6 +68,8 @@ const {
 const router = express.Router();
 
 router.post("/recalc", async (req, res) => {
+  const recalcStartedAt = performance.now();
+
   try {
     const { quote, tariffBefore, tariffAfter, input, batteryRecommendationLifetimeYears } = req.body || {};
 
@@ -111,6 +114,7 @@ router.post("/recalc", async (req, res) => {
     // -----------------------
     // 2) Re-simulate hourly with toggles (NO PVGIS)
     // -----------------------
+    const selectedSimulationStartedAt = performance.now();
     const sim = simulateHourByHour({
       pvHourlyKWh: pv,
       loadHourlyKWh: load,
@@ -128,6 +132,9 @@ router.post("/recalc", async (req, res) => {
       exportFromBatteryEnabled: !!ta.exportFromBatteryEnabled,
       batteryModelAssumptions,
     });
+    console.log(
+      `[PERF] Recalc selected simulation: ${(performance.now() - selectedSimulationStartedAt).toFixed(1)}ms`
+    );
 
     if (!sim?.hourly?.importKWh || !sim?.hourly?.exportKWh) {
       return res.status(500).json({ error: "Recalc simulation did not return hourly flows." });
@@ -136,6 +143,7 @@ router.post("/recalc", async (req, res) => {
     // -----------------------
     // 3) Hourly billing (baseline + after)
     // -----------------------
+    const selectedBillingStartedAt = performance.now();
     const billing = computeHourlyBilling({
       loadKWh: load,
       importKWh: sim.hourly.importKWh,
@@ -145,6 +153,11 @@ router.post("/recalc", async (req, res) => {
       tariffBefore: tb,
       tariffAfter: ta,
     });
+    console.log(
+      `[PERF] Recalc selected billing: ${(performance.now() - selectedBillingStartedAt).toFixed(1)}ms`
+    );
+
+    const initialFinancialsStartedAt = performance.now();
 
     const annualBillSavings = Math.max(
       0,
@@ -243,6 +256,10 @@ router.post("/recalc", async (req, res) => {
     const debugWinterDay = extractDaySlice(sim.hourly, winterStart);
     const debugSummerDay = extractDaySlice(sim.hourly, summerStart);
 
+    console.log(
+      `[PERF] Recalc initial financials: ${(performance.now() - initialFinancialsStartedAt).toFixed(1)}ms`
+    );
+
 
     // -----------------------
     // 6) Battery recommendations (fast enough, no PVGIS)
@@ -254,8 +271,17 @@ router.post("/recalc", async (req, res) => {
 
     const curve = [];
     const batteryScenarioSources = new Map();
+    const batterySweepStartedAt = performance.now();
+    let batterySweepSimulationMs = 0;
+    let batterySweepBillingMs = 0;
+    let batterySweepPricingMs = 0;
+    let batterySweepPaybackMs = 0;
+    let batterySweepScenarioPrepMs = 0;
+    let batterySweepScenarioCount = 0;
 
     for (let b = 0; b <= MAX_BAT; b += STEP) {
+      batterySweepScenarioCount += 1;
+      const simulationStartedAt = performance.now();
       const simB = simulateHourByHour({
         pvHourlyKWh: pv,
         loadHourlyKWh: load,
@@ -269,7 +295,9 @@ router.post("/recalc", async (req, res) => {
         exportFromBatteryEnabled: !!ta.exportFromBatteryEnabled,
         batteryModelAssumptions,
       });
+      batterySweepSimulationMs += performance.now() - simulationStartedAt;
 
+      const billingStartedAt = performance.now();
       const billingB = computeHourlyBilling({
         loadKWh: load,
         importKWh: simB.hourly.importKWh,
@@ -279,7 +307,9 @@ router.post("/recalc", async (req, res) => {
         tariffBefore: tb,
         tariffAfter: ta,
       });
+      batterySweepBillingMs += performance.now() - billingStartedAt;
 
+      const scenarioPrepBeforePricingStartedAt = performance.now();
       const benefitB =
         Math.max(0, (billingB.annualBaseline || 0) - (billingB.annualAfterImportAndStanding || 0)) +
         (billingB.annualExportCredit || 0);
@@ -298,14 +328,19 @@ router.post("/recalc", async (req, res) => {
       const annualGenerationForCandidate = Math.round(
         (simB?.monthly?.generation || []).reduce((s, v) => s + Number(v || 0), 0)
       );
+      batterySweepScenarioPrepMs +=
+        performance.now() - scenarioPrepBeforePricingStartedAt;
 
+      const pricingStartedAt = performance.now();
       const candidateBaseQuote = calculateQuote(candidateInput, {
         annualGenerationOverrideKWh: annualGenerationForCandidate,
         silent: true,
       });
+      batterySweepPricingMs += performance.now() - pricingStartedAt;
 
       const candidateMidPrice = (candidateBaseQuote.priceLow + candidateBaseQuote.priceHigh) / 2;
 
+      const paybackStartedAt = performance.now();
       const pb = makePaybackAndLifetimeSeries({
         systemCostMid: candidateMidPrice,
         annualBenefit: benefitB,
@@ -313,7 +348,9 @@ router.post("/recalc", async (req, res) => {
         panelOption: input?.panelOption || quote?.panelOption || "",
         energyInflationRate: Number(CONFIG.energyInflationRate || 0.06),
       });
+      batterySweepPaybackMs += performance.now() - paybackStartedAt;
 
+      const scenarioPrepAfterPaybackStartedAt = performance.now();
       const annualSelf = Math.round(
         (simB?.monthly?.selfUsed || []).reduce(
           (s, v) => s + Number(v || 0),
@@ -395,7 +432,21 @@ router.post("/recalc", async (req, res) => {
         annualSolarGenerationKWh:
           annualGenerationForCandidate,
       });
+      batterySweepScenarioPrepMs +=
+        performance.now() - scenarioPrepAfterPaybackStartedAt;
     }
+
+    console.log(
+      `[PERF] Recalc battery sweep: ${(performance.now() - batterySweepStartedAt).toFixed(1)}ms`,
+      {
+        scenarios: batterySweepScenarioCount,
+        simulationMs: Number(batterySweepSimulationMs.toFixed(1)),
+        billingMs: Number(batterySweepBillingMs.toFixed(1)),
+        pricingMs: Number(batterySweepPricingMs.toFixed(1)),
+        paybackMs: Number(batterySweepPaybackMs.toFixed(1)),
+        scenarioPrepMs: Number(batterySweepScenarioPrepMs.toFixed(1)),
+      }
+    );
 
     const selectedBatteryKWh = Number(
       hm?._batteryKWh ??
@@ -406,6 +457,7 @@ router.post("/recalc", async (req, res) => {
 
     const batteryCostPerKWh = batteryModelAssumptions.batteryCostPerKWh;
 
+    const recommendationsStartedAt = performance.now();
     let batteryRecommendations = attachBatteryProductsToRecommendations(
       buildBatteryRecommendations({
         curve,
@@ -422,6 +474,9 @@ router.post("/recalc", async (req, res) => {
         batteryModelAssumptions,
       })
     );
+    console.log(
+      `[PERF] Recalc recommendations: ${(performance.now() - recommendationsStartedAt).toFixed(1)}ms`
+    );
 
     const noBatteryCurveCandidate = curve.find(
       (candidate) =>
@@ -434,6 +489,7 @@ router.post("/recalc", async (req, res) => {
 
     const batteryScenarios = {};
 
+    const scenarioConstructionStartedAt = performance.now();
     for (
       const [batteryKey, source]
       of batteryScenarioSources.entries()
@@ -489,6 +545,11 @@ router.post("/recalc", async (req, res) => {
         batteryScenarios[batteryKey] = scenario;
       }
     }
+    console.log(
+      `[PERF] Recalc scenario construction: ${(performance.now() - scenarioConstructionStartedAt).toFixed(1)}ms`
+    );
+
+    const finalAssemblyStartedAt = performance.now();
 
     batteryRecommendations = {
       ...batteryRecommendations,
@@ -651,6 +712,13 @@ router.post("/recalc", async (req, res) => {
         debugSummerDay,
       },
     };
+
+    console.log(
+      `[PERF] Recalc final assembly: ${(performance.now() - finalAssemblyStartedAt).toFixed(1)}ms`
+    );
+    console.log(
+      `[PERF] Recalc total: ${(performance.now() - recalcStartedAt).toFixed(1)}ms`
+    );
 
     res.json(attachQuoteEngineVersion(updated));
   } catch (e) {
