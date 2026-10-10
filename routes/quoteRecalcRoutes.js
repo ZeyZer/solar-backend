@@ -67,8 +67,49 @@ const {
 
 const router = express.Router();
 
-router.post("/recalc", async (req, res) => {
+function buildCompactRecalcPatch(updated) {
+  return attachQuoteEngineVersion({
+    tariffBefore: updated.tariffBefore,
+    tariffAfter: updated.tariffAfter,
+    tariff: updated.tariff,
+    tariffModelAssumptions: updated.tariffModelAssumptions,
+    tariffWarnings: updated.tariffWarnings,
+    hardwareCatalog: updated.hardwareCatalog,
+    hardwareCatalogVersion: updated.hardwareCatalogVersion,
+    designCompatibility: updated.designCompatibility,
+    annualBillSavings: updated.annualBillSavings,
+    annualSegIncome: updated.annualSegIncome,
+    totalAnnualBenefit: updated.totalAnnualBenefit,
+    simplePaybackYears: updated.simplePaybackYears,
+    financialSeries: updated.financialSeries,
+    batteryRecommendations: updated.batteryRecommendations,
+    hourlyModel: {
+      monthlyGenerationKWh: updated.hourlyModel.monthlyGenerationKWh,
+      monthlySelfUsedKWh: updated.hourlyModel.monthlySelfUsedKWh,
+      monthlyExportedKWh: updated.hourlyModel.monthlyExportedKWh,
+      monthlyImportedKWh: updated.hourlyModel.monthlyImportedKWh,
+      monthlyBatteryChargeKWh: updated.hourlyModel.monthlyBatteryChargeKWh,
+      monthlyBatteryDischargeKWh: updated.hourlyModel.monthlyBatteryDischargeKWh,
+      monthlyBatteryChargeFromPVKWh:
+        updated.hourlyModel.monthlyBatteryChargeFromPVKWh,
+      monthlyBatteryChargeFromGridKWh:
+        updated.hourlyModel.monthlyBatteryChargeFromGridKWh,
+      monthlyBatteryDischargeFromPVToLoadKWh:
+        updated.hourlyModel.monthlyBatteryDischargeFromPVToLoadKWh,
+      monthlyBatteryDischargeFromGridToLoadKWh:
+        updated.hourlyModel.monthlyBatteryDischargeFromGridToLoadKWh,
+      monthlyPVExportedDirectKWh:
+        updated.hourlyModel.monthlyPVExportedDirectKWh,
+      monthlyLoadKWh: updated.hourlyModel.monthlyLoadKWh,
+      debugWinterDay: updated.hourlyModel.debugWinterDay,
+      debugSummerDay: updated.hourlyModel.debugSummerDay,
+    },
+  });
+}
+
+router.post(["/recalc", "/recalc-compact"], async (req, res) => {
   const recalcStartedAt = performance.now();
+  const compactMode = req.path === "/recalc-compact";
 
   try {
     const { quote, tariffBefore, tariffAfter, input, batteryRecommendationLifetimeYears } = req.body || {};
@@ -719,6 +760,13 @@ router.post("/recalc", async (req, res) => {
     console.log(
       `[PERF] Recalc total: ${(performance.now() - recalcStartedAt).toFixed(1)}ms`
     );
+
+    if (compactMode) {
+      return res.json({
+        mode: "recalc_patch_v1",
+        patch: buildCompactRecalcPatch(updated),
+      });
+    }
 
     res.json(attachQuoteEngineVersion(updated));
   } catch (e) {
