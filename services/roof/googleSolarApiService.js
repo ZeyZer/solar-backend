@@ -1,3 +1,6 @@
+const { performance } = require("node:perf_hooks");
+const { measurePhase } = require("./roofPerformance");
+
 const GOOGLE_SOLAR_BUILDING_INSIGHTS_URL =
   "https://solar.googleapis.com/v1/buildingInsights:findClosest";
 
@@ -46,19 +49,44 @@ function parseLatLng({ latitude, longitude }) {
   };
 }
 
-async function fetchJson(url) {
+async function fetchJson(url, timing) {
   if (typeof fetch !== "function") {
     throw new Error(
       "Global fetch is not available. Use Node 18+ for this backend spike."
     );
   }
 
+  const startedAt = timing && performance.now();
+  try {
+    return await readGoogleResponse(url, timing, startedAt);
+  } finally {
+    if (timing) {
+      timing.googleMs = performance.now() - startedAt;
+    }
+  }
+}
+
+async function readGoogleResponse(url, timing, startedAt) {
   const response = await fetch(url);
+  if (timing) {
+    timing.googleHeadersMs = performance.now() - startedAt;
+  }
 
   let data = null;
 
   try {
-    data = await response.json();
+    if (timing) {
+      const bodyStartedAt = performance.now();
+      let body;
+      try {
+        body = await response.text();
+      } finally {
+        timing.googleBodyMs = performance.now() - bodyStartedAt;
+      }
+      data = measurePhase(timing, "googleParseMs", () => JSON.parse(body));
+    } else {
+      data = await response.json();
+    }
   } catch {
     data = null;
   }
@@ -83,6 +111,7 @@ async function findClosestBuildingInsights({
   longitude,
   requiredQuality,
   includeDetectedArrays = false,
+  timing,
 } = {}) {
   const apiKey = getGoogleSolarApiKey();
 
@@ -106,7 +135,7 @@ async function findClosestBuildingInsights({
 
   const url = `${GOOGLE_SOLAR_BUILDING_INSIGHTS_URL}?${params.toString()}`;
 
-  return fetchJson(url);
+  return fetchJson(url, timing);
 }
 
 module.exports = {

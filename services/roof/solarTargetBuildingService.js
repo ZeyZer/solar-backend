@@ -1,3 +1,5 @@
+const { measurePhase, startTargetTiming } = require("./roofPerformance");
+
 const {
   applyPropertyBoundaryFilter,
 } = require("../propertyBoundaryFilterService");
@@ -137,6 +139,7 @@ function findDuplicateBuilding(existingModels, nextModel) {
 }
 
 async function analyseSingleTarget(target, options = {}) {
+  const timing = options.targetTiming;
   const issues = validateTarget(target);
 
   if (issues.length > 0) {
@@ -155,62 +158,28 @@ async function analyseSingleTarget(target, options = {}) {
       longitude: target.longitude,
       requiredQuality: options.requiredQuality,
       includeDetectedArrays: Boolean(options.includeDetectedArrays),
+      timing,
     });
 
-    let buildingModel = normaliseGoogleSolarBuildingInsights(providerResponse, {
-      id: options.nextBuildingId,
-      target,
-    });
+    const normalised = measurePhase(timing, "normaliseMs", () =>
+      normaliseGoogleSolarBuildingInsights(providerResponse, {
+        id: options.nextBuildingId,
+        target,
+      })
+    );
 
-    console.log("Solar target service boundary context:", {
-      propertyType: options.propertyType || "unknown",
-      hasPropertyBoundary: !!options.propertyBoundary,
-      boundaryLineCount: options.propertyBoundary?.boundaryLines?.length || 0,
-    });
+    const buildingModel = measurePhase(timing, "boundaryMs", () =>
+      applyPropertyBoundaryFilter(normalised, {
+        propertyBoundary: options.propertyBoundary || null,
+        propertyType: options.propertyType || "unknown",
+        referencePoint: target,
+      })
+    );
 
-    buildingModel = applyPropertyBoundaryFilter(buildingModel, {
-      propertyBoundary: options.propertyBoundary || null,
-      propertyType: options.propertyType || "unknown",
-      referencePoint: target,
-    });
-
-    const propertyBoundaryFilter = buildingModel?.propertyBoundaryFilter || null;
-
-    console.log("Solar target service boundary filter result:", {
-      applied: propertyBoundaryFilter?.applied || false,
-      propertyBoundaryFilter: propertyBoundaryFilter
-        ? {
-            applied: Boolean(propertyBoundaryFilter.applied),
-            reason: propertyBoundaryFilter.reason || null,
-            source: propertyBoundaryFilter.source || null,
-            propertyType: propertyBoundaryFilter.propertyType || null,
-            geometryType: propertyBoundaryFilter.geometryType || null,
-            boundaryLineCount: propertyBoundaryFilter.boundaryLineCount || 0,
-            originalPanelCount:
-              propertyBoundaryFilter.originalPanelCount ?? null,
-            keptPanelCount: propertyBoundaryFilter.keptPanelCount ?? null,
-            excludedPanelCount:
-              propertyBoundaryFilter.excludedPanelCount ?? null,
-            originalPanelsBySegment:
-              propertyBoundaryFilter.originalPanelsBySegment || null,
-            keptPanelsBySegment:
-              propertyBoundaryFilter.keptPanelsBySegment || null,
-            filteringMethod: propertyBoundaryFilter.filteringMethod || null,
-            diagnosticLineCount: Array.isArray(
-              propertyBoundaryFilter.boundarySideDiagnostics
-            )
-              ? propertyBoundaryFilter.boundarySideDiagnostics.length
-              : 0,
-          }
-        : null,
-    });
-
-
-    buildingModel.roofSelectionModel = buildRoofSelectionModelFromBuildingModel(
-      buildingModel,
-      {
+    buildingModel.roofSelectionModel = measurePhase(timing, "selectionMs", () =>
+      buildRoofSelectionModelFromBuildingModel(buildingModel, {
         propertyType: target.propertyType,
-      }
+      })
     );
 
     return {
@@ -281,10 +250,16 @@ async function analyseSolarTargetBuildings(targets = [], options = {}) {
   for (const target of acceptedTargets) {
     const nextBuildingId = `solar-building-${solarBuildingModels.length + 1}`;
 
+    const targetTiming = startTargetTiming(options.requestTiming);
     const result = await analyseSingleTarget(target, {
       ...options,
       nextBuildingId,
+      targetTiming,
     });
+
+    if (targetTiming) {
+      targetTiming.outcome = result.found ? "found" : result.success ? "not_found" : "failed";
+    }
 
     if (!result.found || !result.buildingModel) {
       targetResults.push(result);
@@ -297,6 +272,9 @@ async function analyseSolarTargetBuildings(targets = [], options = {}) {
     );
 
     if (duplicate) {
+      if (targetTiming) {
+        targetTiming.outcome = "duplicate";
+      }
       targetResults.push({
         ...result,
         duplicate: true,

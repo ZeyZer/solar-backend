@@ -1,4 +1,5 @@
 const express = require("express");
+const { measurePhase, sendRoofJson, startTargetTiming } = require("../services/roof/roofPerformance");
 
 const {
   findClosestBuildingInsights,
@@ -73,42 +74,43 @@ router.post("/building-insights", async (req, res) => {
   const target = makeTargetFromBody(body);
 
   if (target.latitude === null || target.longitude === null) {
-    return res.status(400).json({
+    return sendRoofJson(res.status(400), {
       success: false,
       diagnosticOnly: true,
       error: "Latitude and longitude are required.",
-    });
+    }, "invalid_input");
   }
 
+  const timing = startTargetTiming(res.locals.roofPerformance);
   try {
     const providerResponse = await findClosestBuildingInsights({
       latitude: target.latitude,
       longitude: target.longitude,
       requiredQuality: body.requiredQuality,
       includeDetectedArrays: Boolean(body.includeDetectedArrays),
+      timing,
     });
 
-    const buildingModel = normaliseGoogleSolarBuildingInsights(
-      providerResponse,
-      {
-        target,
-      }
+    const buildingModel = measurePhase(timing, "normaliseMs", () =>
+      normaliseGoogleSolarBuildingInsights(providerResponse, { target })
     );
 
-    buildingModel.roofSelectionModel = buildRoofSelectionModelFromBuildingModel(
-      buildingModel,
-      {
+    buildingModel.roofSelectionModel = measurePhase(timing, "selectionMs", () =>
+      buildRoofSelectionModelFromBuildingModel(buildingModel, {
         propertyType: target.propertyType,
-      }
+      })
     );
 
-    return res.json({
+    if (timing) {
+      timing.outcome = "found";
+    }
+    return sendRoofJson(res, {
       success: true,
       diagnosticOnly: true,
       found: true,
       target,
       buildingModel,
-    });
+    }, "found");
   } catch (error) {
     const googleStatus = error?.googleStatus || null;
     const googleErrorCode = getGoogleErrorCode(error);
@@ -120,7 +122,10 @@ router.post("/building-insights", async (req, res) => {
       /not found/i.test(message);
 
     if (notFound) {
-      return res.json({
+      if (timing) {
+        timing.outcome = "not_found";
+      }
+      return sendRoofJson(res, {
         success: true,
         diagnosticOnly: true,
         found: false,
@@ -134,17 +139,13 @@ router.post("/building-insights", async (req, res) => {
           code: googleErrorCode,
           message,
         },
-      });
+      }, "not_found");
     }
 
-    console.error("Solar roof Building Insights failed:", {
-      googleStatus,
-      googleErrorCode,
-      message,
-      googleError: error?.googleError,
-    });
-
-    return res.status(502).json({
+    if (timing) {
+      timing.outcome = "failed";
+    }
+    return sendRoofJson(res.status(502), {
       success: false,
       diagnosticOnly: true,
       found: false,
@@ -155,7 +156,7 @@ router.post("/building-insights", async (req, res) => {
         code: googleErrorCode,
         message,
       },
-    });
+    }, "failed");
   }
 });
 
@@ -164,7 +165,7 @@ router.post("/building-insights/batch", async (req, res) => {
   const targets = body.solarTargetBuildings || body.targets || [];
 
   if (!Array.isArray(targets) || targets.length === 0) {
-    return res.status(400).json({
+    return sendRoofJson(res.status(400), {
       success: false,
       diagnosticOnly: true,
       error: "Provide at least one solar target building.",
@@ -178,7 +179,7 @@ router.post("/building-insights/batch", async (req, res) => {
           },
         ],
       },
-    });
+    }, "invalid_input");
   }
 
   try {
@@ -186,6 +187,7 @@ router.post("/building-insights/batch", async (req, res) => {
       requiredQuality: body.requiredQuality,
       includeDetectedArrays: Boolean(body.includeDetectedArrays),
       maxTargets: body.maxTargets,
+      requestTiming: res.locals.roofPerformance,
       propertyType: body.propertyType || body?.roofGeometry?.propertyType || "unknown",
       propertyBoundary:
         body.propertyBoundary ||
@@ -193,15 +195,13 @@ router.post("/building-insights/batch", async (req, res) => {
         null,
     });
 
-    return res.json(result);
+    return sendRoofJson(res, result, result.success ? "completed" : "target_failure");
   } catch (error) {
-    console.error("Batch Solar roof Building Insights failed:", error);
-
-    return res.status(500).json({
+    return sendRoofJson(res.status(500), {
       success: false,
       diagnosticOnly: true,
       error: error?.message || "Batch Solar roof analysis failed.",
-    });
+    }, "failed");
   }
 });
 
